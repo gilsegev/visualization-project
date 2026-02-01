@@ -12,7 +12,8 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "@nestjs/common": "^10.0.0",
-    "@nestjs/core": "^10.0.0",
+    "@nestjs/core": "^10.4.22",
+    "@nestjs/platform-express": "^10.4.22",
     "dotenv": "^17.2.3",
     "nestjs-zod": "^3.0.0",
     "reflect-metadata": "^0.1.13",
