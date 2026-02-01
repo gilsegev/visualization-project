@@ -14,7 +14,7 @@ export class ImageRouterService {
             this.logger.warn('GEMINI_API_KEY not found in environment variables');
         }
         const genAI = new GoogleGenerativeAI(apiKey || '');
-        this.model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
     }
 
     async classify(content: string): Promise<ImageTask[]> {
