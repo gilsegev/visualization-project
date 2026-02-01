@@ -40,12 +40,13 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         this.browser = await chromium.launch({ headless: true });
     }
 
-    async getNewPage(): Promise<{ context: BrowserContext; page: Page }> {
+    async getNewPage(options: { recordVideo?: { dir: string } } = {}): Promise<{ context: BrowserContext; page: Page }> {
         await this.ensureBrowser();
         // Create a new independent context for each task to ensure isolation
         const context = await this.browser.newContext({
             viewport: { width: 1024, height: 1024 },
             deviceScaleFactor: 1,
+            ...options, // Pass video options if provided
         });
         const page = await context.newPage();
 
