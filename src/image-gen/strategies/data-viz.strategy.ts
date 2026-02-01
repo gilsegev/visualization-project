@@ -1,16 +1,23 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import * as fs from 'fs';
 import { BaseImageStrategy } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
 import { chromium, Browser, BrowserContext } from 'playwright';
 
 @Injectable()
-export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestroy {
+export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestroy, OnModuleInit {
   private browser: Browser;
   private context: BrowserContext;
 
   constructor(private readonly localStorage: LocalStorageService) {
     super();
+  }
+
+  async onModuleInit() {
+    this.logger.log('Pre-warming Browser...');
+    // Start the browser immediately on app launch
+    await this.ensureBrowser();
   }
 
   async onModuleDestroy() {
@@ -63,7 +70,6 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
     page.on('console', msg => this.logger.log(`[BROWSER] ${msg.text()}`));
     page.on('pageerror', err => this.logger.error(`[BROWSER ERROR] ${err.message}`));
 
-    // Template loading VisActor (VChart) from CDN
     // Data Normalizer
     let chartData = payload.data || [];
     if (!Array.isArray(chartData) && typeof chartData === 'object') {
@@ -77,11 +83,15 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
       }
     }
 
+    // Load VChart locally for performance (Optimization A)
+    const vChartLibPath = require.resolve('@visactor/vchart/build/index.min.js');
+    const vChartLib = fs.readFileSync(vChartLibPath, 'utf8');
+
     const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
-        <script src="https://unpkg.com/@visactor/vchart/build/index.min.js"></script>
+        <script>${vChartLib}</script>
         <style>
           body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
           #chart-container { width: 1024px; height: 1024px; font-family: 'Helvetica Neue', Arial, sans-serif; }
@@ -90,7 +100,6 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
       <body>
         <div id="chart-container"></div>
         <script>
-
     const commonSpec = {
       type: '${payload.chartType || 'bar'}',
       data: {
@@ -120,22 +129,22 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
           xField: 'label',
           yField: 'value',
           axes: [
-              { orient: 'left', visible: true }, 
-              { orient: 'bottom', visible: true, label: { visible: true } }
+            { orient: 'left', visible: true },
+            { orient: 'bottom', visible: true, label: { visible: true } }
           ]
        };
     } else {
-        // Fallback for other types (e.g. wordCloud, etc) - No axes to allow generic rendering without crash
-        spec = {
-            ...commonSpec,
-            categoryField: 'label',
-            valueField: 'value',
-        };
+       // Fallback for other types
+       spec = {
+          ...commonSpec,
+          categoryField: 'label',
+          valueField: 'value',
+       };
     }
-          
-          const VChartClass = (typeof VChart !== 'undefined' && VChart.default) ? VChart.default : VChart;
-          const vchart = new VChartClass(spec, { dom: 'chart-container' });
-          vchart.renderSync();
+
+    const VChartClass = (typeof VChart !== 'undefined' && VChart.default) ? VChart.default : VChart;
+    const vchart = new VChartClass(spec, { dom: 'chart-container' });
+    vchart.renderSync();
         </script>
       </body>
       </html>
@@ -144,7 +153,7 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
     try {
       this.logger.log(`[DEBUG] Task ${task.id}: Setting page content...`);
       await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-      this.logger.log(`[DEBUG] Task ${task.id}: Content set (domcontentloaded).`);
+      this.logger.log(`[DEBUG] Task ${task.id}: Content set(domcontentloaded).`);
 
       this.logger.log(`[DEBUG] Task ${task.id}: Waiting for canvas selector...`);
       await page.waitForSelector('#chart-container canvas', { timeout: 10000 });
@@ -174,3 +183,4 @@ export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestro
     }
   }
 }
+

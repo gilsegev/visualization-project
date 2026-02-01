@@ -22,10 +22,12 @@ export class ImageOrchestratorService {
         this.logger.log(`Classified ${tasks.length} tasks.`);
 
         // 2. Parallel Execution with Limit
-        // DEBUG: Serial execution (1) to trace hangs
-        const limit = pLimit(10);
-        const promises = tasks.map((task, index) =>
-            limit(async () => {
+        // Separate limits: DataViz is local/fast (10), VisualConcept is ext/slow (5)
+        const vizLimit = pLimit(10);
+        const conceptLimit = pLimit(5);
+        const promises = tasks.map((task, index) => {
+            const limit = task.type === 'data_viz' ? vizLimit : conceptLimit;
+            return limit(async () => {
                 try {
                     const strategy = this.strategyFactory.getStrategy(task.type);
                     const url = await strategy.generate(task, index + 1);
@@ -42,8 +44,8 @@ export class ImageOrchestratorService {
                     this.logger.error(`Task ${task.id} failed: ${error.message}`);
                     return { status: 'rejected', reason: error.message, taskId: task.id };
                 }
-            }),
-        );
+            });
+        });
 
         // 3. Resillience (Promise.allSettled logic is handled by wrapping catch above effectively,
         // but strict allSettled returns structure {status, value/reason}.
