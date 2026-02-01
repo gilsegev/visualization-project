@@ -5,27 +5,27 @@ import { z } from 'zod';
 
 @Injectable()
 export class ImageRouterService {
-    private readonly logger = new Logger(ImageRouterService.name);
-    private model: GenerativeModel;
+  private readonly logger = new Logger(ImageRouterService.name);
+  private model: GenerativeModel;
 
-    constructor() {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            this.logger.warn('GEMINI_API_KEY not found in environment variables');
-        }
-        const genAI = new GoogleGenerativeAI(apiKey || '');
-        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  constructor() {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      this.logger.warn('GEMINI_API_KEY not found in environment variables');
     }
+    const genAI = new GoogleGenerativeAI(apiKey || '');
+    this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  }
 
-    async classify(content: string): Promise<ImageTask[]> {
-        this.logger.log(`Classifying content: "${content}"`);
-        const prompt = `
+  async classify(content: string): Promise<ImageTask[]> {
+    this.logger.log(`Classifying content: "${content}"`);
+    const prompt = `
       You are an AI that classifies user intent into image generation tasks.
       Analyze the following user request and break it down into a list of specific image tasks.
       
       The available task types are:
       - 'visual_concept': For general images, stock photos, concepts.
-      - 'data_viz': For charts, graphs, data visualization. Payload must include 'chartType' (e.g., 'bar', 'line', 'pie') and 'data'.
+      - 'data_viz': For charts, graphs, data visualization. Payload must include 'chartType' (strictly one of: 'bar', 'line', 'pie', 'funnel') and 'data'.
       - 'math_formula': For equations, mathematical expressions. Payload must include 'latex'.
       - 'beautify_slide': For design layouts or slide improvements.
 
@@ -49,24 +49,24 @@ export class ImageRouterService {
         }
       ]
     `;
-        try {
-            const result = await this.model.generateContent(prompt);
-            const responseText = result.response.text();
+    try {
+      const result = await this.model.generateContent(prompt);
+      const responseText = result.response.text();
 
-            // Clean up markdown code blocks if present
-            const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      // Clean up markdown code blocks if present
+      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-            this.logger.debug(`Raw LLM Response: ${cleanedText}`);
+      this.logger.debug(`Raw LLM Response: ${cleanedText}`);
 
-            const parsed = JSON.parse(cleanedText);
+      const parsed = JSON.parse(cleanedText);
 
-            // Validate with Zod
-            const validated = z.array(ImageTaskSchema).parse(parsed);
+      // Validate with Zod
+      const validated = z.array(ImageTaskSchema).parse(parsed);
 
-            return validated;
-        } catch (error) {
-            this.logger.error('Failed to classify or parse image tasks', error);
-            throw new InternalServerErrorException('Failed to process image tasks');
-        }
+      return validated;
+    } catch (error) {
+      this.logger.error('Failed to classify or parse image tasks', error);
+      throw new InternalServerErrorException('Failed to process image tasks');
     }
+  }
 }

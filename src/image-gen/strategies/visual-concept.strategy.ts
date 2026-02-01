@@ -54,14 +54,13 @@ export class VisualConceptStrategy extends BaseImageStrategy {
                 throw new Error('No image URL returned from SiliconFlow API');
             }
 
-            this.logger.log(`Image generated at: ${imageUrl}. Downloading to local storage...`);
+            this.logger.log(`Image generated at: ${imageUrl}. Downloading to local storage (stream)...`);
 
-            // Download image
-            const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-            const buffer = Buffer.from(imageResponse.data, 'binary');
+            // Download image as stream
+            const imageResponse = await axios.get(imageUrl, { responseType: 'stream' });
 
             const fileName = `task-${index ?? 'unknown'}-visual_concept.png`;
-            const localUrl = await this.localStorage.upload(buffer, fileName);
+            const localUrl = await this.localStorage.uploadStream(imageResponse.data, fileName);
 
             return localUrl;
 

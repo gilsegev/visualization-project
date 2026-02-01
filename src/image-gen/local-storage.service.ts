@@ -26,4 +26,18 @@ export class LocalStorageService {
         // Return relative URL assuming static assets are served from 'public' root
         return `/generated-images/${fileName}`;
     }
+
+    async uploadStream(stream: NodeJS.ReadableStream, fileName: string): Promise<string> {
+        const filePath = path.join(this.uploadDir, fileName);
+        const writer = fs.createWriteStream(filePath);
+
+        return new Promise((resolve, reject) => {
+            stream.pipe(writer);
+            writer.on('finish', () => {
+                this.logger.log(`Saved file (stream): ${filePath}`);
+                resolve(`/generated-images/${fileName}`);
+            });
+            writer.on('error', reject);
+        });
+    }
 }
