@@ -5,21 +5,16 @@ import { ImageTask } from './image-task.schema';
 export abstract class BaseImageStrategy implements ImageGeneratorStrategy {
     protected readonly logger = new Logger(this.constructor.name);
 
-    async generate(task: ImageTask): Promise<string> {
-        this.logger.log(`Starting generation for task ${task.id} (${task.type})`);
-        const startTime = Date.now();
-
+    async generate(task: ImageTask, index?: number): Promise<string> {
         try {
-            const result = await this.performGeneration(task);
-            const duration = Date.now() - startTime;
-            this.logger.log(`Completed generation for task ${task.id} in ${duration}ms`);
-            return result;
+            this.logger.log(`Starting generation for task ${task.id} (${task.type})`);
+            return await this.performGeneration(task, index);
         } catch (error) {
-            this.logger.error(`Failed generation for task ${task.id}`, error);
+            this.logger.error(`Failed to generate image for task ${task.id}: ${error.message}`);
             throw error;
         }
     }
 
     // Abstract method for subclasses to implement the actual logic
-    protected abstract performGeneration(task: ImageTask): Promise<string>;
+    protected abstract performGeneration(task: ImageTask, index?: number): Promise<string>;
 }

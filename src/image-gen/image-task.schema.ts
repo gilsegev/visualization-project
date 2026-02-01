@@ -3,7 +3,7 @@ import { z } from 'zod';
 // Define specific payloads for better validation later
 const DataVizPayload = z.object({
     chartType: z.string(),
-    data: z.array(z.any()),
+    data: z.any(),
 });
 
 export const ImageTaskSchema = z.discriminatedUnion('type', [

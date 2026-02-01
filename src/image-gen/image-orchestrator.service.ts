@@ -22,13 +22,22 @@ export class ImageOrchestratorService {
         this.logger.log(`Classified ${tasks.length} tasks.`);
 
         // 2. Parallel Execution with Limit
+        // DEBUG: Serial execution (1) to trace hangs
         const limit = pLimit(10);
-        const promises = tasks.map((task) =>
+        const promises = tasks.map((task, index) =>
             limit(async () => {
                 try {
                     const strategy = this.strategyFactory.getStrategy(task.type);
-                    const url = await strategy.generate(task);
-                    return { status: 'fulfilled', value: { taskId: task.id, type: task.type, url } };
+                    const url = await strategy.generate(task, index + 1);
+                    return {
+                        status: 'fulfilled',
+                        value: {
+                            taskId: task.id,
+                            type: task.type,
+                            refined_prompt: task.refined_prompt,
+                            url
+                        }
+                    };
                 } catch (error) {
                     this.logger.error(`Task ${task.id} failed: ${error.message}`);
                     return { status: 'rejected', reason: error.message, taskId: task.id };
@@ -36,8 +45,8 @@ export class ImageOrchestratorService {
             }),
         );
 
-        // 3. Resillience (Promise.allSettled logic is handled by wrapping catch above effectively, 
-        // but strict allSettled returns structure {status, value/reason}. 
+        // 3. Resillience (Promise.allSettled logic is handled by wrapping catch above effectively,
+        // but strict allSettled returns structure {status, value/reason}.
         // Since we want to process them, we can just await Promise.all of our wrapped promises since they never throw.
         const results = await Promise.all(promises);
 
