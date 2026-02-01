@@ -52,6 +52,23 @@ The system accepts `ImageTask` objects with type `data_viz`.
 }
 ```
 
+### 4. VisualConceptStrategy (`src/image-gen/strategies/visual-concept.strategy.ts`)
+
+Generates photorealistic images using the SiliconFlow API.
+
+-   **Model**: `black-forest-labs/FLUX.1-schnell`.
+-   **Endpoint**: `https://api.siliconflow.com/v1/images/generations` (Note: `.com` domain required).
+-   **Configuration**: Requires `SILICONFLOW_API_KEY` in `.env`.
+-   **Process**: Sends prompt to SiliconFlow, downloads the resulting image, and saves it locally.
+
+## Configuration
+
+To enable visual concept generation, add the following to your `.env` file:
+
+```env
+SILICONFLOW_API_KEY=your_api_key_here
+```
+
 ## generated-images Directory
 
 generated images are stored in `public/generated-images`. This directory is gitignored to preventing binary bloat in the repository.
