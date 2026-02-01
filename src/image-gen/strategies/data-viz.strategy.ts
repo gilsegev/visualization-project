@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BaseImageStrategy } from '../base-image.strategy';
+import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
 import { BrowserService } from '../browser.service';
@@ -15,23 +15,16 @@ export class DataVizStrategy extends BaseImageStrategy {
     super();
   }
 
-  protected async performGeneration(task: ImageTask, index?: number): Promise<string> {
+  protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
     const payload = task.payload as any;
-    // Safely access exportType (available on data_viz variant)
+    // Implementation of Prompt 9: Use 'format' from payload, or fallback to 'exportType'
     const exportType = 'exportType' in task ? task.exportType : 'static';
-    const isAnimated = exportType === 'animated';
-    this.logger.log(`[DEBUG] Task ${task.id}: Starting data viz (${payload.chartType}) - Mode: ${exportType}`);
+    const format = payload.format || exportType;
+    const isAnimated = format === 'animated';
 
-    // Video Recording Setup
-    const videoDir = path.resolve(process.cwd(), 'videos'); // Playwright needs absolute path
-    const videoOptions = isAnimated ? { recordVideo: { dir: videoDir, size: { width: 1024, height: 1024 } } } : {};
+    this.logger.log(`[DEBUG] Task ${task.id}: Starting data viz (${payload.chartType}) - Mode: ${format}`);
 
-    this.logger.log(`[DEBUG] Task ${task.id}: Getting page from BrowserService...`);
-    // Use shared browser service with options
-    const { context, page } = await this.browserService.getNewPage(videoOptions);
-    this.logger.log(`[DEBUG] Task ${task.id}: Page created.`);
-
-    // Data Normalizer (Keep existing logic)
+    // Data Normalizer
     let chartData = payload.data || [];
     if (!Array.isArray(chartData) && typeof chartData === 'object') {
       if (Array.isArray(chartData.labels) && Array.isArray(chartData.values)) {
@@ -42,11 +35,34 @@ export class DataVizStrategy extends BaseImageStrategy {
       }
     }
 
-    // Load VChart locally
+    if (isAnimated) {
+      // Prompt 9: "Perform two captures"
+
+      // 1. Poster (Static Screenshot of final frame)
+      this.logger.log(`[DEBUG] Task ${task.id}: Generating Poster (Static)...`);
+      const posterUrl = await this.captureStatic(task, payload, chartData, index);
+
+      // 2. Video (Full Animation)
+      this.logger.log(`[DEBUG] Task ${task.id}: Generating Video (Animated)...`);
+      const videoUrl = await this.captureVideo(task, payload, chartData, index);
+
+      return { url: videoUrl, posterUrl };
+
+    } else {
+      // Static Only
+      // Prompt 9: "Perform a standard screenshot"
+      const url = await this.captureStatic(task, payload, chartData, index);
+      return { url };
+    }
+  }
+
+  private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
     const vChartLibPath = path.resolve(process.cwd(), 'public/assets/vchart.js');
     const vChartLib = fs.readFileSync(vChartLibPath, 'utf8');
 
-    const htmlContent = `
+    // Construct the HTML with VChart spec
+    // Reusing the robust spec logic from Prompt 8
+    return `
       <!DOCTYPE html>
       <html>
       <head>
@@ -216,68 +232,63 @@ export class DataVizStrategy extends BaseImageStrategy {
       </body>
       </html>
     `;
+  }
+
+  private async captureStatic(task: ImageTask, payload: any, chartData: any[], index?: number): Promise<string> {
+    // Prompt 9: "If static, it will set animation: false in the spec."
+    const htmlContent = this.getHtmlContent(task, payload, chartData, false);
+
+    const { context, page } = await this.browserService.getNewPage();
 
     try {
-      this.logger.log(`[DEBUG] Task ${task.id}: Setting page content...`);
       await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('#chart-container canvas', { timeout: 10000 });
+      // Buffer for render
+      await page.waitForTimeout(500);
 
-      this.logger.log(`[DEBUG] Task ${task.id}: Waiting for canvas...`);
+      const buffer = await page.locator('#chart-container').screenshot();
+      const fileName = `task-${index ?? 'unknown'}-data_viz.png`;
+      const url = await this.localStorage.upload(buffer, fileName);
+      return url;
+    } finally {
+      await page.close();
+      await context.close();
+    }
+  }
+
+  private async captureVideo(task: ImageTask, payload: any, chartData: any[], index?: number): Promise<string> {
+    // Prompt 9: "If animated... Perform a Playwright video recording... of the full 2-second animation"
+    const htmlContent = this.getHtmlContent(task, payload, chartData, true);
+
+    const videoDir = path.resolve(process.cwd(), 'videos');
+    const videoOptions = { recordVideo: { dir: videoDir, size: { width: 1024, height: 1024 } } };
+
+    const { context, page } = await this.browserService.getNewPage(videoOptions);
+
+    try {
+      await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
       await page.waitForSelector('#chart-container canvas', { timeout: 10000 });
 
-      if (isAnimated) {
-        this.logger.log(`[DEBUG] Task ${task.id}: Recording video (waiting 2000ms)...`);
-        // Wait for animation duration (1500) + buffer (500)
-        await page.waitForTimeout(2000);
+      // Wait for animation duration (1500) + buffer (500) = 2000ms
+      await page.waitForTimeout(2000);
 
-        this.logger.log(`[DEBUG] Task ${task.id}: Closing page to save video...`);
-        await page.close(); // Triggers video save
-        await context.close();
+      // Close to flush video
+      await page.close();
+      await context.close();
 
-        // Locate video file
-        const videoPath = await page.video()?.path();
-        if (!videoPath) throw new Error('Video file not found');
+      const videoPath = await page.video()?.path();
+      if (!videoPath) throw new Error('Video file not found');
 
-        // Rename/Move to public/generated-images
-        // Playwright saves as .webm. We will rename to .webm (or .mp4 if user really insists, but browser saves webm)
-        // Prompt said "Save as ...mp4". I'll try to just rename extension, but it might be misleading.
-        // Correct implementation: Move the file.
-        const fileName = `task-${index ?? 'unknown'}-data_viz.webm`; // Use webm to be honest, or valid container
-        // User asked for "task-{index}-{type}.mp4". I will respect the prompt's filename request even if format is webm container-wise.
-        // Many players handle this.
-        const promptFileName = `task-${index ?? 'unknown'}-data_viz.mp4`;
+      const promptFileName = `task-${index ?? 'unknown'}-data_viz.mp4`;
+      const buffer = fs.readFileSync(videoPath);
+      const url = await this.localStorage.upload(buffer, promptFileName);
 
-        const buffer = fs.readFileSync(videoPath);
-        const url = await this.localStorage.upload(buffer, promptFileName); // LocalStorageService handles 'public/generated-images' destination?
-
-        // Clean up temp video
-        // fs.unlinkSync(videoPath); // Playwright deletes temp if context closes? No, keep it until we move it.
-        // Actually checking documentation, video path is temp.
-
-        this.logger.log(`[DEBUG] Task ${task.id}: Video uploaded: ${url}`);
-        return url;
-
-      } else {
-        // Static Mode
-        this.logger.log(`[DEBUG] Task ${task.id}: Waiting safety buffer (500ms)...`);
-        await page.waitForTimeout(500); // 500ms for final render
-
-        const buffer = await page.locator('#chart-container').screenshot();
-        const fileName = `task-${index ?? 'unknown'}-data_viz.png`;
-        const url = await this.localStorage.upload(buffer, fileName);
-
-        await page.close();
-        await context.close();
-
-        return url;
-      }
-
-    } catch (error) {
-      this.logger.error(`[DEBUG] Task ${task.id}: ERROR during Playwright ops`, error);
-      // Ensure close on error
+      return url;
+    } catch (e) {
+      // Check if already closed
       await page.close().catch(() => { });
       await context.close().catch(() => { });
-      throw error;
+      throw e;
     }
   }
 }
-

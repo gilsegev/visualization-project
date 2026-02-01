@@ -29,14 +29,15 @@ export class ImageOrchestratorService {
             return limit(async () => {
                 try {
                     const strategy = this.strategyFactory.getStrategy(task.type);
-                    const url = await strategy.generate(task, index + 1);
+                    const result = await strategy.generate(task, index + 1);
                     return {
                         status: 'fulfilled',
                         value: {
                             taskId: task.id,
                             type: task.type,
                             refined_prompt: task.refined_prompt,
-                            url
+                            url: result.url,
+                            posterUrl: result.posterUrl
                         }
                     };
                 } catch (error) {

@@ -81,13 +81,13 @@ async function verifyFinalMix() {
             try {
                 let url = '';
                 if (task.type === 'data_viz') {
-                    url = await vizStrategy.generate(task, index + 1);
+                    url = (await vizStrategy.generate(task, index + 1)).url;
                 } else if (task.type === 'visual_concept') {
-                    url = await photoStrategy.generate(task, index + 1);
+                    url = (await photoStrategy.generate(task, index + 1)).url;
                 } else if (task.type === 'math_formula') {
-                    url = await mathStrategy.generate(task, index + 1);
+                    url = (await mathStrategy.generate(task, index + 1)).url;
                 } else if (task.type === 'beautify_slide') {
-                    url = await slideStrategy.generate(task, index + 1);
+                    url = (await slideStrategy.generate(task, index + 1)).url;
                 }
 
                 logger.log(`[SUCCESS] Task ${task.id} generated: ${url}`);

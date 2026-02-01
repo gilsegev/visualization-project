@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BaseImageStrategy } from '../base-image.strategy';
+import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
 import { BrowserService } from '../browser.service';
@@ -15,7 +15,7 @@ export class BeautifySlideStrategy extends BaseImageStrategy {
         super();
     }
 
-    protected async performGeneration(task: ImageTask, index?: number): Promise<string> {
+    protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
         this.logger.log(`Generating slide for: ${task.refined_prompt}`);
 
         // Extract content from payload or prompt
@@ -140,7 +140,8 @@ export class BeautifySlideStrategy extends BaseImageStrategy {
             const buffer = await page.screenshot({ clip: { x: 0, y: 0, width: 1024, height: 1024 } });
 
             const fileName = `task-${index ?? 'unknown'}-slide.png`;
-            return await this.localStorage.upload(buffer, fileName);
+            const url = await this.localStorage.upload(buffer, fileName);
+            return { url };
 
         } finally {
             await page.close();

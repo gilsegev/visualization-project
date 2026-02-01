@@ -1,75 +1,74 @@
-async function testStressLevel() {
+async function runUltimateTest() {
   const prompt = `
-Build a comprehensive course on Small Business Acquisition. 
+Build an advanced masterclass course on "The Future of Global Logistics".
 
-STAGE 1: SEARCH
-- IMAGE 1: A determined entrepreneur in a modern home office at midnight, illuminated by a single desk lamp, surrounded by physical folders and a laptop screen showing business listings. Cinematic, 35mm lens, high-detail.
-- CHART 1: The Deal Funnel: Labels [Search, Review, LOI, Close] with Values [100, 20, 5, 1].
+STAGE 1: NARRATIVE GROWTH (10 ANIMATED VIDEOS + POSTERS)
+- CHART 1: [ANIMATED VIDEO] Global Trade Volume: Labels [2020, 2022, 2024, 2026] with Values [15, 19, 24, 31] in Trillions.
+- CHART 2: [ANIMATED VIDEO] Drone Delivery Adoption: Labels [Phase 1, Phase 2, Phase 3] with Values [10, 45, 85] percent.
+- CHART 3: [ANIMATED VIDEO] Route Optimization Efficiency: Labels [Manual, AI-v1, AI-v2] with Values [60, 85, 98].
+- CHART 4: [ANIMATED VIDEO] Port Congestion Index: Labels [Q1, Q2, Q3, Q4] with Values [88, 72, 45, 30].
+- CHART 5: [ANIMATED VIDEO] EV Truck Range: Labels [2021, 2023, 2025] with Values [300, 500, 850] miles.
+- CHART 6: [ANIMATED VIDEO] Fuel Cost volatility: Labels [Jan, Mar, Jun, Sep, Dec] with Values [3.2, 4.5, 5.1, 4.2, 3.8].
+- CHART 7: [ANIMATED VIDEO] Warehouse Automation: Labels [Sorting, Packing, Loading] with Values [30, 65, 90] percent automation.
+- CHART 8: [ANIMATED VIDEO] Carbon Footprint Reduction: Labels [Baseline, Year 1, Year 2, Year 3] with Values [100, 85, 60, 35].
+- CHART 9: [ANIMATED VIDEO] Last-Mile Speed: Labels [Standard, Express, Instant] with Values [48, 12, 1] in hours.
+- CHART 10: [ANIMATED VIDEO] Supply Chain Resilience: Labels [2020, 2023, 2026] with Values [20, 55, 90].
 
-STAGE 2: FINANCIAL REVIEW
-- IMAGE 2: Macro close-up of a magnifying glass focusing on the word 'PROFIT' on a printed balance sheet. Sharp focus on text, soft bokeh background, office lighting.
-- CHART 2: EBITDA Growth: Labels [2023, 2024, 2025] with Values [450000, 600000, 820000].
-- IMAGE 3: Professional meeting between a buyer and a seller in a sleek, glass-walled conference room. Wide angle, daylight, corporate aesthetic.
-- CHART 3: Expense Breakdown: Labels [Operations, Payroll, Rent, Marketing] with Values [40, 35, 15, 10].
+STAGE 2: LOGISTICS SNAPSHOTS (10 STATIC PNG CHARTS)
+- CHART 11: [STATIC PNG] Mode of Transport: Labels [Sea, Air, Rail, Road] with Values [45, 15, 20, 20].
+- CHART 12: [STATIC PNG] Regional Hubs: Labels [Asia, Europe, NA, LATAM] with Values [400, 250, 300, 150].
+- CHART 13: [STATIC PNG] Labor Force Mix: Labels [Drivers, Tech, Ops] with Values [50, 30, 20].
+- CHART 14: [STATIC PNG] Inventory Turnover: Labels [Retail, Tech, Food] with Values [12, 8, 25].
+- CHART 15: [STATIC PNG] Packaging Waste: Labels [Plastic, Paper, Bio] with Values [40, 45, 15].
+- CHART 16: [STATIC PNG] Risk Factors: Labels [Weather, Political, Tech] with Values [35, 40, 25].
+- CHART 17: [STATIC PNG] Custom Clearance Time: Labels [US, EU, CN, BR] with Values [1, 2, 3, 10] in days.
+- CHART 18: [STATIC PNG] Storage Costs: Labels [Cold, Dry, Hazardous] with Values [500, 200, 800].
+- CHART 19: [STATIC PNG] Error Rates: Labels [Manual, Automated] with Values [12.5, 0.8].
+- CHART 20: [STATIC PNG] Provider Market Share: Labels [Maersk, DHL, FedEx, Others] with Values [18, 15, 12, 55].
 
-STAGE 3: THE LOI
-- IMAGE 4: A premium fountain pen resting on a formal 'Letter of Intent' document on a leather desk pad. Shallow depth of field, warm professional lighting.
-- CHART 4: Offer Success Rates: Labels [Accepted, Countered, Rejected] with Values [15, 60, 25].
-- IMAGE 5: Two people in business casual attire shaking hands in front of a local brick-and-mortar retail storefront at sunset. Wide shot, warm colors.
-- CHART 5: Negotiation Timeline: Labels [Initial, Counter, Final] with Values [10, 15, 7] in days.
-
-STAGE 4: FUNDING
-- IMAGE 6: A digital tablet on a marble desk displaying a 'Transfer Successful' notification next to a clean cup of espresso. High-end minimalist aesthetic.
-- CHART 6: Capital Stack: Labels [SBA Loan, Seller Note, Buyer Equity] with Values [75, 10, 15].
-- IMAGE 7: Over-the-shoulder shot of an investor in a business lounge reviewing a pitch deck on an iPad. Soft natural light, 8k resolution.
-- CHART 7: Interest Rate Trend: Labels [Q1, Q2, Q3, Q4] with Values [6.5, 7.2, 8.1, 8.5].
-
-STAGE 5: CLOSING
-- IMAGE 8: Close-up of a pair of brass office keys with a 'New Owner' leather keychain being handed from one person to another. Sharp focus, professional blur.
-- CHART 8: Closing Costs: Labels [Legal, Escrow, Diligence, Insurance] with Values [8000, 3000, 12000, 2500].
-- IMAGE 9: A celebratory toast with two glasses of water in a bright, high-rise boardroom overlooking a city skyline. High contrast, clean composition.
-- CHART 9: Revenue Forecast: Labels [Year 1, Year 2, Year 3] with Values [1200000, 1500000, 2100000].
-- IMAGE 10: A hand using a silver laptop trackpad to apply a final digital signature to a contract. Top-down view, ultra-modern workspace.
-- CHART 10: Market Share: Labels [Target Business, Top Competitor, Others] with Values [12, 45, 43].
+STAGE 3: CONCEPTUAL VISUALS (10 FLUX IMAGES)
+- IMAGE 1: A futuristic cargo ship powered by massive high-tech sails, glowing blue neon accents, cutting through dark ocean waves at night. Cinematic 8k.
+- IMAGE 2: Macro shot of a robotic hand delicately placing a parcel on a high-speed conveyor belt. Soft bokeh, industrial lighting.
+- IMAGE 3: A swarm of delivery drones silhouetted against a vibrant orange sunset over a sprawling mega-city.
+- IMAGE 4: Interior of a fully autonomous warehouse with geometric laser grids and sleek white robots moving in perfect synchronicity.
+- IMAGE 5: A professional female logistics manager in a glass-walled command center, looking at floating holographic global maps.
+- IMAGE 6: A fleet of electric semi-trucks charging at a futuristic highway station with clean architecture and green plant life.
+- IMAGE 7: Close-up of a digital ID tag on a shipping container glowing with data patterns. Cyberpunk aesthetic.
+- IMAGE 8: A bird's eye view of a hyper-modern port terminal with autonomous cranes moving silver containers. Ultra-detailed.
+- IMAGE 9: An abandoned traditional warehouse contrasting with a new, bright, AI-driven facility in the background. Narrative lighting.
+- IMAGE 10: A group of diverse engineers in clean-room suits inspecting a heavy-lift space cargo rocket. High-detail sci-fi.
     `;
 
-  console.log('--- STARTING STRESS TEST ---');
-  console.log('Sending 20-task course content...');
-
+  console.log('--- STARTING ULTIMATE LOAD TEST (30 ASSETS) ---');
   const start = Date.now();
+
   try {
     const response = await fetch('http://localhost:3000/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: prompt })
+      body: JSON.stringify({ content: prompt.trim() })
     });
 
     const data = await response.json();
     const end = Date.now();
 
-    console.log('Response Status:', response.status);
+    console.log('------------------------------------');
+    console.log(`TOTAL ASSETS: ${data.metadata?.total || 0}`);
+    console.log(`SUCCESSFUL:   ${data.metadata?.success || 0}`);
+    console.log(`SERVER TIME:  ${data.metadata?.durationSeconds || 'N/A'}s`);
+    console.log('------------------------------------');
+
     if (data.results) {
-      console.log(`Successfully processed ${data.metadata.success}/${data.metadata.total} tasks.`);
-      console.log(`Server-side duration: ${data.metadata.durationSeconds}s`);
-
-      // Log URLs for visual verification
       data.results.forEach((res, i) => {
-        if (res.url) {
-          console.log(`[Task ${i + 1}] ${res.type}: ${res.url}`);
-        } else {
-          console.log(`[Task ${i + 1}] FAILED: ${res.error}`);
-        }
+        const typeLabel = res.url?.endsWith('.mp4') ? 'VIDEO' : 'IMAGE/PNG';
+        console.log(`[Task ${i + 1}] ${res.type} [${typeLabel}]:`);
+        console.log(`   -> URL: ${res.url}`);
+        if (res.posterUrl) console.log(`   -> Poster: ${res.posterUrl}`);
       });
-    } else {
-      console.log('Unexpected Response Format:', data);
     }
-
-    console.log(`Total Client-Side Time: ${((end - start) / 1000).toFixed(2)}s`);
-
   } catch (e) {
-    console.error('Stress test failed to connect to server:', e.message);
+    console.error('CRITICAL ERROR: Connection to generation engine failed.', e.message);
   }
 }
 
-// Ensure the server has a few seconds to breathe before hitting it
-setTimeout(testStressLevel, 3000);
+runUltimateTest();

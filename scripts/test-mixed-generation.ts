@@ -71,9 +71,9 @@ async function verifyMixedGeneration() {
             try {
                 let url = '';
                 if (task.type === 'data_viz') {
-                    url = await vizStrategy.generate(task, index + 1);
+                    url = (await vizStrategy.generate(task, index + 1)).url;
                 } else if (task.type === 'visual_concept') {
-                    url = await photoStrategy.generate(task, index + 1);
+                    url = (await photoStrategy.generate(task, index + 1)).url;
                 }
                 logger.log(`[SUCCESS] Task ${task.id} generated: ${url}`);
                 return { id: task.id, status: 'success', url };

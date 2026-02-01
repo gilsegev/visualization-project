@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BaseImageStrategy } from '../base-image.strategy';
+import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { ConfigService } from '@nestjs/config';
 import { LocalStorageService } from '../local-storage.service';
@@ -25,7 +25,7 @@ export class VisualConceptStrategy extends BaseImageStrategy {
         super();
     }
 
-    protected async performGeneration(task: ImageTask, index?: number): Promise<string> {
+    protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
         // Wrap generation in concurrency limit
         return this.imageLimit(async () => {
             this.logger.log(`Generating visual concept for prompt: ${task.refined_prompt}`);
@@ -71,7 +71,7 @@ export class VisualConceptStrategy extends BaseImageStrategy {
                     const fileName = `task-${index ?? 'unknown'}-visual_concept.png`;
                     const localUrl = await this.localStorage.uploadStream(imageResponse.data, fileName);
 
-                    return localUrl;
+                    return { url: localUrl };
 
                 } catch (error) {
                     if (attempts >= maxAttempts) {

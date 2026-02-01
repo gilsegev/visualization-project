@@ -77,7 +77,7 @@ async function generateCharts() {
         for (let i = 0; i < tasks.length; i++) {
             const task = tasks[i];
             logger.log(`Generating chart for task ${task.id}...`);
-            const url = await strategy.generate(task, i);
+            const { url } = await strategy.generate(task, i);
             logger.log(`Chart generated: ${url}`);
         }
     } catch (error) {

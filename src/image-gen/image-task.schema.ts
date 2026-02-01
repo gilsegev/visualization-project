@@ -4,6 +4,7 @@ import { z } from 'zod';
 const DataVizPayload = z.object({
     chartType: z.string(),
     data: z.any(),
+    format: z.enum(['static', 'animated']).optional(),
 });
 
 export const ImageTaskSchema = z.discriminatedUnion('type', [

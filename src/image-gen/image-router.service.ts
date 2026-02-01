@@ -25,7 +25,7 @@ export class ImageRouterService {
       
       The available task types are:
       - 'visual_concept': For general images, stock photos, concepts.
-      - 'data_viz': For charts, graphs, data visualization. Payload must include 'chartType' (strictly one of: 'bar', 'line', 'pie', 'funnel') and 'data'.
+      - 'data_viz': For charts, graphs, data visualization. Payload must include 'chartType' (strictly one of: 'bar', 'line', 'pie', 'funnel'), 'data', and optionally 'format' ('static' or 'animated'). If the request implies motion/video, set format to 'animated'.
       - 'math_formula': For equations, mathematical expressions. Payload must include 'latex'.
       - 'beautify_slide': For design layouts or slide improvements.
 
@@ -45,7 +45,7 @@ export class ImageRouterService {
           "type": "data_viz",
           "id": "uuid...",
           "refined_prompt": "Bar chart showing sales data",
-          "payload": { "chartType": "bar", "data": [...] }
+          "payload": { "chartType": "bar", "data": [...], "format": "static" }
         }
       ]
     `;

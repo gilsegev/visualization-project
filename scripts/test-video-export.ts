@@ -39,7 +39,7 @@ async function verifyVideoExport() {
     logger.log('Starting Video Generation...');
 
     try {
-        const url = await strategy.generate(task, 999);
+        const { url } = await strategy.generate(task, 999);
         logger.log(`[SUCCESS] Video generated at: ${url}`);
 
         // Verify file exists
