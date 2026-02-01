@@ -1,74 +1,27 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import { BaseImageStrategy } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
-import { chromium, Browser, BrowserContext } from 'playwright';
+import { BrowserService } from '../browser.service';
 
 @Injectable()
-export class DataVizStrategy extends BaseImageStrategy implements OnModuleDestroy, OnModuleInit {
-  private browser: Browser;
-  private context: BrowserContext;
-
-  constructor(private readonly localStorage: LocalStorageService) {
+export class DataVizStrategy extends BaseImageStrategy {
+  constructor(
+    private readonly localStorage: LocalStorageService,
+    private readonly browserService: BrowserService
+  ) {
     super();
-  }
-
-  async onModuleInit() {
-    this.logger.log('Pre-warming Browser...');
-    // Start the browser immediately on app launch
-    await this.ensureBrowser();
-  }
-
-  async onModuleDestroy() {
-    if (this.browser) {
-      await this.browser.close();
-    }
-  }
-
-  private browserInitPromise: Promise<void> | null = null;
-
-  private async ensureBrowser() {
-    if (this.browser) return;
-
-    // Double-check locking logic
-    if (!this.browserInitPromise) {
-      this.browserInitPromise = this.launchBrowser();
-    }
-
-    try {
-      await this.browserInitPromise;
-    } catch (error) {
-      this.browserInitPromise = null;
-      throw error;
-    }
-  }
-
-  private async launchBrowser() {
-    this.logger.log('Launching Playwright browser (Singleton)...');
-    this.browser = await chromium.launch({ headless: true });
-    // Context is created per-task now
   }
 
   protected async performGeneration(task: ImageTask, index?: number): Promise<string> {
     const payload = task.payload as any;
     this.logger.log(`[DEBUG] Task ${task.id}: Starting data viz (${payload.chartType})`);
 
-    this.logger.log(`[DEBUG] Task ${task.id}: Ensuring browser...`);
-    await this.ensureBrowser();
-    this.logger.log(`[DEBUG] Task ${task.id}: Browser ready.`);
-
-    this.logger.log(`[DEBUG] Task ${task.id}: Creating new independent context & page...`);
-    // Create Isolated Context for Parallelism
-    const context = await this.browser.newContext({
-      viewport: { width: 1024, height: 1024 },
-      deviceScaleFactor: 1,
-    });
-    const page = await context.newPage();
+    this.logger.log(`[DEBUG] Task ${task.id}: Getting page from BrowserService...`);
+    // Use shared browser service
+    const { context, page } = await this.browserService.getNewPage();
     this.logger.log(`[DEBUG] Task ${task.id}: Page created.`);
-
-    page.on('console', msg => this.logger.log(`[BROWSER] ${msg.text()}`));
-    page.on('pageerror', err => this.logger.error(`[BROWSER ERROR] ${err.message}`));
 
     // Data Normalizer
     let chartData = payload.data || [];

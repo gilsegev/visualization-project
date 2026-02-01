@@ -36,7 +36,7 @@ export class VisualConceptStrategy extends BaseImageStrategy {
             }
 
             let attempts = 0;
-            const maxAttempts = 3;
+            const maxAttempts = 2; // Prompt: "single retry attempt" -> 2 attempts total
 
             while (attempts < maxAttempts) {
                 try {

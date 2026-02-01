@@ -22,11 +22,10 @@ export class ImageOrchestratorService {
         this.logger.log(`Classified ${tasks.length} tasks.`);
 
         // 2. Parallel Execution with Limit
-        // Separate limits: DataViz is local/fast (10), VisualConcept is ext/slow (5)
-        const vizLimit = pLimit(10);
-        const conceptLimit = pLimit(5);
+        // Global limit of 15. VisualConceptStrategy has internal limit of 8.
+        const limit = pLimit(15);
+
         const promises = tasks.map((task, index) => {
-            const limit = task.type === 'data_viz' ? vizLimit : conceptLimit;
             return limit(async () => {
                 try {
                     const strategy = this.strategyFactory.getStrategy(task.type);

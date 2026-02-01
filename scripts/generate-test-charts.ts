@@ -1,6 +1,7 @@
 
 import { DataVizStrategy } from '../src/image-gen/strategies/data-viz.strategy';
 import { LocalStorageService } from '../src/image-gen/local-storage.service';
+import { BrowserService } from '../src/image-gen/browser.service';
 import { ImageTask } from '../src/image-gen/image-task.schema';
 import { Logger } from '@nestjs/common';
 
@@ -9,9 +10,11 @@ async function generateCharts() {
     logger.log('Initializing Services...');
 
     const localStorage = new LocalStorageService();
-    // @ts-ignore - Mocking logger or relying on default behavior if needed, but here we just instantiate.
-    // NestJS dependency injection is not available here so we manually instantiate.
-    const strategy = new DataVizStrategy(localStorage);
+    const browserService = new BrowserService();
+    await browserService.onModuleInit(); // Ensure browser is launched
+
+    // @ts-ignore
+    const strategy = new DataVizStrategy(localStorage, browserService);
 
     // Manually trigger onModuleInit or similar if it existed, but here we might need to be careful about 
     // lifecycle methods. DataVizStrategy implements OnModuleDestroy but not Init, 
@@ -80,7 +83,7 @@ async function generateCharts() {
     } catch (error) {
         logger.error('Error generating charts:', error);
     } finally {
-        await strategy.onModuleDestroy();
+        await browserService.onModuleDestroy();
     }
 }
 
