@@ -28,12 +28,13 @@ export class ImageRouterService {
       - 'data_viz': For charts, graphs, data visualization. Payload must include 'chartType' (strictly one of: 'bar', 'line', 'pie', 'funnel'), 'data', and optionally 'format' ('static' or 'animated'). If the request implies motion/video, set format to 'animated'.
       - 'math_formula': For equations, mathematical expressions. Payload must include 'latex'.
       - 'beautify_slide': For design layouts or slide improvements.
+      - 'infographic': For visual explanations, timelines, processes, or structured narratives.
 
       User Request: "${content}"
 
       Output STRICT JSON ONLY. The output must be an array of objects matching this schema:
       Array<{
-        type: "visual_concept" | "data_viz" | "math_formula" | "beautify_slide",
+        type: "visual_concept" | "data_viz" | "math_formula" | "beautify_slide" | "infographic",
         id: string (UUID v4),
         refined_prompt: string (optimized prompt for an image generator),
         payload: object (specific structure for data_viz or math_formula, or empty object for others)
