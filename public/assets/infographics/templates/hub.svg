@@ -1,49 +1,76 @@
-<svg width="800" height="800" viewBox="0 0 800 800"
-     xmlns="http://www.w3.org/2000/svg">
+<svg
+  width="1200"
+  height="800"
+  viewBox="0 0 1200 800"
+  xmlns="http://www.w3.org/2000/svg"
+>
 
-  <!-- Canvas -->
-  <rect x="0" y="0" width="800" height="800" fill="#ffffff"/>
+  <!-- Background -->
+  <rect x="0" y="0" width="1200" height="800" fill="#ffffff"/>
 
   <!-- Title -->
-  <text x="400" y="60"
-        text-anchor="middle"
-        font-size="36"
-        font-weight="600"
-        fill="#111">
+  <text
+    x="600"
+    y="80"
+    text-anchor="middle"
+    font-size="36"
+    font-family="Inter, Arial, sans-serif"
+    fill="#111111"
+  >
     Core Concept & Satellites
   </text>
 
-  <!-- Connectors -->
-  <g stroke="#999" stroke-width="2">
-    <line x1="400" y1="400" x2="400" y2="200"/>
-    <line x1="400" y1="400" x2="600" y2="400"/>
-    <line x1="400" y1="400" x2="400" y2="600"/>
-    <line x1="400" y1="400" x2="200" y2="400"/>
-  </g>
-
-  <!-- Core -->
-  <circle cx="400" cy="400" r="90" fill="#E8F0FE"/>
-  <text x="400" y="405"
-        text-anchor="middle"
-        font-size="22"
-        font-weight="600"
-        fill="#111">
-    Core
+  <!-- Central hub -->
+  <circle cx="600" cy="400" r="90" fill="#F2F4F8" stroke="#222" stroke-width="2"/>
+  <text
+    x="600"
+    y="395"
+    text-anchor="middle"
+    font-size="22"
+    font-family="Inter, Arial, sans-serif"
+    fill="#111"
+  >
+    Core Idea
+  </text>
+  <text
+    x="600"
+    y="425"
+    text-anchor="middle"
+    font-size="14"
+    font-family="Inter, Arial, sans-serif"
+    fill="#555"
+  >
+    Central concept
   </text>
 
-  <!-- Satellites -->
-  <g font-size="18" fill="#111">
-    <circle cx="400" cy="200" r="55" fill="#F8F9FA"/>
-    <text x="400" y="205" text-anchor="middle">A</text>
+  <!-- Connector lines -->
+  <line x1="600" y1="310" x2="600" y2="190" stroke="#999" stroke-width="2"/>
+  <line x1="690" y1="400" x2="860" y2="400" stroke="#999" stroke-width="2"/>
+  <line x1="600" y1="490" x2="600" y2="610" stroke="#999" stroke-width="2"/>
+  <line x1="510" y1="400" x2="340" y2="400" stroke="#999" stroke-width="2"/>
 
-    <circle cx="600" cy="400" r="55" fill="#F8F9FA"/>
-    <text x="600" y="405" text-anchor="middle">B</text>
+  <!-- Top satellite -->
+  <circle cx="600" cy="160" r="55" fill="#E8F0FE" stroke="#1A73E8" stroke-width="2"/>
+  <text x="600" y="165" text-anchor="middle" font-size="14" fill="#1A73E8">
+    Satellite A
+  </text>
 
-    <circle cx="400" cy="600" r="55" fill="#F8F9FA"/>
-    <text x="400" y="605" text-anchor="middle">C</text>
+  <!-- Right satellite -->
+  <circle cx="900" cy="400" r="55" fill="#E6F4EA" stroke="#188038" stroke-width="2"/>
+  <text x="900" y="405" text-anchor="middle" font-size="14" fill="#188038">
+    Satellite B
+  </text>
 
-    <circle cx="200" cy="400" r="55" fill="#F8F9FA"/>
-    <text x="200" y="405" text-anchor="middle">D</text>
-  </g>
+  <!-- Bottom satellite -->
+  <circle cx="600" cy="640" r="55" fill="#FEF7E0" stroke="#F9AB00" stroke-width="2"/>
+  <text x="600" y="645" text-anchor="middle" font-size="14" fill="#F9AB00">
+    Satellite C
+  </text>
+
+  <!-- Left satellite -->
+  <circle cx="300" cy="400" r="55" fill="#FCE8E6" stroke="#D93025" stroke-width="2"/>
+  <text x="300" y="405" text-anchor="middle" font-size="14" fill="#D93025">
+    Satellite D
+  </text>
 
 </svg>

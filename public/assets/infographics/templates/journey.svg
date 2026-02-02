@@ -4,40 +4,39 @@
       <feDropShadow dx="2" dy="2" stdDeviation="3" flood-color="#000" flood-opacity="0.3"/>
     </filter>
   </defs>
-  <rect width="100%" height="100%" fill="#1a1a2e"/>
+  <rect width="100%" height="100%" fill="var(--bg-color)"/>
   <!-- Step 1 -->
   <g transform="translate(50, 150)">
-    <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
+    <circle cx="50" cy="50" r="40" fill="var(--primary)" filter="url(#shadow)"/>
     <g id="icon_1" transform="translate(38, 38) scale(1)"></g>
-    <text id="title_1" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 1</text>
-    <text id="desc_1" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
+    <text id="title_1" x="50" y="110" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="16" font-weight="bold">Step 1</text>
+    <text id="desc_1" x="50" y="130" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="12">Description</text>
   </g>
   <!-- Connector 1-2 -->
-  <line x1="140" y1="200" x2="260" y2="200" stroke="#e94560" stroke-width="4"/>
+  <line x1="140" y1="200" x2="260" y2="200" stroke="var(--stroke-color)" stroke-width="4"/>
   
   <!-- Step 2 -->
   <g transform="translate(250, 150)">
-    <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
+    <circle cx="50" cy="50" r="40" fill="var(--primary)" filter="url(#shadow)"/>
     <g id="icon_2" transform="translate(38, 38) scale(1)"></g>
-    <text id="title_2" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 2</text>
-    <text id="desc_2" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
+    <text id="title_2" x="50" y="110" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="16" font-weight="bold">Step 2</text>
+    <text id="desc_2" x="50" y="130" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="12">Description</text>
   </g>
   <!-- Connector 2-3 -->
-  <line x1="340" y1="200" x2="460" y2="200" stroke="#e94560" stroke-width="4"/>
+  <line x1="340" y1="200" x2="460" y2="200" stroke="var(--stroke-color)" stroke-width="4"/>
 
   <!-- Step 3 -->
   <g transform="translate(450, 150)">
-     <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
+     <circle cx="50" cy="50" r="40" fill="var(--primary)" filter="url(#shadow)"/>
     <g id="icon_3" transform="translate(38, 38) scale(1)"></g>
-    <text id="title_3" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 3</text>
-    <text id="desc_3" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
+    <text id="title_3" x="50" y="110" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="16" font-weight="bold">Step 3</text>
+    <text id="desc_3" x="50" y="130" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="12">Description</text>
   </g>
   
-  <!-- Add more steps slots for testing truncation/expansion if needed -->
     <g transform="translate(650, 150)">
-     <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
+     <circle cx="50" cy="50" r="40" fill="var(--primary)" filter="url(#shadow)"/>
     <g id="icon_4" transform="translate(38, 38) scale(1)"></g>
-    <text id="title_4" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 4</text>
-    <text id="desc_4" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
+    <text id="title_4" x="50" y="110" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="16" font-weight="bold">Step 4</text>
+    <text id="desc_4" x="50" y="130" text-anchor="middle" fill="var(--text-color)" font-family="Arial" font-size="12">Description</text>
   </g>
 </svg>

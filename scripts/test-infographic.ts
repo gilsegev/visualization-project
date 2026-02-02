@@ -20,7 +20,7 @@ async function verifyInfographic() {
     const task: ImageTask = {
         id: 'test-infographic-1',
         type: 'infographic',
-        refined_prompt: 'A detailed 10-step journey of a product from raw material to end consumer: 1. Mining, 2. Refining, 3. Transport, 4. Manufacturing, 5. Quality, 6. Packaging, 7. Distribution, 8. Retail, 9. Purchase, 10. Reviews',
+        refined_prompt: 'A playful 4-step process for making coffee: 1. Grind, 2. Brew, 3. Pour, 4. Enjoy. Emphasize "Enjoy" with highlight.',
         payload: {}
     };
 

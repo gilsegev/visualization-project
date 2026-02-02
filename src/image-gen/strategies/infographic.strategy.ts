@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { JSDOM } from 'jsdom';
 import * as d3 from 'd3';
+import * as rough from 'roughjs';
+import { getPalette } from './infographic-palettes';
 
 export interface InfographicBlueprint {
     infographic: {
@@ -181,11 +183,16 @@ export class InfographicStrategy extends BaseImageStrategy {
             const dom = new JSDOM(svgContent);
             const document = dom.window.document;
 
-            // 1. Map Global Content
+            // 1. Aesthetics Injection
+            const palette = getPalette(blueprint.infographic.visual_hints.mood);
+            this.injectStyles(document, palette);
+            this.injectPaperFilter(document);
+
+            // 2. Map Global Content
             this.setText(document, 'title_0', blueprint.infographic.content.title);
             this.setText(document, 'desc_0', blueprint.infographic.content.subtitle);
 
-            // 2. Loop Items
+            // 3. Loop Items
             blueprint.infographic.content.items.forEach((item, index) => {
                 const i = index + 1; // 1-based IDs
 
@@ -203,9 +210,15 @@ export class InfographicStrategy extends BaseImageStrategy {
                     const group = document.getElementById(`step_${i}`) || document.getElementById(`title_${i}`)?.parentElement;
                     if (group) {
                         group.setAttribute('class', (group.getAttribute('class') || '') + ' highlighted-step');
+
+                        // Add roughness to highlighted node
+                        this.applyRoughnessToElement(document, group);
                     }
                 }
             });
+
+            // 4. Apply Roughness to Connectors
+            this.applyRoughnessToConnectors(document);
 
             return dom.window.document.body.innerHTML;
 
@@ -275,5 +288,93 @@ export class InfographicStrategy extends BaseImageStrategy {
             container.innerHTML = pathMatch[1];
             container.setAttribute('transform', (container.getAttribute('transform') || '') + ' scale(1.5)');
         }
+    }
+
+    private injectStyles(document: Document, palette: any) {
+        const style = document.createElement('style');
+        style.textContent = `
+            :root {
+                --primary: ${palette.primary};
+                --secondary: ${palette.secondary};
+                --accent: ${palette.accent};
+                --bg-color: ${palette.background};
+                --text-color: ${palette.text};
+                --stroke-color: ${palette.stroke};
+            }
+            .highlighted-step circle, .highlighted-step rect {
+                stroke: var(--accent);
+                stroke-width: 4px;
+                filter: drop-shadow(0 0 5px var(--accent));
+            }
+            text { font-family: 'Inter', sans-serif; fill: var(--text-color); }
+        `;
+        document.querySelector('svg')?.prepend(style);
+
+        let bgRect = document.querySelector('rect[width="100%"]');
+        if (!bgRect) {
+            bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            bgRect.setAttribute('width', '100%');
+            bgRect.setAttribute('height', '100%');
+            document.querySelector('svg')?.prepend(bgRect);
+        }
+        bgRect.setAttribute('fill', 'var(--bg-color)');
+        bgRect.setAttribute('filter', 'url(#paper-grain)');
+    }
+
+    private injectPaperFilter(document: Document) {
+        const defs = document.querySelector('defs') || document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+        if (!document.querySelector('defs')) document.querySelector('svg')?.prepend(defs);
+
+        const filter = document.createElementNS('http://www.w3.org/2000/svg', 'filter');
+        filter.setAttribute('id', 'paper-grain');
+        filter.innerHTML = `
+            <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="3" result="noise" />
+            <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.1 0" in="noise" result="coloredNoise" />
+            <feComposite operator="in" in="coloredNoise" in2="SourceGraphic" result="composite" />
+            <feBlend mode="multiply" in="composite" in2="SourceGraphic" />
+        `;
+        defs.appendChild(filter);
+    }
+
+    private applyRoughnessToConnectors(document: Document) {
+        try {
+            const svg = document.querySelector('svg');
+            const lines = document.querySelectorAll('line');
+            // JSDOM specific RoughJS usage
+            // @ts-ignore
+            const rc = rough.svg(svg as any);
+
+            lines.forEach((line) => {
+                const x1 = parseFloat(line.getAttribute('x1') || '0');
+                const y1 = parseFloat(line.getAttribute('y1') || '0');
+                const x2 = parseFloat(line.getAttribute('x2') || '0');
+                const y2 = parseFloat(line.getAttribute('y2') || '0');
+
+                const node = rc.line(x1, y1, x2, y2, {
+                    stroke: 'var(--stroke-color)', strokeWidth: 2, roughness: 1.5, bowing: 2
+                });
+                line.replaceWith(node);
+            });
+        } catch (e) { }
+    }
+
+    private applyRoughnessToElement(document: Document, element: Element) {
+        try {
+            const svg = document.querySelector('svg');
+            // @ts-ignore
+            const rc = rough.svg(svg as any);
+
+            const circles = element.querySelectorAll('circle');
+            circles.forEach(circle => {
+                const cx = parseFloat(circle.getAttribute('cx') || '0');
+                const cy = parseFloat(circle.getAttribute('cy') || '0');
+                const r = parseFloat(circle.getAttribute('r') || '0');
+
+                const node = rc.circle(cx, cy, r * 2, {
+                    stroke: 'var(--accent)', strokeWidth: 3, roughness: 2, fill: 'none'
+                });
+                circle.parentElement?.appendChild(node);
+            });
+        } catch (e) { }
     }
 }
