@@ -1,0 +1,17 @@
+{
+    "journey": {
+        "file": "journey.svg",
+        "name": "Linear Journey",
+        "maxSlots": 7
+    },
+    "hub": {
+        "file": "hub.svg",
+        "name": "Central Hub",
+        "maxSlots": 4
+    },
+    "stack": {
+        "file": "stack.svg",
+        "name": "Vertical Stack",
+        "maxSlots": 5
+    }
+}

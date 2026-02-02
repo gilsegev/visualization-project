@@ -20,7 +20,7 @@ async function verifyInfographic() {
     const task: ImageTask = {
         id: 'test-infographic-1',
         type: 'infographic',
-        refined_prompt: 'A timeline of the evolution of the internet from 1990 to 2020',
+        refined_prompt: 'A detailed 10-step journey of a product from raw material to end consumer: 1. Mining, 2. Refining, 3. Transport, 4. Manufacturing, 5. Quality, 6. Packaging, 7. Distribution, 8. Retail, 9. Purchase, 10. Reviews',
         payload: {}
     };
 
@@ -30,11 +30,15 @@ async function verifyInfographic() {
         const result = await strategy.generate(task, 1);
         logger.log(`[SUCCESS] Result: ${JSON.stringify(result)}`);
 
-        if (result.url && result.url.includes('placeholder-infographic')) {
-            logger.log('[VERIFIED] Placeholder URL returned correctly.');
+        if (result.url && (result.url.includes('placeholder-infographic') || result.url.includes('infographic-'))) {
+            logger.log('[VERIFIED] Valid URL returned.');
         } else {
             logger.error('[FAILURE] Unexpected URL format.');
         }
+
+        // Logic verification happens via internal Strategy logs (Truncation warning), 
+        // to verify externally we'd need to inspect the result content if we returned it.
+        // For now, we rely on the prompt "Verify the console log shows the new nested JSON structure".
 
     } catch (err) {
         logger.error('Infographic generation failed:', err);
