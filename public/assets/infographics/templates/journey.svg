@@ -8,7 +8,7 @@
   <!-- Step 1 -->
   <g transform="translate(50, 150)">
     <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
-    <text x="50" y="55" text-anchor="middle" fill="#e94560" font-family="Arial" font-size="24" font-weight="bold">1</text>
+    <g id="icon_1" transform="translate(38, 38) scale(1)"></g>
     <text id="title_1" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 1</text>
     <text id="desc_1" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
   </g>
@@ -18,7 +18,7 @@
   <!-- Step 2 -->
   <g transform="translate(250, 150)">
     <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
-    <text x="50" y="55" text-anchor="middle" fill="#e94560" font-family="Arial" font-size="24" font-weight="bold">2</text>
+    <g id="icon_2" transform="translate(38, 38) scale(1)"></g>
     <text id="title_2" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 2</text>
     <text id="desc_2" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
   </g>
@@ -28,8 +28,16 @@
   <!-- Step 3 -->
   <g transform="translate(450, 150)">
      <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
-    <text x="50" y="55" text-anchor="middle" fill="#e94560" font-family="Arial" font-size="24" font-weight="bold">3</text>
+    <g id="icon_3" transform="translate(38, 38) scale(1)"></g>
     <text id="title_3" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 3</text>
     <text id="desc_3" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
+  </g>
+  
+  <!-- Add more steps slots for testing truncation/expansion if needed -->
+    <g transform="translate(650, 150)">
+     <circle cx="50" cy="50" r="40" fill="#0f3460" filter="url(#shadow)"/>
+    <g id="icon_4" transform="translate(38, 38) scale(1)"></g>
+    <text id="title_4" x="50" y="110" text-anchor="middle" fill="#fff" font-family="Arial" font-size="16" font-weight="bold">Step 4</text>
+    <text id="desc_4" x="50" y="130" text-anchor="middle" fill="#ccc" font-family="Arial" font-size="12">Description</text>
   </g>
 </svg>

@@ -1,18 +1,39 @@
-<svg width="600" height="600" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="#fefefe"/>
-  
-  <!-- Layer 3 (Bottom) -->
-  <rect x="100" y="450" width="400" height="80" rx="10" fill="#4b6cb7"/>
-  <text id="title_3" x="300" y="495" text-anchor="middle" fill="#fff" font-family="Arial" font-size="20">Layer 3</text>
-  <text id="desc_3" x="300" y="515" text-anchor="middle" fill="#ddd" font-family="Arial" font-size="12">Foundation</text>
+<svg width="800" height="900" viewBox="0 0 800 900"
+     xmlns="http://www.w3.org/2000/svg">
 
-  <!-- Layer 2 (Middle) -->
-  <rect x="120" y="350" width="360" height="80" rx="10" fill="#182848"/>
-  <text id="title_2" x="300" y="395" text-anchor="middle" fill="#fff" font-family="Arial" font-size="20">Layer 2</text>
-  <text id="desc_2" x="300" y="415" text-anchor="middle" fill="#ddd" font-family="Arial" font-size="12">Middleware</text>
+  <!-- Canvas -->
+  <rect x="0" y="0" width="800" height="900" fill="#ffffff"/>
 
-  <!-- Layer 1 (Top) -->
-  <rect x="140" y="250" width="320" height="80" rx="10" fill="#a8c0ff"/>
-  <text id="title_1" x="300" y="295" text-anchor="middle" fill="#333" font-family="Arial" font-size="20">Layer 1</text>
-  <text id="desc_1" x="300" y="315" text-anchor="middle" fill="#555" font-family="Arial" font-size="12">Application</text>
+  <!-- Title -->
+  <text x="400" y="60"
+        text-anchor="middle"
+        font-size="36"
+        font-weight="600"
+        fill="#111">
+    Layered Stack
+  </text>
+
+  <!-- Layers -->
+  <g font-size="22" fill="#111">
+    <rect x="200" y="140" width="400" height="90" rx="14" fill="#E3F2FD"/>
+    <text x="400" y="195" text-anchor="middle">Foundation</text>
+
+    <rect x="200" y="260" width="400" height="90" rx="14" fill="#E3F2FD"/>
+    <text x="400" y="315" text-anchor="middle">Layer 2</text>
+
+    <rect x="200" y="380" width="400" height="90" rx="14" fill="#E3F2FD"/>
+    <text x="400" y="435" text-anchor="middle">Layer 3</text>
+
+    <rect x="200" y="500" width="400" height="90" rx="14" fill="#E3F2FD"/>
+    <text x="400" y="555" text-anchor="middle">Layer 4</text>
+
+    <rect x="200" y="620" width="400" height="110" rx="18" fill="#D1E7DD"/>
+    <text x="400" y="685"
+          text-anchor="middle"
+          font-size="24"
+          font-weight="600">
+      Outcome
+    </text>
+  </g>
+
 </svg>

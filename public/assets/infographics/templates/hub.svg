@@ -1,41 +1,49 @@
-<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="5" result="coloredBlur"/>
-      <feMerge>
-        <feMergeNode in="coloredBlur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-  <rect width="100%" height="100%" fill="#222831"/>
-  
-  <!-- Center Hub -->
-  <circle cx="400" cy="300" r="80" fill="#00adb5" filter="url(#glow)"/>
-  <text id="title_0" x="400" y="305" text-anchor="middle" fill="#eeeeee" font-family="Arial" font-size="24" font-weight="bold">HUB</text>
-  <text id="desc_0" x="400" y="330" text-anchor="middle" fill="#222831" font-family="Arial" font-size="14">Main Core</text>
+<svg width="800" height="800" viewBox="0 0 800 800"
+     xmlns="http://www.w3.org/2000/svg">
 
-  <!-- Satellite 1 (Top) -->
-  <line x1="400" y1="220" x2="400" y2="120" stroke="#393e46" stroke-width="4"/>
-  <circle cx="400" cy="80" r="40" fill="#393e46"/>
-  <text id="title_1" x="400" y="85" text-anchor="middle" fill="#eeeeee" font-family="Arial" font-size="14">Sat 1</text>
-  <text id="desc_1" x="400" y="140" text-anchor="middle" fill="#aaaaaa" font-family="Arial" font-size="10">Detail 1</text>
+  <!-- Canvas -->
+  <rect x="0" y="0" width="800" height="800" fill="#ffffff"/>
 
-  <!-- Satellite 2 (Right) -->
-  <line x1="480" y1="300" x2="620" y2="300" stroke="#393e46" stroke-width="4"/>
-  <circle cx="660" cy="300" r="40" fill="#393e46"/>
-  <text id="title_2" x="660" y="305" text-anchor="middle" fill="#eeeeee" font-family="Arial" font-size="14">Sat 2</text>
-  <text id="desc_2" x="660" y="360" text-anchor="middle" fill="#aaaaaa" font-family="Arial" font-size="10">Detail 2</text>
+  <!-- Title -->
+  <text x="400" y="60"
+        text-anchor="middle"
+        font-size="36"
+        font-weight="600"
+        fill="#111">
+    Core Concept & Satellites
+  </text>
 
-  <!-- Satellite 3 (Bottom) -->
-  <line x1="400" y1="380" x2="400" y2="480" stroke="#393e46" stroke-width="4"/>
-  <circle cx="400" cy="520" r="40" fill="#393e46"/>
-  <text id="title_3" x="400" y="525" text-anchor="middle" fill="#eeeeee" font-family="Arial" font-size="14">Sat 3</text>
-  <text id="desc_3" x="400" y="580" text-anchor="middle" fill="#aaaaaa" font-family="Arial" font-size="10">Detail 3</text>
+  <!-- Connectors -->
+  <g stroke="#999" stroke-width="2">
+    <line x1="400" y1="400" x2="400" y2="200"/>
+    <line x1="400" y1="400" x2="600" y2="400"/>
+    <line x1="400" y1="400" x2="400" y2="600"/>
+    <line x1="400" y1="400" x2="200" y2="400"/>
+  </g>
 
-  <!-- Satellite 4 (Left) -->
-  <line x1="320" y1="300" x2="180" y2="300" stroke="#393e46" stroke-width="4"/>
-  <circle cx="140" cy="300" r="40" fill="#393e46"/>
-  <text id="title_4" x="140" y="305" text-anchor="middle" fill="#eeeeee" font-family="Arial" font-size="14">Sat 4</text>
-  <text id="desc_4" x="140" y="360" text-anchor="middle" fill="#aaaaaa" font-family="Arial" font-size="10">Detail 4</text>
+  <!-- Core -->
+  <circle cx="400" cy="400" r="90" fill="#E8F0FE"/>
+  <text x="400" y="405"
+        text-anchor="middle"
+        font-size="22"
+        font-weight="600"
+        fill="#111">
+    Core
+  </text>
+
+  <!-- Satellites -->
+  <g font-size="18" fill="#111">
+    <circle cx="400" cy="200" r="55" fill="#F8F9FA"/>
+    <text x="400" y="205" text-anchor="middle">A</text>
+
+    <circle cx="600" cy="400" r="55" fill="#F8F9FA"/>
+    <text x="600" y="405" text-anchor="middle">B</text>
+
+    <circle cx="400" cy="600" r="55" fill="#F8F9FA"/>
+    <text x="400" y="605" text-anchor="middle">C</text>
+
+    <circle cx="200" cy="400" r="55" fill="#F8F9FA"/>
+    <text x="200" y="405" text-anchor="middle">D</text>
+  </g>
+
 </svg>

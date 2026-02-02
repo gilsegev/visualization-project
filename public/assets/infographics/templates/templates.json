@@ -4,6 +4,16 @@
         "name": "Linear Journey",
         "maxSlots": 7
     },
+    "timeline": {
+        "file": "journey.svg",
+        "name": "Linear Timeline",
+        "maxSlots": 7
+    },
+    "process": {
+        "file": "journey.svg",
+        "name": "Process Flow",
+        "maxSlots": 7
+    },
     "hub": {
         "file": "hub.svg",
         "name": "Central Hub",
@@ -12,6 +22,11 @@
     "stack": {
         "file": "stack.svg",
         "name": "Vertical Stack",
+        "maxSlots": 5
+    },
+    "comparison": {
+        "file": "stack.svg",
+        "name": "Comparison Stack",
         "maxSlots": 5
     }
 }
