@@ -14,7 +14,26 @@ async function verifyInfographic() {
     // InfographicStrategy extends BaseImageStrategy but constructor is self-contained (LLM setup)
     // Wait, BaseImageStrategy doesn't inject anything.
     // InfographicStrategy constructor uses process.env.GEMINI_API_KEY
-    const strategy = new InfographicStrategy();
+    // Mock services
+    const mockBrowser = {
+        getNewPage: async () => ({
+            page: {
+                setContent: async () => { },
+                addStyleTag: async () => { },
+                waitForTimeout: async () => { },
+                screenshot: async () => Buffer.from(''),
+                close: async () => { },
+                video: () => ({ path: () => '/mock/video.mp4' })
+            },
+            context: { close: async () => { } }
+        })
+    } as any;
+
+    const mockStorage = {
+        upload: async (buf, name) => `https://mock-storage.com/${name}`
+    } as any;
+
+    const strategy = new InfographicStrategy(mockBrowser, mockStorage);
 
     // Mock task
     const task: ImageTask = {

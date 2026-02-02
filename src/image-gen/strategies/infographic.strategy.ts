@@ -8,6 +8,8 @@ import { JSDOM } from 'jsdom';
 import * as d3 from 'd3';
 import * as rough from 'roughjs';
 import { getPalette } from './infographic-palettes';
+import { BrowserService } from '../browser.service';
+import { LocalStorageService } from '../local-storage.service';
 
 export interface InfographicBlueprint {
     infographic: {
@@ -44,7 +46,10 @@ interface InfographicTemplateRegistry {
 export class InfographicStrategy extends BaseImageStrategy {
     private model: GenerativeModel;
 
-    constructor() {
+    constructor(
+        private readonly browserService: BrowserService,
+        private readonly localStorage: LocalStorageService
+    ) {
         super();
         const apiKey = process.env.GEMINI_API_KEY;
         if (apiKey) {
@@ -71,20 +76,27 @@ export class InfographicStrategy extends BaseImageStrategy {
         // 3. Populate Template (SVG Composition)
         const populatedSvg = this.populateTemplate(templatePath, blueprint);
 
-        // 4. Save to Disk
-        const outputFilename = `infographic-${task.id}-generated.svg`;
-        const outputPath = path.join(process.cwd(), 'dist', 'public', 'generated-images', outputFilename);
+        // 4. Determine Format
+        const exportType = 'exportType' in task ? task.exportType : 'static'; // Fallback
+        const payload = task.payload as any || {};
+        const format = payload.format || exportType;
+        const isAnimated = format === 'animated';
 
-        // Ensure directory exists
-        const outputDir = path.dirname(outputPath);
-        if (!fs.existsSync(outputDir)) {
-            fs.mkdirSync(outputDir, { recursive: true });
+        // 5. Render
+        let result: ImageGenerationResult;
+
+        if (isAnimated) {
+            this.logger.log(`[DEBUG] Task ${task.id}: Rendering Infographic Video & Poster...`);
+            const posterUrl = await this.renderToPng(populatedSvg, task.id, false);
+            const videoUrl = await this.renderToVideo(populatedSvg, task.id);
+            result = { url: videoUrl, posterUrl };
+        } else {
+            this.logger.log(`[DEBUG] Task ${task.id}: Rendering Infographic Static PNG...`);
+            const url = await this.renderToPng(populatedSvg, task.id, false);
+            result = { url };
         }
 
-        fs.writeFileSync(outputPath, populatedSvg);
-        this.logger.log(`Generated Infographic saved to: ${outputPath}`);
-
-        return { url: `/generated-images/${outputFilename}` };
+        return result;
     }
 
     private async generateBlueprint(prompt: string): Promise<InfographicBlueprint> {
@@ -376,5 +388,76 @@ export class InfographicStrategy extends BaseImageStrategy {
                 circle.parentElement?.appendChild(node);
             });
         } catch (e) { }
+    }
+
+    private async renderToPng(svgContent: string, taskId: string, isAnimated: boolean): Promise<string> {
+        const { context, page } = await this.browserService.getNewPage();
+
+        try {
+            await page.setContent(svgContent, { waitUntil: 'networkidle' });
+
+            // Ensure SVG fills viewport
+            await page.addStyleTag({ content: 'body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; } svg { width: 1024px; height: 1024px; }' });
+
+            await page.waitForTimeout(500); // Wait for Rough.js / Filters
+
+            const buffer = await page.screenshot({ type: 'png' });
+            this.logger.log(`[AUDIT] Infographic PNG Buffer Size: ${buffer.length} bytes`);
+
+            if (buffer.length === 0) {
+                throw new Error('Screenshot buffer is empty');
+            }
+
+            const fileName = `infographic-${taskId}-${Date.now()}.png`;
+            return await this.localStorage.upload(buffer, fileName);
+        } finally {
+            await page.close();
+            await context.close();
+        }
+    }
+
+    private async renderToVideo(svgContent: string, taskId: string): Promise<string> {
+        const videoDir = path.resolve(process.cwd(), 'videos');
+        const videoOptions = { recordVideo: { dir: videoDir, size: { width: 1024, height: 1024 } } };
+        const { context, page } = await this.browserService.getNewPage(videoOptions);
+
+        try {
+            // Inject Animation CSS
+            const animatedSvg = svgContent.replace('</svg>', `
+                <style>
+                    /* Simple Fade In Stagger */
+                    g[id^="step_"], g[id^="title_"] { opacity: 0; animation: fadeIn 0.5s forwards; }
+                    ${Array.from({ length: 10 }).map((_, i) => `g[id^="step_${i + 1}"] { animation-delay: ${i * 0.3}s; }`).join('\n')}
+                    
+                    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+                </style>
+                </svg>
+            `);
+
+            await page.setContent(animatedSvg, { waitUntil: 'networkidle' });
+            await page.addStyleTag({ content: 'body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; } svg { width: 1024px; height: 1024px; }' });
+
+            // Record 2 seconds
+            await page.waitForTimeout(2000);
+
+            await page.close();
+            await context.close();
+
+            const videoPath = await page.video()?.path();
+            if (!videoPath) throw new Error('Video file not found');
+
+            this.logger.log(`[AUDIT] Raw Video Path: ${videoPath}`);
+
+            const buffer = fs.readFileSync(videoPath);
+            this.logger.log(`[AUDIT] Video Buffer Size: ${buffer.length} bytes`);
+
+            const fileName = `infographic-${taskId}-${Date.now()}.mp4`;
+            return await this.localStorage.upload(buffer, fileName);
+
+        } catch (e) {
+            await page.close().catch(() => { });
+            await context.close().catch(() => { });
+            throw e;
+        }
     }
 }
