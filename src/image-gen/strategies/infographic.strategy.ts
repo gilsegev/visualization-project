@@ -99,19 +99,19 @@ export class InfographicStrategy extends BaseImageStrategy {
         const dom = new JSDOM(svgContent, { contentType: 'image/svg+xml' });
         const document = dom.window.document;
 
-        // 1. Inject Images
+        // Inject images and text items
         blueprint.items.forEach((item, index) => {
-            const imgId = `slot_img_${index + 1}`;
+            const i = index + 1;
+
+            // Inject Image
+            const imgId = `slot_img_${i}`;
             const imgElement = document.getElementById(imgId);
             if (imgElement && item.image_data) {
-                imgElement.setAttribute('href', item.image_data); // Standard SVG
-                // Some renderers might need xlink:href, but href is modern standard
+                imgElement.setAttribute('href', item.image_data);
             }
-        });
 
-        // 2. Inject Text
-        blueprint.items.forEach((item, index) => {
-            const txtId = `slot_txt_${index + 1}`;
+            // Inject Text
+            const txtId = `slot_txt_${i}`;
             const txtElement = document.getElementById(txtId);
             if (txtElement) {
                 txtElement.textContent = item.label_text;
