@@ -33,7 +33,10 @@ async function verifyInfographic() {
         upload: async (buf, name) => `https://mock-storage.com/${name}`
     } as any;
 
-    const strategy = new InfographicStrategy(mockBrowser, mockStorage);
+    const mockConfigService = {
+        get: (key: string) => process.env[key] || 'mock-key'
+    } as any;
+    const strategy = new InfographicStrategy(mockBrowser, mockStorage, mockConfigService);
 
     // Mock task
     const task: ImageTask = {

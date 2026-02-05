@@ -6,7 +6,7 @@ import { ConfigModule } from '@nestjs/config';
 
 @Module({
     imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
+        ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', '..', 'public'), // Check path depth depending on dist structure
         }),
