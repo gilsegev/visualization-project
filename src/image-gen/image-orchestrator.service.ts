@@ -37,7 +37,8 @@ export class ImageOrchestratorService {
                             type: task.type,
                             refined_prompt: task.refined_prompt,
                             url: result.url,
-                            posterUrl: result.posterUrl
+                            posterUrl: result.posterUrl,
+                            payload: result.payload
                         }
                     };
                 } catch (error) {

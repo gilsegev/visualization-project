@@ -21,7 +21,32 @@ async function runBlueprintTest() {
 
         if (Array.isArray(results) && results[0].url === 'https://placeholder.com/blueprint-verified.png') {
             console.log('\n✅ Client received expected placeholder.');
-            console.log('👉 PLEASE CHECK SERVER CONSOLE LOGS in the terminal to verify the Blueprint JSON structure!');
+
+            const blueprint = results[0].payload?.blueprint;
+            if (blueprint && blueprint.items) {
+                console.log(`\n🔍 Verifying Image Data for ${blueprint.items.length} items:`);
+                let validImages = 0;
+                blueprint.items.forEach((item, i) => {
+                    // Log first 50 chars as requested
+                    const imgData = item.image_data || '';
+                    const status = imgData.startsWith('data:image/png;base64,') ? '✅ Valid Base64' : '❌ Invalid/Missing';
+                    console.log(`   Item ${i + 1}: ${status} (Length: ${imgData.length})`);
+                    if (imgData.length > 50) {
+                        console.log(`   Sample: ${imgData.substring(0, 50)}...`);
+                    }
+
+                    if (imgData.startsWith('data:image/png;base64,')) validImages++;
+                });
+
+                if (validImages === blueprint.items.length) {
+                    console.log('\n✅ All items have valid image data.');
+                } else {
+                    console.log('\n⚠️ Some items are missing image data.');
+                }
+            } else {
+                console.log('\n⚠️ Blueprint payload missing in response.');
+            }
+
         } else {
             console.log('\n⚠️ Unexpected response. Check if the server code was updated correctly.');
         }

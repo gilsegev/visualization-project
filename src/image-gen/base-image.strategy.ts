@@ -5,6 +5,7 @@ import { ImageTask } from './image-task.schema';
 export interface ImageGenerationResult {
     url: string;
     posterUrl?: string;
+    payload?: any;
 }
 
 export abstract class BaseImageStrategy implements ImageGeneratorStrategy {

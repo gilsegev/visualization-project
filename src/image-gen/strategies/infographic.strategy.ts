@@ -11,6 +11,9 @@ import { getPalette } from './infographic-palettes';
 import { BrowserService } from '../browser.service';
 import { LocalStorageService } from '../local-storage.service';
 
+import axios from 'axios';
+import * as pLimit from 'p-limit';
+
 export interface InfographicBlueprint {
     template_id: 'snake_process' | 'hub_spoke' | 'vertical_stack';
     theme_color: string;
@@ -18,6 +21,7 @@ export interface InfographicBlueprint {
     items: {
         subject_prompt: string;
         label_text: string;
+        image_data?: string;
     }[];
 }
 
@@ -54,16 +58,85 @@ export class InfographicStrategy extends BaseImageStrategy {
         this.logger.log(`Generating infographic blueprint for: ${task.refined_prompt}`);
 
         // 1. Generate Blueprint via LLM
-        const blueprint = await this.generateBlueprint(task.refined_prompt);
+        let blueprint = await this.generateBlueprint(task.refined_prompt);
         this.logger.log(`Blueprint generated: Template=${blueprint.template_id}, Items=${blueprint.items.length}`);
         this.logger.log(`Global Style: ${blueprint.global_style_prompt}`);
+
+        // 2. Generate Images via Silicon Flow (Parallel)
+        this.logger.log(`Starting parallel image generation for ${blueprint.items.length} items...`);
+        const startTime = Date.now();
+        blueprint = await this.generateImages(blueprint);
+        const duration = Date.now() - startTime;
+        this.logger.log(`Image generation completed in ${duration}ms`);
+
         blueprint.items.forEach((item, i) => {
             this.logger.log(`Item ${i + 1}: [${item.label_text}] ${item.subject_prompt}`);
+            if (item.image_data) {
+                this.logger.log(`   > Image Data: ${item.image_data.substring(0, 50)}... (${item.image_data.length} chars)`);
+            }
         });
 
         // For this task, we stop here and return a placeholder as we are validating the blueprint logic.
-        // The downstream rendering logic expects the old blueprint structure and would fail.
-        return { url: 'https://placeholder.com/blueprint-verified.png' };
+        // We include the blueprint in the result payload for verification purposes.
+        return {
+            url: 'https://placeholder.com/blueprint-verified.png',
+            payload: { blueprint }
+        };
+    }
+
+    private async generateImages(blueprint: InfographicBlueprint): Promise<InfographicBlueprint> {
+        const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
+        if (!apiKey) {
+            this.logger.warn('SILICONFLOW_API_KEY not found. Skipping image generation.');
+            return blueprint;
+        }
+
+        const endpoint = 'https://api.siliconflow.com/v1/images/generations';
+
+        const limit = pLimit(2); // Limit concurrency to avoid 429 errors from SiliconFlow
+
+        await Promise.all(blueprint.items.map((item) => limit(async () => {
+            const fullPrompt = `${blueprint.global_style_prompt}. ${item.subject_prompt}`;
+            try {
+                // Determine model from config or default to flux-schnell
+                const model = 'black-forest-labs/FLUX.1-schnell';
+
+                const response = await axios.post(
+                    endpoint,
+                    {
+                        model: model,
+                        prompt: fullPrompt,
+                        size: '512x512', // Standard OpenAI key
+                        n: 1, // Standard OpenAI key
+                        seed: Math.floor(Math.random() * 1000000)
+                    },
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'Content-Type': 'application/json'
+                        },
+                        timeout: 10000 // 10s timeout per request
+                    }
+                );
+
+                // Silicon Flow (Flux) typically returns a URL
+                const imageUrl = response.data?.data?.[0]?.url;
+
+                if (imageUrl) {
+                    // Fetch the image URL to get buffer
+                    const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                    const base64 = Buffer.from(imageResponse.data).toString('base64');
+                    item.image_data = `data:image/png;base64,${base64}`;
+                } else {
+                    this.logger.warn(`No image URL returned for item: ${item.label_text}`);
+                }
+
+            } catch (error) {
+                this.logger.error(`Failed to generate image for "${item.label_text}": ${error.message} - ${error.response?.data ? JSON.stringify(error.response.data) : ''}`);
+            }
+        }))); // Close limit, close arrow func, close map, close Promise.all
+
+        return blueprint;
     }
 
     private async generateBlueprint(prompt: string): Promise<InfographicBlueprint> {
@@ -96,7 +169,7 @@ export class InfographicStrategy extends BaseImageStrategy {
         `;
 
         try {
-            const result = await this.model.generateContent(systemPrompt);
+            const result = await this.generateWithBackoff(() => this.model.generateContent(systemPrompt));
             const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(text) as InfographicBlueprint;
 
@@ -109,6 +182,29 @@ export class InfographicStrategy extends BaseImageStrategy {
         } catch (e) {
             this.logger.error('Failed to generate blueprint', e);
             throw new Error('Blueprint generation failed');
+        }
+    }
+
+    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 3, initialDelay = 2000): Promise<any> {
+        let attempt = 0;
+        let delay = initialDelay;
+
+        while (attempt <= retries) {
+            try {
+                return await apiCall();
+            } catch (error) {
+                // Check for 429 or Resource Exhausted
+                if (error.response?.status === 429 || error.message.includes('429') || error.message.includes('Resource exhausted')) {
+                    attempt++;
+                    if (attempt > retries) throw error;
+
+                    this.logger.warn(`Gemini 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2; // Exponential backoff
+                } else {
+                    throw error;
+                }
+            }
         }
     }
 }
