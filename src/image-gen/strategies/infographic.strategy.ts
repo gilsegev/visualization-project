@@ -87,7 +87,7 @@ export class InfographicStrategy extends BaseImageStrategy {
 
     private async renderComposition(blueprint: InfographicBlueprint): Promise<Buffer> {
         // Map templates to the single hybrid file for now as per requirements
-        const templateFile = 'hybrid_snake.svg';
+        const templateFile = 'snake_process.svg';
         const templatePath = path.join(process.cwd(), 'public', 'assets', 'infographics', 'templates', templateFile);
 
         this.logger.log(`Loading template from: ${templatePath}`);
@@ -199,16 +199,20 @@ export class InfographicStrategy extends BaseImageStrategy {
             You are an expert Information Designer and Visual Art Director.
             Analyze the user request and generate a cohesive visual blueprint for an infographic.
 
+            Style Guideline:
+            - Target a "National Geographic Style Macro Photography" or "3D Scientific Illustration" aesthetic.
+            - Ensure the 'global_style_prompt' strictly emphasizes a "soft blurred background" or "pure white background" to ensure the subject pops within the circular mask.
+
             User Request: "${prompt}"
 
             Output a strictly structured JSON object following this schema:
             {
                 "template_id": "snake_process" | "hub_spoke" | "vertical_stack",
                 "theme_color": "Hex code for primary accent (e.g., #FFD700)",
-                "global_style_prompt": "A 20-word style glue string (e.g., 'minimalist 3D isometric, clay texture, soft lighting, professional matte white background') to ensure cohesion.",
+                "global_style_prompt": "A 20-word style glue string (e.g., 'macro photography, hyper-realistic, soft blurred background, cinematic lighting, national geographic style') to ensure cohesion.",
                 "items": [
                     {
-                        "subject_prompt": "Specific visual subject for this step (e.g., 'a simple golden honeybee egg'). Keep it short.",
+                        "subject_prompt": "Specific visual subject for this step (e.g., 'a simple golden honeybee egg on a leaf'). Keep it short.",
                         "label_text": "The text label for this step."
                     }
                 ]
@@ -236,7 +240,7 @@ export class InfographicStrategy extends BaseImageStrategy {
         }
     }
 
-    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 3, initialDelay = 2000): Promise<any> {
+    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 5, initialDelay = 3000): Promise<any> {
         let attempt = 0;
         let delay = initialDelay;
 
