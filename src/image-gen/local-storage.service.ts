@@ -27,6 +27,11 @@ export class LocalStorageService {
         return `/generated-images/${fileName}`;
     }
 
+    // Alias for 'upload' or for saving buffers
+    async save(fileName: string, buffer: Buffer): Promise<string> {
+        return this.upload(buffer, fileName);
+    }
+
     async uploadStream(stream: NodeJS.ReadableStream, fileName: string): Promise<string> {
         const filePath = path.join(this.uploadDir, fileName);
         const writer = fs.createWriteStream(filePath);

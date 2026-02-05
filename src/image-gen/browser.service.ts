@@ -56,4 +56,21 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
         return { context, page };
     }
+
+    async screenshotSvg(svgContent: string, width: number, height: number): Promise<Buffer> {
+        const { context, page } = await this.getNewPage();
+        try {
+            await page.setViewportSize({ width, height });
+            // Directly set content
+            await page.setContent(svgContent);
+
+            // Wait for network idle in case images are loading (Base64 is instant, but generic safety)
+            // await page.waitForLoadState('networkidle'); 
+
+            const buffer = await page.screenshot({ type: 'png', fullPage: true });
+            return buffer;
+        } finally {
+            await context.close();
+        }
+    }
 }

@@ -1,0 +1,11 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="circle-mask"><circle cx="200" cy="200" r="180" /></clipPath>
+  </defs>
+  <rect width="100%" height="100%" fill="#fdfbf7" />
+  <g transform="translate(50, 100)">
+    <circle cx="200" cy="200" r="190" class="accent-color" fill="#FF9F1C" />
+    <image id="slot_img_1" x="20" y="20" width="360" height="360" clip-path="url(#circle-mask)" />
+    <text id="slot_txt_1" x="450" y="210" font-family="Arial" font-weight="bold" font-size="32" fill="#333">Step 1</text>
+  </g>
+  </svg>

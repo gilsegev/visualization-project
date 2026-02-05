@@ -69,19 +69,70 @@ export class InfographicStrategy extends BaseImageStrategy {
         const duration = Date.now() - startTime;
         this.logger.log(`Image generation completed in ${duration}ms`);
 
-        blueprint.items.forEach((item, i) => {
-            this.logger.log(`Item ${i + 1}: [${item.label_text}] ${item.subject_prompt}`);
-            if (item.image_data) {
-                this.logger.log(`   > Image Data: ${item.image_data.substring(0, 50)}... (${item.image_data.length} chars)`);
+        // 3. Composition (Hybrid Rendering)
+        this.logger.log('Composing SVG with generated assets...');
+        const compositionBuffer = await this.renderComposition(blueprint);
+
+        // 4. Save to Storage (Simulated or Real)
+        const filename = `infographic_${task.id}_${Date.now()}.png`;
+        const publicUrl = await this.localStorage.save(filename, compositionBuffer);
+        this.logger.log(`Infographic saved to: ${publicUrl}`);
+
+        return {
+            url: publicUrl,
+            posterUrl: publicUrl,
+            payload: { blueprint }
+        };
+    }
+
+    private async renderComposition(blueprint: InfographicBlueprint): Promise<Buffer> {
+        // Map templates to the single hybrid file for now as per requirements
+        const templateFile = 'hybrid_snake.svg';
+        const templatePath = path.join(process.cwd(), 'public', 'assets', 'infographics', 'templates', templateFile);
+
+        this.logger.log(`Loading template from: ${templatePath}`);
+        if (!fs.existsSync(templatePath)) {
+            throw new Error(`Template file not found: ${templatePath}`);
+        }
+
+        const svgContent = fs.readFileSync(templatePath, 'utf-8');
+        const dom = new JSDOM(svgContent, { contentType: 'image/svg+xml' });
+        const document = dom.window.document;
+
+        // 1. Inject Images
+        blueprint.items.forEach((item, index) => {
+            const imgId = `slot_img_${index + 1}`;
+            const imgElement = document.getElementById(imgId);
+            if (imgElement && item.image_data) {
+                imgElement.setAttribute('href', item.image_data); // Standard SVG
+                // Some renderers might need xlink:href, but href is modern standard
             }
         });
 
-        // For this task, we stop here and return a placeholder as we are validating the blueprint logic.
-        // We include the blueprint in the result payload for verification purposes.
-        return {
-            url: 'https://placeholder.com/blueprint-verified.png',
-            payload: { blueprint }
-        };
+        // 2. Inject Text
+        blueprint.items.forEach((item, index) => {
+            const txtId = `slot_txt_${index + 1}`;
+            const txtElement = document.getElementById(txtId);
+            if (txtElement) {
+                txtElement.textContent = item.label_text;
+            }
+        });
+
+        // 3. Apply Theme Color
+        if (blueprint.theme_color) {
+            const accents = document.querySelectorAll('.accent-color');
+            accents.forEach((el) => {
+                el.setAttribute('fill', blueprint.theme_color);
+            });
+        }
+
+        // 4. Render to PNG via BrowserService
+        const finalSvg = dom.serialize();
+        // BrowserService expects a full HTML page or content? 
+        // Based on previous code (not visible here but inferred), let's assume screenshotSvg method exists 
+        // OR we pass the SVG string to a page.
+        // Checking BrowserService usage in other files would be prudent, assuming screenshotSvg(svgString)
+        return await this.browserService.screenshotSvg(finalSvg, 1024, 1024);
     }
 
     private async generateImages(blueprint: InfographicBlueprint): Promise<InfographicBlueprint> {
