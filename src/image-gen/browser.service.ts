@@ -64,6 +64,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             // Directly set content
             await page.setContent(svgContent);
 
+            // Force body margin to 0 to prevent white borders
+            await page.addStyleTag({ content: 'body { margin: 0; padding: 0; overflow: hidden; } svg { display: block; width: 100%; height: 100%; }' });
+
             // Wait for network idle in case images are loading (Base64 is instant, but generic safety)
             // await page.waitForLoadState('networkidle'); 
 
