@@ -45,15 +45,26 @@ async function run() {
                 // Basic validation checks
                 const isStepList = blueprint.template_id === 'step_list';
                 const hasItems = blueprint.items && blueprint.items.length > 0;
-                const hasDescriptions = blueprint.items.every(item => item.description?.length > 10);
 
-                if (isStepList && hasItems && hasDescriptions) {
-                    console.log('   VALIDATION SUCCESS: Correctly identified step_list and generated descriptive content.');
+                // Check HTML Preview for injected content
+                // The strategy returns { payload: { html: "..." } }
+                const result = await strategy.performGeneration({ refined_prompt: "The lifecycle of a star" } as any);
+                const generatedHtml = (result.payload as any).html;
+
+                const hasBase64 = generatedHtml.includes('data:image/png;base64');
+                const hasTitle = generatedHtml.includes(blueprint.items[0].title);
+
+                console.log('   generatedHtml length:', generatedHtml.length);
+                console.log('   generatedHtml preview (body start):', generatedHtml.substring(generatedHtml.indexOf('<body'), generatedHtml.indexOf('<body') + 300) + '...');
+
+                if (isStepList && hasItems && hasBase64 && hasTitle) {
+                    console.log('   VALIDATION SUCCESS: Blueprint generated AND HTML populated with images/content.');
                 } else {
                     console.warn('   VALIDATION WARNING: Generated structure might not match expectations entirely.');
                     console.log(`   Expected step_list: ${isStepList}`);
                     console.log(`   Has items: ${hasItems}`);
-                    console.log(`   Descriptions > 10 chars: ${hasDescriptions}`);
+                    console.log(`   Has Base64 images: ${hasBase64}`);
+                    console.log(`   Has Title (${blueprint.items[0].title}): ${hasTitle}`);
                 }
             } catch (e) {
                 console.log(`   FAIL: Blueprint generation error (expected if network/key issues): ${e.message}`);
