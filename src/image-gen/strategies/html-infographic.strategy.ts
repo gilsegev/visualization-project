@@ -14,6 +14,7 @@ import * as pLimit from 'p-limit';
 export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list';
     theme_accent: string;
+    visual_style_directive: string; // e.g., "High-end 3D claymorphism"
     items: {
         title: string;
         description: string;
@@ -64,14 +65,16 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             this.generateImage(
                 `${item.title}: ${item.description}`,
                 blueprint.theme_accent,
-                false
+                false,
+                blueprint.visual_style_directive || "High-end 3D claymorphism" // Fallback if missing
             ).then(base64 => ({ index: idx, base64 }))
         );
 
         const backgroundImagePromise = this.generateImage(
-            "Abstract background texture, soft lighting, 4k",
+            "Abstract background texture",
             blueprint.theme_accent,
-            true
+            true,
+            blueprint.visual_style_directive || "High-end 3D claymorphism"
         ).then(base64 => ({ index: -1, base64 }));
 
         const results = await Promise.all([...itemImagePromises, backgroundImagePromise]);
@@ -213,8 +216,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         }
 
         const systemPrompt = `
-            You are an expert Data Visualization Architect.
-            Your goal is to select the perfect infographic template and generate structured content based on user intent.
+            You are an expert Data Visualization Architect and Art Director.
+            Your goal is to select the perfect infographic template, define a cohesive visual style, and generate structured content based on user intent.
 
             Available Templates:
             1. 'hub_radial': Use this for lists of items centered around one core topic (e.g., "Top 5 NBA Players", "Key features of a car").
@@ -225,7 +228,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             Task:
             1. Analyze the User Request to determine the most suitable template ('hub_radial' or 'step_list').
             2. Generate a widely compatible accent color (hex code) that fits the mood.
-            3. Create a list of 4-6 items. Each item must have:
+            3. Define a "visual_style_directive" that ensures all icons/images look like a cohesive set (e.g., "High-end 3D claymorphism, soft studio lighting, pastel color palette, minimalist" OR "Flat vector art, bold outlines, vibrant colors").
+            4. Create a list of 4-6 items. Each item must have:
                - title: A short, punchy header (2-5 words).
                - description: A concise explanation (approx 30 words).
 
@@ -233,6 +237,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             {
                 "template_id": "hub_radial" | "step_list",
                 "theme_accent": "#HEXCODE",
+                "visual_style_directive": "...",
                 "items": [
                     { "title": "...", "description": "..." }
                 ]
@@ -269,18 +274,20 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         return fs.readFileSync(filePath, 'utf-8');
     }
 
-    private async generateImage(prompt: string, accentColor: string, isBackground: boolean): Promise<string> {
+    private async generateImage(prompt: string, accentColor: string, isBackground: boolean, styleDirective: string): Promise<string> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) {
             this.logger.warn('SILICONFLOW_API_KEY not found. Using placeholder.');
             return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
         }
 
-        // Refine prompt for consistency
-        // Append accent color context to ensure shared palette
-        const fullPrompt = isBackground
-            ? `${prompt}, organic texture, soft lighting, 8k resolution, minimalist, harmonious with ${accentColor}`
-            : `${prompt}, icon style, 3d render, high quality, isolated on white background, consistent lighting, main color ${accentColor}`;
+        // Refine prompt for consistency using styleDirective
+        let fullPrompt = '';
+        if (isBackground) {
+            fullPrompt = `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, high resolution, no text`;
+        } else {
+            fullPrompt = `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor} color scheme`;
+        }
 
         const width = 512;
         const height = 512; // Square for both background (will be covered) and items
