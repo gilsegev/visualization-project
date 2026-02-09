@@ -76,4 +76,44 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             await context.close();
         }
     }
+
+    async screenshotHtml(htmlContent: string): Promise<Buffer> {
+        // Reuse getNewPage with high DPI setting for Retina quality as requested
+        const { context, page } = await this.getNewPage({ deviceScaleFactor: 2.0 } as any); // Type cast if options interface not fully updated
+        try {
+            // Set viewport to 1200x1200 as requested
+            await page.setViewportSize({ width: 1200, height: 1200 });
+
+            await page.setContent(htmlContent);
+
+            // Wait for network idle to ensure any external resources (fonts, etc) load. 
+            // Although templates use CDN tailwind/fonts, so network required.
+            await page.waitForLoadState('networkidle');
+
+            // Screenshot. "Focus on .hub-container or .list-container"
+            // We can try to locate specific container or just full page.
+            // Prompt says: "Focus the screenshot on the .hub-container or .list-container specifically"
+
+            // Try step_list container first (it's .max-w-3xl usually, see template)
+            // Or hub_radial container (.relative w-[900px]...)
+            // Let's try locating a generic container wrapper if present, or fallback to body/fullPage.
+            // Based on templates:
+            // Hub: body > div.relative.w-[900px]
+            // Step: body > div.max-w-3xl
+
+            let element = await page.$('.relative.w-\\[900px\\]'); // Hub
+            if (!element) {
+                element = await page.$('.max-w-3xl'); // Step list
+            }
+
+            if (element) {
+                return await element.screenshot({ type: 'png' });
+            } else {
+                // Fallback to full page if container not found
+                return await page.screenshot({ type: 'png', fullPage: true });
+            }
+        } finally {
+            await context.close();
+        }
+    }
 }

@@ -22,7 +22,14 @@ async function run() {
     console.log('--- Testing HtmlInfographicStrategy ---');
 
     // Instantiate with mock dependency
-    const strategy = new HtmlInfographicStrategy(mockConfigService);
+    const strategy = new HtmlInfographicStrategy({
+        get: (key: string) => process.env[key]
+    } as any, {
+        screenshotHtml: async () => Buffer.from('mock_png_buffer'),
+        getNewPage: async () => ({ context: { close: async () => { } }, page: { setViewportSize: async () => { }, setContent: async () => { }, waitForLoadState: async () => { }, $: async () => null, screenshot: async () => Buffer.from('mock_png_buffer') } })
+    } as any, {
+        save: async () => 'mock_public_url'
+    } as any);
 
     try {
         console.log('1. Testing loadTemplate("hub_radial")...');

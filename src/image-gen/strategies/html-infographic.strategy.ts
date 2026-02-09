@@ -6,6 +6,10 @@ import * as path from 'path';
 import { JSDOM } from 'jsdom';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import { BrowserService } from '../browser.service';
+import { LocalStorageService } from '../local-storage.service';
+import axios from 'axios';
+import * as pLimit from 'p-limit';
 
 export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list';
@@ -22,6 +26,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
     constructor(
         protected readonly configService: ConfigService,
+        protected readonly browserService: BrowserService,
+        protected readonly localStorage: LocalStorageService
     ) {
         super();
         const apiKey = this.configService.get<string>('GEMINI_API_KEY');
@@ -182,12 +188,21 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
         const finalHtml = dom.serialize();
 
+        // 5. Render to Image
+        this.logger.log('Rendering HTML to Image...');
+        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
+
+        // 6. Save Image
+        const filename = `html_infographic_${Date.now()}.png`;
+        const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
+        this.logger.log(`Infographic saved to: ${publicUrl}`);
+
         return {
-            url: 'placeholder_url',
-            posterUrl: 'placeholder_poster_url',
+            url: publicUrl,
+            posterUrl: publicUrl,
             payload: {
                 blueprint,
-                html: finalHtml // Return full HTML
+                html: finalHtml
             }
         };
     }
@@ -255,24 +270,58 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
     }
 
     private async generateImage(prompt: string, accentColor: string, isBackground: boolean): Promise<string> {
-        // Mocking image generation for speed/stability if no key, OR implementing real call if key exists.
-        // Requirements say "Use your existing SiliconFlow logic (or a mock service if not fully connected)".
-
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) {
-            // Return a placeholder mock image (Base64 transparent pixel or similar)
-            return isBackground
-                ? "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" // Red-ish
-                : "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="; // Red-ish
+            this.logger.warn('SILICONFLOW_API_KEY not found. Using placeholder.');
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
         }
 
+        // Refine prompt for consistency
+        // Append accent color context to ensure shared palette
+        const fullPrompt = isBackground
+            ? `${prompt}, organic texture, soft lighting, 8k resolution, minimalist, harmonious with ${accentColor}`
+            : `${prompt}, icon style, 3d render, high quality, isolated on white background, consistent lighting, main color ${accentColor}`;
+
+        const width = 512;
+        const height = 512; // Square for both background (will be covered) and items
+
         try {
-            // Placeholder for real SiliconFlow implementation
-            // For now return mock to pass validation without external dependency
-            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+            const response = await axios.post(
+                'https://api.siliconflow.com/v1/images/generations',
+                {
+                    model: 'black-forest-labs/FLUX.1-schnell',
+                    prompt: fullPrompt,
+                    image_size: `${width}x${height}`,
+                    num_inference_steps: 4, // Fast generation
+                    batch_size: 1
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 30000 // 30s timeout
+                }
+            );
+
+            const imageUrl = response.data?.data?.[0]?.url;
+
+            if (imageUrl) {
+                // Convert URL to Base64 to embed in HTML (avoiding cross-origin canvas taint issues if we were doing canvas, 
+                // but for HTML img src URL is fine IF the browser can access it during screenshot.
+                // Playwright is headless, so extensive network/CORS might be tricky if not waited for.
+                // Base64 is safer for self-contained HTML.
+
+                const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                const base64 = Buffer.from(imageResponse.data).toString('base64');
+                return `data:image/jpeg;base64,${base64}`;
+            } else {
+                throw new Error('No image URL in response');
+            }
+
         } catch (e) {
-            this.logger.warn('Image generation failed, using placeholder.');
-            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+            this.logger.error(`Image generation failed for prompt: "${fullPrompt}"`, e.message);
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
         }
     }
 }
