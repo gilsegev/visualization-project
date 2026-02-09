@@ -1,0 +1,51 @@
+<style>
+  /* The "Spine" Line */
+  .timeline-container::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, transparent, var(--theme-accent), transparent);
+    transform: translateX(-50%);
+    opacity: 0.3;
+  }
+
+  /* Zig-Zag Alternating Logic */
+  .step-row:nth-child(even) { flex-direction: row-reverse; }
+  .step-row:nth-child(even) .text-container { text-align: left; padding-left: 2rem; padding-right: 0; }
+  .step-row:nth-child(odd) .text-container { text-align: right; padding-right: 2rem; padding-left: 0; }
+  
+  /* Text Legibility Anchor */
+  .glass-card {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+  }
+</style>
+
+<div class="timeline-container relative w-[1200px] p-20 flex flex-col gap-32">
+  <div class="step-row flex items-center justify-between w-full relative">
+    <div class="w-[45%] flex justify-center">
+      <div class="relative w-72 h-72">
+        <div class="absolute inset-0 bg-blue-500 rounded-full blur-2xl opacity-20 animate-pulse"></div>
+        <img id="slot_img_n" class="relative w-full h-full object-cover rounded-full border-4 border-white shadow-2xl">
+      </div>
+    </div>
+
+    <div class="absolute left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-white border-4 border-blue-600 z-10 flex items-center justify-center font-black text-xs text-blue-600">
+      01
+    </div>
+
+    <div class="w-[45%] text-container">
+      <div class="glass-card p-8 rounded-3xl">
+        <h2 id="slot_title_n" class="text-2xl font-black text-slate-800 uppercase tracking-tight mb-2">The Seed</h2>
+        <p id="slot_txt_n" class="text-slate-600 leading-relaxed text-sm">
+          Everything starts with a single point of focus. This stage represents the foundation of the entire process.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
