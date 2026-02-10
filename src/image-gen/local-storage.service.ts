@@ -20,6 +20,9 @@ export class LocalStorageService {
 
     async upload(buffer: Buffer, fileName: string): Promise<string> {
         const filePath = path.join(this.uploadDir, fileName);
+        const folder = path.dirname(filePath);
+        if (!fs.existsSync(folder)) fs.mkdirSync(folder, { recursive: true });
+
         await fs.promises.writeFile(filePath, buffer);
         this.logger.log(`Saved file: ${filePath}`);
 

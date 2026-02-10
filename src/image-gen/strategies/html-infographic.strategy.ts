@@ -91,18 +91,28 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
     public async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
         this.logger.log(`Starting HTML Infographic Generation for: ${task.refined_prompt}`);
 
+        const payload = task.payload as any;
+        const styleAnchor = payload?.style_anchor;
+        const customPalette = payload?.custom_palette;
+
         // 1. Generate Blueprint
         let blueprint: HtmlInfographicBlueprint;
         try {
-            blueprint = await this.generateBlueprint(task.refined_prompt);
+            blueprint = await this.generateBlueprint(task.refined_prompt, styleAnchor);
             this.logger.log(`Blueprint generated: Template=${blueprint.template_id}, Theme=${blueprint.theme_id}, Items=${blueprint.items.length}`);
         } catch (error) {
             this.logger.error(`Blueprint generation failed: ${error.message}`);
             throw error;
         }
 
-        const theme = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
-        const imageSuffix = theme.image_style_suffix;
+        const themeBase = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
+        const theme = {
+            ...themeBase,
+            primary_accent: customPalette?.accent || themeBase.primary_accent,
+            background_main: customPalette?.background || themeBase.background_main,
+            text_main: customPalette?.text || themeBase.text_main,
+        };
+        const imageSuffix = styleAnchor || theme.image_style_suffix;
 
         // 2. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
@@ -246,7 +256,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             let masterItem: Element | null = null;
 
             if (blueprint.template_id === 'step_stone') {
-                container = document.getElementById('item-wrapper');
+                container = document.querySelector('.timeline-container');
                 masterItem = container?.querySelector('.step-row');
             } else if (blueprint.template_id === 'bento_grid') {
                 container = document.getElementById('item-wrapper');
@@ -339,7 +349,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const finalHtml = dom.serialize();
         this.logger.log('Rendering HTML to Image...');
         const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
-        const filename = `html_infographic_${Date.now()}.png`;
+        const folder = payload?.folder || '';
+        const filename = path.join(folder, `html_infographic_${Date.now()}.png`);
         const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
         this.logger.log(`Infographic saved to: ${publicUrl}`);
 
@@ -350,7 +361,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         };
     }
 
-    public async generateBlueprint(prompt: string): Promise<HtmlInfographicBlueprint> {
+    public async generateBlueprint(prompt: string, styleAnchor?: string): Promise<HtmlInfographicBlueprint> {
         if (!this.model) throw new Error('Gemini API Key not configured/found.');
 
         const systemPrompt = `
@@ -361,6 +372,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
 
             User Request: "${prompt}"
+            ${styleAnchor ? `STRICT STYLE VIBE: ${styleAnchor}` : ''}
 
             Task:
             1. Select Template & Theme.
@@ -378,7 +390,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         `;
 
         try {
-            const result = await this.model.generateContent(systemPrompt);
+            const result = await this.generateWithBackoff(() => this.model.generateContent(systemPrompt));
             const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
             if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
@@ -386,6 +398,27 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         } catch (e) {
             this.logger.error('Blueprint Generation Failed', e);
             throw e;
+        }
+    }
+
+    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 5, initialDelay = 3000): Promise<any> {
+        let attempt = 0;
+        let delay = initialDelay;
+
+        while (attempt <= retries) {
+            try {
+                return await apiCall();
+            } catch (error) {
+                if (error.message.includes('429') || error.message.includes('Resource exhausted')) {
+                    attempt++;
+                    if (attempt > retries) throw error;
+                    this.logger.warn(`Gemini 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    delay *= 2;
+                } else {
+                    throw error;
+                }
+            }
         }
     }
 
