@@ -19,7 +19,7 @@ async function testFullCourseRun() {
     console.log(`Sending ${job.visualizations.length} visualizations...`);
 
     try {
-        const response = await axios.post('http://localhost:3000/v1/course-visualizations', job, {
+        const response = await axios.post('http://localhost:3006/v1/course-visualizations', job, {
             timeout: 600000 // 10 minutes for full batch
         });
 

@@ -48,6 +48,15 @@ export const THEME_LIBRARY = {
         font_name: 'Playfair Display',
         image_style_suffix: 'playful 3D style, warm lighting, round shapes, vibrant colors, claymorphism, cheerful',
         glass_color: 'rgba(255, 255, 255, 0.6)' // Warm glass
+    },
+    wellness_mindful: {
+        primary_accent: '#5B9A8B',  // Muted Teal
+        background_main: '#FAF9F6', // Cream White
+        text_main: '#2D3748',       // Deep Slate
+        font_family: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap',
+        font_name: 'Outfit',
+        image_style_suffix: 'wellness aesthetic, soft morning sunlight, serene, minimalist watercolor details',
+        glass_color: 'rgba(250, 249, 246, 0.85)'
     }
 } as const;
 
@@ -100,13 +109,13 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         let blueprint: HtmlInfographicBlueprint;
         try {
             blueprint = await this.generateBlueprint(task.refined_prompt, styleAnchor, expectedTemplateId);
-            this.logger.log(`Blueprint generated: Template=${blueprint.template_id}, Theme=${blueprint.theme_id}, Items=${blueprint.items.length}`);
         } catch (error) {
             this.logger.error(`Blueprint generation failed: ${error.message}`);
             throw error;
         }
 
-        const themeBase = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
+        const themeId = payload?.theme_id || blueprint.theme_id || 'corp_blue';
+        const themeBase = THEME_LIBRARY[themeId] || THEME_LIBRARY['corp_blue'];
         const theme = {
             ...themeBase,
             primary_accent: customPalette?.accent || themeBase.primary_accent,
@@ -126,11 +135,11 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
         if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
             this.logger.log(`Generating Versus images for subjects...`);
-            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme.primary_accent, false, imageSuffix)
+            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme.primary_accent, false, imageSuffix, theme.background_main)
                 .then(b64 => ({ key: 'left', base64: b64 }));
-            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme.primary_accent, false, imageSuffix)
+            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme.primary_accent, false, imageSuffix, theme.background_main)
                 .then(b64 => ({ key: 'right', base64: b64 }));
-            const pBg = this.generateImage("Subtle abstract background, split screen contest", theme.primary_accent, true, imageSuffix)
+            const pBg = this.generateImage("Subtle abstract background, split screen contest", theme.primary_accent, true, imageSuffix, theme.background_main)
                 .then(b64 => ({ key: 'bg', base64: b64 }));
             const results = await Promise.all([p1, p2, pBg]);
             results.forEach(r => versusImages[r.key] = r.base64);
@@ -138,10 +147,10 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         } else {
             this.logger.log(`Starting parallel image generation for ${blueprint.items.length} items...`);
             const itemImagePromises = blueprint.items.map((item, idx) =>
-                this.generateImage(`${item.title}: ${item.description}`, theme.primary_accent, false, imageSuffix)
+                this.generateImage(`${item.title}: ${item.description}`, theme.primary_accent, false, imageSuffix, theme.background_main)
                     .then(base64 => ({ index: idx, base64 }))
             );
-            const backgroundImagePromise = this.generateImage("Abstract background texture", theme.primary_accent, true, imageSuffix)
+            const backgroundImagePromise = this.generateImage("Abstract background texture", theme.primary_accent, true, imageSuffix, theme.background_main)
                 .then(base64 => ({ index: -1, base64 }));
             const results = await Promise.all([...itemImagePromises, backgroundImagePromise]);
             itemImages = new Array(blueprint.items.length);
@@ -214,6 +223,18 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 -webkit-box-orient: vertical;  
                 overflow: hidden;
                 text-overflow: ellipsis;
+            }
+
+            /* Prompt 41: Template Readability & Spacing */
+            .text-container, .glass-card p, .glass-card h2, .bento-item p, .spoke-container .card-bg p {
+                max-width: 80% !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+                text-align: center !important;
+            }
+
+            .timeline-container {
+                gap: 38px !important; /* Increased from 32px by ~20% */
             }
         `;
 
@@ -430,13 +451,17 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         return fs.readFileSync(filePath, 'utf-8');
     }
 
-    private async generateImage(prompt: string, accentColor: string, isBackground: boolean, styleDirective: string): Promise<string> {
+    private async generateImage(prompt: string, accentColor: string, isBackground: boolean, styleDirective: string, backgroundColor?: string): Promise<string> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
+        // Implementation of Prompt 41: Color Forcing & Quality Refinement
+        const qualityDirectives = "primary color palette of " + accentColor + (backgroundColor ? " and " + backgroundColor : "") + ", minimalist vector style, clean composition, soft lighting, 8k resolution, professional wellness illustration";
+        const negativePrompt = " --no text, blurry, distorted, messy, low quality, stylized text, characters, letters";
+
         let fullPrompt = isBackground
-            ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, high resolution`
-            : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}`;
+            ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, ${qualityDirectives}${negativePrompt}`
+            : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}, ${qualityDirectives}${negativePrompt}`;
 
         try {
             const response = await axios.post(

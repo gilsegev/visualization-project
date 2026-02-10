@@ -52,6 +52,7 @@ export class CourseOrchestratorService {
                     payload: {
                         style_anchor: global_style_anchor,
                         custom_palette: theme_mapping,
+                        theme_id: prePass.theme_id, // Pass Architect-selected theme
                         folder: path.join('courses', job.course_id),
                         template_id: template_suggestions[viz.id]
                     }
@@ -105,14 +106,17 @@ export class CourseOrchestratorService {
             
             2. theme_mapping: Map palette to 'accent', 'background', 'text'. 
                STRICT RULE: Contrast Safety. 'text' must be highly legible against 'background'.
+               Note: If the palette suggests a wellness vibe, favor the 'wellness_mindful' theme configuration.
             
             3. template_suggestions: Map each viz ID to the best template. 
                Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
+               Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative', 'wellness_mindful'.
                Logic: Cycles/Processes -> step_stone. Lists -> step_list. Grids/Collections -> bento_grid. Hubs/Systems -> hub_radial. Comparisons -> versus_split.
             
             OUTPUT JSON ONLY:
             {
                 "global_style_anchor": "...",
+                "theme_id": "wellness_mindful", 
                 "theme_mapping": { "accent": "#HEX", "background": "#HEX", "text": "#HEX" },
                 "template_suggestions": { "viz_id": "template_id" }
             }
@@ -121,7 +125,10 @@ export class CourseOrchestratorService {
         try {
             const result = await this.generateWithBackoff(() => this.model.generateContent(prompt));
             const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-            return JSON.parse(text);
+            const parsed = JSON.parse(text);
+
+            // Ensure contrast safety fallback if needed or just return parsed
+            return parsed;
         } catch (e) {
             this.logger.error('Architect Pre-Pass Failed', e);
             return {
