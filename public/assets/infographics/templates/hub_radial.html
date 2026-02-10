@@ -30,22 +30,29 @@
       position: absolute;
       left: 50%;
       top: 50%;
-      translate: calc(cos(var(--angle)) * var(--radius) - 50%) calc(sin(var(--angle)) * var(--radius) - 50%);
+      margin: 0;
+      padding: 0;
+      transform: translate(calc(cos(var(--angle)) * var(--radius)), calc(sin(var(--angle)) * var(--radius))) translate(-50%, -50%);
     }
 
     .spoke-container::before {
       content: '';
       position: absolute;
       top: 50%;
-      left: 50%;
+      right: 50%;
       width: var(--radius);
       height: 2px;
       background: var(--theme-glow);
-      transform-origin: left center;
+      transform-origin: right center;
       rotate: var(--angle);
       z-index: -1;
       box-shadow: 0 0 15px var(--theme-glow);
       opacity: 0.4;
+    }
+
+    .icon-subtle {
+      border-radius: 50%;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
     .hub-glow {
@@ -75,7 +82,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 0;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_JOKIC]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_JOKIC]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">NIKOLA JOKIĆ</h2>
@@ -86,7 +93,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 1;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_SGA]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_SGA]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">SHAI G.A.</h2>
@@ -97,7 +104,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 2;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_LUKA]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_LUKA]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">LUKA DONČIĆ</h2>
@@ -108,7 +115,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 3;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_GIANNIS]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_GIANNIS]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">GIANNIS A.</h2>
@@ -119,7 +126,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 4;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_WEMBY]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_WEMBY]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">V. WEMBANYAMA</h2>
@@ -130,7 +137,7 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 5;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_CURRY]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
+          <img src="[BASE64_CURRY]" class="w-full h-full object-cover hex-clip icon-subtle">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">STEPHEN CURRY</h2>

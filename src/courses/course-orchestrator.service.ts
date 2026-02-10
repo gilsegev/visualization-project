@@ -113,10 +113,10 @@ export class CourseOrchestratorService {
             Visualizations to generate:
             ${visualizationsSummary}
 
-            TASK:
-            1. global_style_anchor: A sharp Art Directive focused ONLY on Medium and Color (e.g., "Flat Vector, Pastel" or "Minimalist Line Art"). 
+             TASK:
+            1. global_style_anchor: A sharp Art Directive focused ONLY on Medium and Color (e.g., "Flat Vector, Pastel" or "Watercolor, Earth Tones"). 
                STRICT RULE: Avoid mentions of lighting, resolution, or quality.
-               STRICT RULE: For Wellness/Mindfulness, use "Minimalist hand-drawn line art, flat colors, soft pastel aesthetic."
+               STRICT RULE: For Wellness/Mindfulness, use "Sophisticated wellness book illustration, soft watercolor bleeds, muted teal and sand tones, elegant charcoal line-art, high-end organic textures."
                Must act as a prefix for image prompts.
             
             2. theme_mapping: Map palette to 'accent', 'background', 'text'. 
