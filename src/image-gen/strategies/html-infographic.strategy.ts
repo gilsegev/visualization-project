@@ -17,6 +17,7 @@ export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split';
     theme_id: ThemeId;
     visual_style_directive: string;
+    center_topic?: { title: string; description: string; };
     versus_subjects?: {
         left_name: string;
         right_name: string;
@@ -212,6 +213,18 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             .timeline-container {
                 gap: 38px !important; /* Increased from 32px by ~20% */
             }
+            
+            /* Wellness High-Contrast (Prompt 46) */
+            ${themeId === 'wellness_mindful' ? `
+                .glass-card, .bento-item, .spoke-container .card-bg {
+                    background: #FFFFFF !important;
+                    backdrop-filter: none !important;
+                    -webkit-backdrop-filter: none !important;
+                }
+                h1, h2, h3, h4, h5, h6, p, div, span {
+                    font-weight: 600 !important;
+                }
+            ` : ''}
         `;
 
         const link = document.createElement('link');
@@ -286,7 +299,10 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 if (centerTxt) centerTxt.textContent = blueprint.items[0].description;
 
                 // Process remaining items as spokes
-                blueprint.items.slice(1).forEach((item, index) => {
+                const spokeItems = blueprint.items.slice(1);
+                const total = spokeItems.length;
+                const radius = 42; // percent from center
+                spokeItems.forEach((item, index) => {
                     const clone = masterItem!.cloneNode(true) as Element;
 
                     // Identification Logic
@@ -331,8 +347,12 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                         if (imgEl) imgEl.src = itemImages[index];
                     }
 
+                    // Mathematical spoke positioning (Prompt 46)
                     if (blueprint.template_id === 'hub_radial') {
-                        clone.setAttribute('style', `--i: ${index};`);
+                        const angle = (index / total) * 2 * Math.PI;
+                        const x = 50 + Math.cos(angle) * radius;
+                        const y = 50 + Math.sin(angle) * radius;
+                        clone.setAttribute('style', `left: ${x}%; top: ${y}%; --i: ${index};`);
                     }
 
                     container!.appendChild(clone);
@@ -389,14 +409,16 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             Task:
             1. Select Template & Theme. ${expectedTemplateId ? `REQUIRED TEMPLATE: ${expectedTemplateId}` : ''}
-            2. Generate Items (3-9 normal, 3-5 vs).
-            3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm, Wellness->Wellness).
+            2. FOR HUB_RADIAL: Use "center_topic" for core subject, "items" (3-8) for spokes. DO NOT repeat center in items.
+            3. FOR OTHER TEMPLATES: Generate 3-9 items.
+            4. Theme: Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm, Wellness->Wellness.
             
             OUTPUT JSON ONLY:
             {
                 "template_id": "...",
                 "theme_id": "...",
                 "visual_style_directive": "...",
+                "center_topic": { "title": "...", "description": "..." },
                 "versus_subjects": { "left_name": "", "right_name": "", "left_image_prompt": "", "right_image_prompt": "" },
                 "items": [ { "title": "...", "description": "..." } ]
             }
