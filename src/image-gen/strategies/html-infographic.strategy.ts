@@ -67,6 +67,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         let blueprint: HtmlInfographicBlueprint;
         try {
             blueprint = await this.generateBlueprint(task.refined_prompt, styleAnchor, expectedTemplateId);
+            // [DEBUG: BLUEPRINT] - Forensic Log (Prompt 45)
+            this.logger.debug(`[DEBUG: BLUEPRINT] ${JSON.stringify(blueprint, null, 2)}`);
         } catch (error) {
             this.logger.error(`Blueprint generation failed: ${error.message}`);
             throw error;
@@ -82,6 +84,14 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             text_main: payload?.custom_theme?.text_main || payload?.custom_palette?.text || themeBase.text_main,
         };
         const imageSuffix = styleAnchor || theme.image_style_suffix;
+
+        // [DEBUG: COLOR SCHEME] - Purity Audit (Prompt 45)
+        this.logger.debug(`[DEBUG: COLOR_SCHEME] Theme merge result:`);
+        this.logger.debug(`  Base Theme: ${themeId}`);
+        this.logger.debug(`  Primary Accent: ${theme.primary_accent}`);
+        this.logger.debug(`  Background: ${theme.background_main}`);
+        this.logger.debug(`  Text: ${theme.text_main}`);
+        this.logger.debug(`  Custom Theme Override: ${payload?.custom_theme ? 'YES' : 'NO'}`);
 
         // 3. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
@@ -119,6 +129,13 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             });
         }
         this.logger.log('Image generation completed.');
+
+        // [DEBUG: ELEMENT COUNT] - Enforcement (Prompt 45)
+        this.logger.log(`[DEBUG: ELEMENT_COUNT] Final item count for render: ${blueprint.items.length}`);
+        const expectedCount = payload?.visualizations?.length || 0;
+        if (expectedCount > 0 && blueprint.items.length !== expectedCount) {
+            this.logger.warn(`[WARNING] Item count mismatch! Expected: ${expectedCount}, Got: ${blueprint.items.length}`);
+        }
 
         // 4. DOM Manipulation
         const dom = new JSDOM(templateContent);
@@ -258,6 +275,11 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             // Hub Center Mapping (Prompt 44): First item goes to center
             if (blueprint.template_id === 'hub_radial' && blueprint.items.length > 0) {
+                // [DEBUG: ITEM_MAPPING] - Hub Center (Prompt 45)
+                this.logger.debug(`[DEBUG: ITEM_MAPPING] Hub Center Assignment:`);
+                this.logger.debug(`  Item[0] -> #slot_title_center: "${blueprint.items[0].title}"`);
+                this.logger.debug(`  Item[0] -> #slot_txt_center: "${blueprint.items[0].description}"`);
+
                 const centerTitle = document.getElementById('slot_title_center');
                 const centerTxt = document.getElementById('slot_txt_center');
                 if (centerTitle) centerTitle.textContent = blueprint.items[0].title;
