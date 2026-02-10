@@ -94,6 +94,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         this.logger.debug(`  Text: ${theme.text_main}`);
         this.logger.debug(`  Custom Theme Override: ${payload?.custom_theme ? 'YES' : 'NO'}`);
 
+        // [DEBUG: THEME_FINAL] - Prompt 47
+        this.logger.debug(`[DEBUG: THEME_FINAL] ${JSON.stringify(theme)}`);
+
         // 3. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
         this.logger.log(`Template '${blueprint.template_id}' loaded successfully.`);
@@ -353,6 +356,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                         const x = 50 + Math.cos(angle) * radius;
                         const y = 50 + Math.sin(angle) * radius;
                         clone.setAttribute('style', `left: ${x}%; top: ${y}%; --i: ${index};`);
+
+                        // [MATH: HUB] - Prompt 47
+                        this.logger.debug(`[MATH: HUB] Spoke ${index}: Angle=${angle.toFixed(3)}rad, X=${x.toFixed(2)}%, Y=${y.toFixed(2)}%, Radius=${radius}%`);
                     }
 
                     container!.appendChild(clone);
@@ -378,6 +384,12 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             }
 
             const finalHtml = dom.serialize();
+
+            // [DEBUG: HTML_EXPORT] - Prompt 47: Save raw HTML
+            const debugHtmlPath = path.join(payload?.folder || '', `debug_${task.refined_prompt.slice(0, 20).replace(/\s+/g, '_')}_${Date.now()}.html`);
+            await this.localStorage.save(debugHtmlPath, Buffer.from(finalHtml, 'utf-8'));
+            this.logger.debug(`[DEBUG: HTML_EXPORT] Saved to: ${debugHtmlPath}`);
+
             this.logger.log('Rendering HTML to Image...');
             const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
             const folder = payload?.folder || '';

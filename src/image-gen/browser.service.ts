@@ -84,6 +84,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             // Set viewport to 1200x1200 as requested
             await page.setViewportSize({ width: 1200, height: 1200 });
 
+            // [DEBUG: RENDER] - Prompt 47
+            this.logger.debug(`[DEBUG: RENDER] Viewport=1200x1200, Scale=3.0`);
+
             await page.setContent(htmlContent);
 
             // Wait for network idle to ensure any external resources (fonts, etc) load. 
