@@ -11,56 +11,7 @@ import { LocalStorageService } from '../local-storage.service';
 import axios from 'axios';
 import * as pLimit from 'p-limit';
 
-// 1. Define Theme Library
-export const THEME_LIBRARY = {
-    cyber_neon: {
-        primary_accent: '#00f3ff',
-        background_main: '#09090b', // zinc-950
-        text_main: '#e4e4e7',       // zinc-200
-        font_family: 'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap',
-        font_name: 'Orbitron',
-        image_style_suffix: 'cyberpunk aesthetic, neon lighting, dark background, futuristic, glowing accents, volumetric fog',
-        glass_color: 'rgba(0, 0, 0, 0.6)' // Darker glass for better contrast
-    },
-    corp_blue: {
-        primary_accent: '#2563eb',  // blue-600
-        background_main: '#ffffff',
-        text_main: '#1e293b',       // slate-800
-        font_family: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap',
-        font_name: 'Inter',
-        image_style_suffix: 'corporate memphis style, clean vector art, flat design, professional, white background, minimalist',
-        glass_color: 'rgba(255, 255, 255, 0.8)' // Light frost
-    },
-    nature_fresh: {
-        primary_accent: '#16a34a',  // green-600
-        background_main: '#fcfbf9', // warm cream
-        text_main: '#292524',       // stone-800
-        font_family: 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap',
-        font_name: 'Quicksand',
-        image_style_suffix: 'organic style, soft lighting, natural colors, matte finish, botanic details, high quality render',
-        glass_color: 'rgba(255, 255, 255, 0.7)' // Soft organic glass
-    },
-    warm_creative: {
-        primary_accent: '#f59e0b',  // amber-500
-        background_main: '#fffbeb', // amber-50
-        text_main: '#451a03',       // amber-950
-        font_family: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap',
-        font_name: 'Playfair Display',
-        image_style_suffix: 'playful 3D style, warm lighting, round shapes, vibrant colors, claymorphism, cheerful',
-        glass_color: 'rgba(255, 255, 255, 0.6)' // Warm glass
-    },
-    wellness_mindful: {
-        primary_accent: '#5B9A8B',  // Muted Teal
-        background_main: '#FAF9F6', // Cream White
-        text_main: '#2D3748',       // Deep Slate
-        font_family: 'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap',
-        font_name: 'Outfit',
-        image_style_suffix: 'wellness aesthetic, soft morning sunlight, serene, minimalist watercolor details',
-        glass_color: 'rgba(250, 249, 246, 0.85)'
-    }
-} as const;
-
-export type ThemeId = keyof typeof THEME_LIBRARY;
+import { THEME_LIBRARY, ThemeId, ThemeConfig } from '../themes.config';
 
 export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split';
@@ -102,7 +53,6 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
         const payload = task.payload as any;
         const styleAnchor = payload?.style_anchor;
-        const customPalette = payload?.custom_palette;
         const expectedTemplateId = payload?.template_id;
 
         // 1. Generate Blueprint
@@ -114,45 +64,46 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             throw error;
         }
 
+        // 2. Precedence Logic: payload.custom_theme -> THEME_LIBRARY[blueprint.theme_id] -> corp_blue
         const themeId = payload?.theme_id || blueprint.theme_id || 'corp_blue';
         const themeBase = THEME_LIBRARY[themeId] || THEME_LIBRARY['corp_blue'];
-        const theme = {
+        const theme: ThemeConfig = {
             ...themeBase,
-            primary_accent: customPalette?.accent || themeBase.primary_accent,
-            background_main: customPalette?.background || themeBase.background_main,
-            text_main: customPalette?.text || themeBase.text_main,
+            primary_accent: payload?.custom_theme?.primary_accent || payload?.custom_palette?.accent || themeBase.primary_accent,
+            background_main: payload?.custom_theme?.background_main || payload?.custom_palette?.background || themeBase.background_main,
+            text_main: payload?.custom_theme?.text_main || payload?.custom_palette?.text || themeBase.text_main,
         };
         const imageSuffix = styleAnchor || theme.image_style_suffix;
 
-        // 2. Load Template
+        // 3. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
         this.logger.log(`Template '${blueprint.template_id}' loaded successfully.`);
 
-        // 3. Image Generation
+        // 4. Image Generation
         let itemImages: string[] = [];
         let backgroundImage = '';
         let versusImages: Record<string, string> = {};
 
         if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
             this.logger.log(`Generating Versus images for subjects...`);
-            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme.primary_accent, false, imageSuffix, theme.background_main)
+            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme, false, styleAnchor)
                 .then(b64 => ({ key: 'left', base64: b64 }));
-            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme.primary_accent, false, imageSuffix, theme.background_main)
+            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme, false, styleAnchor)
                 .then(b64 => ({ key: 'right', base64: b64 }));
-            const pBg = this.generateImage("Subtle abstract background, split screen contest", theme.primary_accent, true, imageSuffix, theme.background_main)
+            const pBg = this.generateImage("Clean split comparison layout", theme, true, styleAnchor)
                 .then(b64 => ({ key: 'bg', base64: b64 }));
             const results = await Promise.all([p1, p2, pBg]);
             results.forEach(r => versusImages[r.key] = r.base64);
             backgroundImage = versusImages['bg'];
         } else {
             this.logger.log(`Starting parallel image generation for ${blueprint.items.length} items...`);
-            const itemImagePromises = blueprint.items.map((item, idx) =>
-                this.generateImage(`${item.title}: ${item.description}`, theme.primary_accent, false, imageSuffix, theme.background_main)
+            const promises = blueprint.items.map((item, idx) =>
+                this.generateImage(`${item.title}: ${item.description}`, theme, false, styleAnchor)
                     .then(base64 => ({ index: idx, base64 }))
             );
-            const backgroundImagePromise = this.generateImage("Abstract background texture", theme.primary_accent, true, imageSuffix, theme.background_main)
-                .then(base64 => ({ index: -1, base64 }));
-            const results = await Promise.all([...itemImagePromises, backgroundImagePromise]);
+            promises.push(this.generateImage("Abstract background texture", theme, true, styleAnchor).then(base64 => ({ index: -1, base64 })));
+
+            const results = await Promise.all(promises);
             itemImages = new Array(blueprint.items.length);
             results.forEach(res => {
                 if (res.index === -1) backgroundImage = res.base64;
@@ -391,7 +342,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             Goal: Select template, define style, generate structured content.
 
             Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
-            Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
+            Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative', 'wellness_mindful'.
 
             User Request: "${prompt}"
             ${styleAnchor ? `STRICT STYLE VIBE: ${styleAnchor}` : ''}
@@ -399,7 +350,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             Task:
             1. Select Template & Theme. ${expectedTemplateId ? `REQUIRED TEMPLATE: ${expectedTemplateId}` : ''}
             2. Generate Items (3-9 normal, 3-5 vs).
-            3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
+            3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm, Wellness->Wellness).
             
             OUTPUT JSON ONLY:
             {
@@ -423,7 +374,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         }
     }
 
-    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 5, initialDelay = 3000): Promise<any> {
+    private async generateWithBackoff(apiCall: () => Promise<any>, retries = 5, initialDelay = 5000): Promise<any> {
         let attempt = 0;
         let delay = initialDelay;
 
@@ -451,17 +402,20 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         return fs.readFileSync(filePath, 'utf-8');
     }
 
-    private async generateImage(prompt: string, accentColor: string, isBackground: boolean, styleDirective: string, backgroundColor?: string): Promise<string> {
+    private async generateImage(prompt: string, theme: ThemeConfig, isBackground: boolean, styleAnchor?: string): Promise<string> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-        // Implementation of Prompt 41: Color Forcing & Quality Refinement
-        const qualityDirectives = "primary color palette of " + accentColor + (backgroundColor ? " and " + backgroundColor : "") + ", minimalist vector style, clean composition, soft lighting, 8k resolution, professional wellness illustration";
-        const negativePrompt = " --no text, blurry, distorted, messy, low quality, stylized text, characters, letters";
+        // Atomic Prompt Refactor (Prompt 42.1)
+        let fullPrompt: string;
+        if (isBackground) {
+            fullPrompt = `very faint high-quality paper texture background, solid light color, almost white, minimalist, clean --no text, blurry, distorted, messy, shadows`;
+        } else {
+            const styleDirective = styleAnchor ? `${styleAnchor}, ` : "";
+            fullPrompt = `${styleDirective}${prompt}, minimalist line art, vector icon, flat colors, ${theme.primary_accent} accents, white background --no shadows, 3d, realistic, blurry, text`;
+        }
 
-        let fullPrompt = isBackground
-            ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, ${qualityDirectives}${negativePrompt}`
-            : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}, ${qualityDirectives}${negativePrompt}`;
+        this.logger.log(`SiliconFlow Prompt: ${fullPrompt}`);
 
         try {
             const response = await axios.post(

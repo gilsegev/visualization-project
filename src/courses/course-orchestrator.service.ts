@@ -51,7 +51,11 @@ export class CourseOrchestratorService {
                     refined_prompt: `${imagePromptPrefix}${viz.title}: ${viz.description}`,
                     payload: {
                         style_anchor: global_style_anchor,
-                        custom_palette: theme_mapping,
+                        custom_theme: {
+                            primary_accent: theme_mapping.accent,
+                            background_main: theme_mapping.background,
+                            text_main: theme_mapping.text
+                        },
                         theme_id: prePass.theme_id, // Pass Architect-selected theme
                         folder: path.join('courses', job.course_id),
                         template_id: template_suggestions[viz.id]
@@ -100,9 +104,10 @@ export class CourseOrchestratorService {
             ${visualizationsSummary}
 
             TASK:
-            1. global_style_anchor: A high-density Art Directive (30-40 words). 
-               Define Lighting (e.g. volumetric, soft), Texture (e.g. paper, digital grit), and Composition (e.g. centered, minimalist whitespace). 
-               Must act as a prefix for image prompts to hold the "vibe" together.
+            1. global_style_anchor: A sharp Art Directive focused ONLY on Medium and Color (e.g., "Flat Vector, Pastel" or "Minimalist Line Art"). 
+               STRICT RULE: Avoid mentions of lighting, resolution, or quality.
+               STRICT RULE: For Wellness/Mindfulness, use "Minimalist hand-drawn line art, flat colors, soft pastel aesthetic."
+               Must act as a prefix for image prompts.
             
             2. theme_mapping: Map palette to 'accent', 'background', 'text'. 
                STRICT RULE: Contrast Safety. 'text' must be highly legible against 'background'.

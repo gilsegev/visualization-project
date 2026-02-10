@@ -1,23 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root { --theme-glow: #00f7ff; --hub-bg: #0a1128; --radius: 300px; }
-    body { background: radial-gradient(circle at center, #1a2c4e 0%, #050a14 100%); color: white; min-height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Plus Jakarta Sans', sans-serif; }
-    .hex-clip { clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%); }
-    .spoke-container { --angle: calc(360deg / var(--total) * var(--i) - 90deg); position: absolute; left: 50%; top: 50%; translate: calc(cos(var(--angle)) * var(--radius) - 50%) calc(sin(var(--angle)) * var(--radius) - 50%); }
-    .spoke-container::before { content: ''; position: absolute; top: 50%; left: 50%; width: var(--radius); height: 2px; background: var(--theme-glow); transform-origin: left center; rotate: var(--angle); z-index: -1; box-shadow: 0 0 15px var(--theme-glow); opacity: 0.4; }
-    .hub-glow { box-shadow: 0 0 40px var(--theme-glow); border: 2px solid var(--theme-glow); }
-    .card-bg { background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(12px); border: 1px solid rgba(0, 247, 255, 0.2); }
+    :root {
+      --theme-glow: #00f7ff;
+      --hub-bg: #0a1128;
+      --radius: 300px;
+    }
+
+    body {
+      background: radial-gradient(circle at center, #1a2c4e 0%, #050a14 100%);
+      color: white;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+
+    .hex-clip {
+      clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
+    }
+
+    .spoke-container {
+      --angle: calc(360deg / var(--total) * var(--i) - 90deg);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      translate: calc(cos(var(--angle)) * var(--radius) - 50%) calc(sin(var(--angle)) * var(--radius) - 50%);
+    }
+
+    .spoke-container::before {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: var(--radius);
+      height: 2px;
+      background: var(--theme-glow);
+      transform-origin: left center;
+      rotate: var(--angle);
+      z-index: -1;
+      box-shadow: 0 0 15px var(--theme-glow);
+      opacity: 0.4;
+    }
+
+    .hub-glow {
+      box-shadow: 0 0 40px var(--theme-glow);
+      border: 2px solid var(--theme-glow);
+    }
+
+    .card-bg {
+      background: rgba(15, 23, 42, 0.9);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(0, 247, 255, 0.2);
+    }
   </style>
 </head>
+
 <body>
 
   <div class="relative w-[900px] h-[900px] flex justify-center items-center">
-    
-    <div class="relative z-20 w-56 h-56 bg-slate-900 hex-clip flex flex-col justify-center items-center text-center p-6 hub-glow">
+
+    <div
+      class="relative z-20 w-56 h-56 bg-slate-900 hex-clip flex flex-col justify-center items-center text-center p-6 hub-glow">
       <h1 class="text-2xl font-black text-cyan-400 tracking-tighter leading-none">NBA<br>ELITE<br>2026</h1>
       <p class="text-[10px] uppercase tracking-[0.2em] mt-2 text-slate-400">All-Star Vanguard</p>
     </div>
@@ -26,65 +75,72 @@
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 0;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_JOKIC]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_JOKIC]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">NIKOLA JOKIĆ</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">3-time MVP and the reigning master of the triple-double. The most efficient offensive engine in history.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">3-time MVP and the reigning master of the
+            triple-double. The most efficient offensive engine in history.</p>
         </div>
       </div>
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 1;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_SGA]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_SGA]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">SHAI G.A.</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">2025 MVP & Finals MVP. A defensive hawk and the most consistent mid-range scorer since MJ.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">2025 MVP & Finals MVP. A defensive hawk and the most
+            consistent mid-range scorer since MJ.</p>
         </div>
       </div>
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 2;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_LUKA]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_LUKA]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">LUKA DONČIĆ</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">A one-man offensive army. Leading the Lakers era with unparalleled court vision and step-back mastery.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">A one-man offensive army. Leading the Lakers era with
+            unparalleled court vision and step-back mastery.</p>
         </div>
       </div>
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 3;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_GIANNIS]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_GIANNIS]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">GIANNIS A.</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The "Greek Freak" remains the gold standard for two-way dominance and physical transition power.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The "Greek Freak" remains the gold standard for
+            two-way dominance and physical transition power.</p>
         </div>
       </div>
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 4;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_WEMBY]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_WEMBY]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">V. WEMBANYAMA</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The defensive unicorn. A 7'4" phenom who has redefined rim protection and shooting range for bigs.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The defensive unicorn. A 7'4" phenom who has
+            redefined rim protection and shooting range for bigs.</p>
         </div>
       </div>
 
       <div class="spoke-container flex flex-col items-center w-56" style="--i: 5;">
         <div class="w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-          <img src="[BASE64_CURRY]" class="w-full h-full object-cover hex-clip">
+          <img src="[BASE64_CURRY]" class="w-full h-full object-cover hex-clip" style="mix-blend-mode: multiply;">
         </div>
         <div class="card-bg mt-4 p-3 rounded-xl text-center">
           <h2 class="text-cyan-400 font-bold text-sm">STEPHEN CURRY</h2>
-          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The greatest shooter ever. Aging like fine wine, his gravity still collapses every defense in the league.</p>
+          <p class="text-[10px] text-slate-300 mt-1 leading-tight">The greatest shooter ever. Aging like fine wine, his
+            gravity still collapses every defense in the league.</p>
         </div>
       </div>
 
     </div>
   </div>
 </body>
+
 </html>
