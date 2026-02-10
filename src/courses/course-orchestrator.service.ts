@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import * as pLimit from 'p-limit';
 import { HtmlInfographicStrategy } from '../image-gen/strategies/html-infographic.strategy';
 import { CourseJob, BatchResult } from './course.dto';
@@ -11,16 +11,24 @@ import * as path from 'path';
 @Injectable()
 export class CourseOrchestratorService {
     private readonly logger = new Logger(CourseOrchestratorService.name);
-    private model: GenerativeModel;
+    private openai: OpenAI;
 
     constructor(
         private readonly configService: ConfigService,
         private readonly htmlStrategy: HtmlInfographicStrategy,
     ) {
-        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+        const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+        const baseURL = 'https://openrouter.ai/api/v1';
+
         if (apiKey) {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            this.openai = new OpenAI({
+                baseURL,
+                apiKey,
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://visualization-project.com', // Optional: Your site URL
+                    'X-Title': 'Visualization Project', // Optional: Your site name
+                }
+            });
         }
     }
 
@@ -91,10 +99,12 @@ export class CourseOrchestratorService {
     private async performArchitectPrePass(job: CourseJob) {
         const visualizationsSummary = job.visualizations.map(v => `- ${v.id}: ${v.title} (${v.description})`).join('\n');
 
-        const prompt = `
+        const systemMessage = `
             You are a Creative Director & Data Vis Architect. 
             Define a unified Art Directive and Template Strategy for this course.
-            
+        `;
+
+        const userMessage = `
             Title: ${job.course_metadata.title}
             Philosophy: ${job.course_metadata.global_style_guide.philosophy}
             Image Style: ${job.course_metadata.global_style_guide.image_style}
@@ -128,11 +138,18 @@ export class CourseOrchestratorService {
         `;
 
         try {
-            const result = await this.generateWithBackoff(() => this.model.generateContent(prompt));
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const completion = await this.generateWithBackoff(() => this.openai.chat.completions.create({
+                model: 'google/gemini-2.0-flash-001', // OpenRouter model ID
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    { role: 'user', content: userMessage }
+                ],
+                response_format: { type: 'json_object' }
+            }));
+
+            const text = completion.choices[0].message.content;
             const parsed = JSON.parse(text);
 
-            // Ensure contrast safety fallback if needed or just return parsed
             return parsed;
         } catch (e) {
             this.logger.error('Architect Pre-Pass Failed', e);
@@ -155,10 +172,11 @@ export class CourseOrchestratorService {
             try {
                 return await apiCall();
             } catch (error: any) {
-                if (error.message?.includes('429') || error.message?.includes('Resource exhausted')) {
+                // OpenAI 429 or OpenRouter specific errors
+                if (error.status === 429 || error.message?.includes('429') || error.message?.includes('Resource exhausted') || error.code === 'rate_limit_exceeded') {
                     attempt++;
                     if (attempt > retries) throw error;
-                    this.logger.warn(`Gemini 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                    this.logger.warn(`OpenRouter/OpenAI 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay *= 2;
                 } else {

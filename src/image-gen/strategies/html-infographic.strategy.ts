@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { JSDOM } from 'jsdom';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { BrowserService } from '../browser.service';
 import { LocalStorageService } from '../local-storage.service';
 import axios from 'axios';
@@ -31,7 +31,7 @@ export interface HtmlInfographicBlueprint {
 
 @Injectable()
 export class HtmlInfographicStrategy extends BaseImageStrategy {
-    private model: GenerativeModel;
+    private openai: OpenAI;
 
     constructor(
         protected readonly configService: ConfigService,
@@ -39,12 +39,20 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         protected readonly localStorage: LocalStorageService
     ) {
         super();
-        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
+        const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+        const baseURL = 'https://openrouter.ai/api/v1';
+
         if (apiKey) {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            this.openai = new OpenAI({
+                baseURL,
+                apiKey,
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://visualization-project.com',
+                    'X-Title': 'Visualization Project',
+                }
+            });
         } else {
-            this.logger.warn('GEMINI_API_KEY not found. Blueprint generation will fail.');
+            this.logger.warn('OPENROUTER_API_KEY not found. Blueprint generation will fail.');
         }
     }
 
@@ -335,15 +343,17 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
     }
 
     public async generateBlueprint(prompt: string, styleAnchor?: string, expectedTemplateId?: string): Promise<HtmlInfographicBlueprint> {
-        if (!this.model) throw new Error('Gemini API Key not configured/found.');
+        if (!this.openai) throw new Error('OpenRouter API Key not configured/found.');
 
-        const systemPrompt = `
+        const systemMessage = `
             You are an expert Data Visualization Architect.
             Goal: Select template, define style, generate structured content.
 
             Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
             Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative', 'wellness_mindful'.
+        `;
 
+        const userMessage = `
             User Request: "${prompt}"
             ${styleAnchor ? `STRICT STYLE VIBE: ${styleAnchor}` : ''}
 
@@ -363,8 +373,16 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         `;
 
         try {
-            const result = await this.generateWithBackoff(() => this.model.generateContent(systemPrompt));
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const completion = await this.generateWithBackoff(() => this.openai.chat.completions.create({
+                model: 'google/gemini-2.0-flash-001',
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    { role: 'user', content: userMessage }
+                ],
+                response_format: { type: 'json_object' }
+            }));
+
+            const text = completion.choices[0].message.content;
             const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
             if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
             return parsed;

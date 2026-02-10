@@ -1,25 +1,34 @@
 import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { ImageTask, ImageTaskSchema } from './image-task.schema';
 import { z } from 'zod';
 
 @Injectable()
 export class ImageRouterService {
   private readonly logger = new Logger(ImageRouterService.name);
-  private model: GenerativeModel;
+  private openai: OpenAI;
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      this.logger.warn('GEMINI_API_KEY not found in environment variables');
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const baseURL = 'https://openrouter.ai/api/v1';
+
+    if (apiKey) {
+      this.openai = new OpenAI({
+        baseURL,
+        apiKey,
+        defaultHeaders: {
+          'HTTP-Referer': 'https://visualization-project.com',
+          'X-Title': 'Visualization Project',
+        }
+      });
+    } else {
+      this.logger.warn('OPENROUTER_API_KEY not found in environment variables');
     }
-    const genAI = new GoogleGenerativeAI(apiKey || '');
-    this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
   }
 
   async classify(content: string): Promise<ImageTask[]> {
     this.logger.log(`Classifying content: "${content}"`);
-    const prompt = `
+    const systemMessage = `
       You are an AI that classifies user intent into image generation tasks.
       Analyze the following user request and break it down into a list of specific image tasks.
       
@@ -29,7 +38,9 @@ export class ImageRouterService {
       - 'math_formula': For equations, mathematical expressions. Payload must include 'latex'.
       - 'beautify_slide': For design layouts or slide improvements.
       - 'infographic': For visual explanations, timelines, processes, or structured narratives.
+    `;
 
+    const userMessage = `
       User Request: "${content}"
 
       Output STRICT JSON ONLY. The output must be an array of objects matching this schema:
@@ -50,16 +61,25 @@ export class ImageRouterService {
         }
       ]
     `;
+
     try {
-      const result = await this.model.generateContent(prompt);
-      const responseText = result.response.text();
+      if (!this.openai) {
+        throw new Error('OpenRouter API Key not configured');
+      }
 
-      // Clean up markdown code blocks if present
-      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const completion = await this.openai.chat.completions.create({
+        model: 'google/gemini-2.0-flash-001',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: userMessage }
+        ],
+        response_format: { type: 'json_object' }
+      });
 
-      this.logger.debug(`Raw LLM Response: ${cleanedText}`);
+      const responseText = completion.choices[0].message.content;
+      this.logger.debug(`Raw LLM Response: ${responseText}`);
 
-      const parsed = JSON.parse(cleanedText);
+      const parsed = JSON.parse(responseText);
 
       // Validate with Zod
       const validated = z.array(ImageTaskSchema).parse(parsed);

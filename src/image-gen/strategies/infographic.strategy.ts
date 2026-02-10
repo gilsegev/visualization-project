@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JSDOM } from 'jsdom';
@@ -39,7 +39,7 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class InfographicStrategy extends BaseImageStrategy {
-    private model: GenerativeModel;
+    private openai: OpenAI;
     // logger is inherited from BaseImageStrategy
 
     constructor(
@@ -47,19 +47,23 @@ export class InfographicStrategy extends BaseImageStrategy {
         protected readonly localStorage: LocalStorageService,
         protected readonly browserService: BrowserService
     ) {
-        // BaseImageStrategy (in base-image.strategy.ts) likely assumes no args or doesn't use DI in constructor?
-        // Wait, viewing file 862: public abstract class BaseImageStrategy ... no constructor defined?
-        // If it has no constructor, super() takes no args.
-        // BUT Step 855 tried `super(configService, localStorage)` and got error "Expected 0 arguments, but got 2".
-        // So checking 862 again: No constructor in BaseImageStrategy.
         super();
-        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-        this.logger.log(`[DEBUG] CWD: ${process.cwd()}`);
-        this.logger.log(`[DEBUG] GEMINI_API_KEY: ${apiKey ? 'Found' : 'Not Found'}`);
+        const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+        const baseURL = 'https://openrouter.ai/api/v1';
+
         if (apiKey) {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+            this.openai = new OpenAI({
+                baseURL,
+                apiKey,
+                defaultHeaders: {
+                    'HTTP-Referer': 'https://visualization-project.com',
+                    'X-Title': 'Visualization Project',
+                }
+            });
+        } else {
+            this.logger.warn('OPENROUTER_API_KEY not found. Blueprint generation will fail.');
         }
+        this.logger.log(`[DEBUG] CWD: ${process.cwd()}`);
     }
 
     protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
@@ -343,18 +347,20 @@ export class InfographicStrategy extends BaseImageStrategy {
     }
 
     private async generateBlueprint(prompt: string): Promise<InfographicBlueprint> {
-        if (!this.model) {
-            throw new Error('Gemini API Key not configured for InfographicStrategy');
+        if (!this.openai) {
+            throw new Error('OpenRouter API Key not configured for InfographicStrategy');
         }
 
-        const systemPrompt = `
+        const systemMessage = `
             You are an expert Information Designer and Visual Art Director.
             Analyze the user request and generate a cohesive visual blueprint for an infographic.
 
             Style Guideline:
             - Target a "National Geographic Style Macro Photography" or "3D Scientific Illustration" aesthetic.
             - Ensure the 'global_style_prompt' strictly emphasizes a "soft blurred background" or "pure white background" to ensure the subject pops within the circular mask.
+        `;
 
+        const userMessage = `
             User Request: "${prompt}"
 
             Output a strictly structured JSON object following this schema:
@@ -377,8 +383,16 @@ export class InfographicStrategy extends BaseImageStrategy {
         `;
 
         try {
-            const result = await this.generateWithBackoff(() => this.model.generateContent(systemPrompt));
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const completion = await this.generateWithBackoff(() => this.openai.chat.completions.create({
+                model: 'google/gemini-2.0-flash-001',
+                messages: [
+                    { role: 'system', content: systemMessage },
+                    { role: 'user', content: userMessage }
+                ],
+                response_format: { type: 'json_object' }
+            }));
+
+            const text = completion.choices[0].message.content;
             const parsed = JSON.parse(text) as InfographicBlueprint;
 
             // Basic validation
@@ -401,12 +415,13 @@ export class InfographicStrategy extends BaseImageStrategy {
             try {
                 return await apiCall();
             } catch (error) {
-                // Check for 429 or Resource Exhausted
-                if (error.response?.status === 429 || error.message.includes('429') || error.message.includes('Resource exhausted')) {
+                // Check for 429 or Resource Exhausted (OpenAI/OpenRouter)
+                // OpenAI often puts status in error.status, but sometimes response.status
+                if (error.status === 429 || error.response?.status === 429 || error.message?.includes('429') || error.code === 'rate_limit_exceeded') {
                     attempt++;
                     if (attempt > retries) throw error;
 
-                    this.logger.warn(`Gemini 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
+                    this.logger.warn(`OpenRouter 429 detected. Retrying in ${delay}ms... (Attempt ${attempt}/${retries})`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     delay *= 2; // Exponential backoff
                 } else {
