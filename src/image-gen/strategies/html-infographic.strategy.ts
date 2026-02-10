@@ -256,91 +256,99 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             container.innerHTML = '';
 
-            blueprint.items.forEach((item, index) => {
-                const clone = masterItem!.cloneNode(true) as Element;
+            // Hub Center Mapping (Prompt 44): First item goes to center
+            if (blueprint.template_id === 'hub_radial' && blueprint.items.length > 0) {
+                const centerTitle = document.getElementById('slot_title_center');
+                const centerTxt = document.getElementById('slot_txt_center');
+                if (centerTitle) centerTitle.textContent = blueprint.items[0].title;
+                if (centerTxt) centerTxt.textContent = blueprint.items[0].description;
 
-                // Identification Logic
-                const setContent = (selector: string | null, val: string, isText = true) => {
-                    if (!selector) return; // Should we querySelector?
-                    // Logic below uses explicit IDs or classes
-                };
+                // Process remaining items as spokes
+                blueprint.items.slice(1).forEach((item, index) => {
+                    const clone = masterItem!.cloneNode(true) as Element;
 
-                // ID Correction Loop
-                const updateId = (prefix: string) => {
-                    const el = clone.querySelector(`[id^="${prefix}"]`);
-                    if (el) el.id = `${prefix}_${index}`;
-                    return el;
-                };
+                    // Identification Logic
+                    const setContent = (selector: string | null, val: string, isText = true) => {
+                        if (!selector) return; // Should we querySelector?
+                        // Logic below uses explicit IDs or classes
+                    };
 
-                const img = updateId('slot_img');
-                if (img) img.setAttribute('src', itemImages[index]);
+                    // ID Correction Loop
+                    const updateId = (prefix: string) => {
+                        const el = clone.querySelector(`[id^="${prefix}"]`);
+                        if (el) el.id = `${prefix}_${index}`;
+                        return el;
+                    };
 
-                const num = updateId('slot_num');
-                if (num) num.textContent = String(index + 1).padStart(2, '0');
+                    const img = updateId('slot_img');
+                    if (img) img.setAttribute('src', itemImages[index]);
 
-                const title = updateId('slot_title') || clone.querySelector('h2');
-                if (title) {
-                    title.textContent = item.title;
-                    // Ensure title doesn't break layout if too long?
-                }
+                    const num = updateId('slot_num');
+                    if (num) num.textContent = String(index + 1).padStart(2, '0');
 
-                const txt = updateId('slot_txt') || clone.querySelector('p');
-                if (txt) {
-                    txt.classList.add('line-clamp-4'); // Apply Fail-Safe
-                    txt.textContent = item.description;
-                }
+                    const title = updateId('slot_title') || clone.querySelector('h2');
+                    if (title) {
+                        title.textContent = item.title;
+                        // Ensure title doesn't break layout if too long?
+                    }
 
-                // Step List fallback
-                const stepNumEl = clone.querySelector('.step-number');
-                if (stepNumEl) stepNumEl.textContent = String(index + 1).padStart(2, '0');
+                    const txt = updateId('slot_txt') || clone.querySelector('p');
+                    if (txt) {
+                        txt.classList.add('line-clamp-4'); // Apply Fail-Safe
+                        txt.textContent = item.description;
+                    }
 
-                // Hub Radial fallback
-                if (!img && blueprint.template_id === 'hub_radial') {
-                    // Check existing simple <img> logic
-                    const imgEl = clone.querySelector('img');
-                    if (imgEl) imgEl.src = itemImages[index];
-                }
+                    // Step List fallback
+                    const stepNumEl = clone.querySelector('.step-number');
+                    if (stepNumEl) stepNumEl.textContent = String(index + 1).padStart(2, '0');
+
+                    // Hub Radial fallback
+                    if (!img && blueprint.template_id === 'hub_radial') {
+                        // Check existing simple <img> logic
+                        const imgEl = clone.querySelector('img');
+                        if (imgEl) imgEl.src = itemImages[index];
+                    }
+
+                    if (blueprint.template_id === 'hub_radial') {
+                        clone.setAttribute('style', `--i: ${index};`);
+                    }
+
+                    container!.appendChild(clone);
+                });
 
                 if (blueprint.template_id === 'hub_radial') {
-                    clone.setAttribute('style', `--i: ${index};`);
+                    container.setAttribute('style', `--total: ${blueprint.items.length};`);
                 }
-
-                container!.appendChild(clone);
-            });
-
-            if (blueprint.template_id === 'hub_radial') {
-                container.setAttribute('style', `--total: ${blueprint.items.length};`);
             }
+
+            if (backgroundImage) {
+                const bgDiv = document.createElement('div');
+                bgDiv.style.position = 'fixed';
+                bgDiv.style.top = '0';
+                bgDiv.style.left = '0';
+                bgDiv.style.width = '100vw';
+                bgDiv.style.height = '100vh';
+                bgDiv.style.zIndex = '-50';
+                bgDiv.style.backgroundImage = `url(${backgroundImage})`;
+                bgDiv.style.backgroundSize = 'cover';
+                bgDiv.style.opacity = '0.3';
+                document.body.prepend(bgDiv);
+            }
+
+            const finalHtml = dom.serialize();
+            this.logger.log('Rendering HTML to Image...');
+            const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
+            const folder = payload?.folder || '';
+            const filename = path.join(folder, `html_infographic_${Date.now()}.png`);
+            const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
+            this.logger.log(`Infographic saved to: ${publicUrl}`);
+
+            return {
+                url: publicUrl,
+                posterUrl: publicUrl,
+                payload: { blueprint, html: finalHtml }
+            };
         }
-
-        if (backgroundImage) {
-            const bgDiv = document.createElement('div');
-            bgDiv.style.position = 'fixed';
-            bgDiv.style.top = '0';
-            bgDiv.style.left = '0';
-            bgDiv.style.width = '100vw';
-            bgDiv.style.height = '100vh';
-            bgDiv.style.zIndex = '-50';
-            bgDiv.style.backgroundImage = `url(${backgroundImage})`;
-            bgDiv.style.backgroundSize = 'cover';
-            bgDiv.style.opacity = '0.3';
-            document.body.prepend(bgDiv);
-        }
-
-        const finalHtml = dom.serialize();
-        this.logger.log('Rendering HTML to Image...');
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
-        const folder = payload?.folder || '';
-        const filename = path.join(folder, `html_infographic_${Date.now()}.png`);
-        const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
-        this.logger.log(`Infographic saved to: ${publicUrl}`);
-
-        return {
-            url: publicUrl,
-            posterUrl: publicUrl,
-            payload: { blueprint, html: finalHtml }
-        };
-    }
 
     public async generateBlueprint(prompt: string, styleAnchor?: string, expectedTemplateId?: string): Promise<HtmlInfographicBlueprint> {
         if (!this.openai) throw new Error('OpenRouter API Key not configured/found.');
@@ -424,10 +432,16 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-        // Atomic Prompt Refactor (Prompt 42.1)
+        // Atomic Prompt Engine (Prompt 44)
         let fullPrompt: string;
+        const isWellness = styleAnchor?.toLowerCase().includes('wellness') || styleAnchor?.toLowerCase().includes('watercolor');
+
         if (isBackground) {
-            fullPrompt = `very faint high-quality paper texture background, solid light color, almost white, minimalist, clean --no text, blurry, distorted, messy, shadows`;
+            fullPrompt = isWellness
+                ? `high-quality heavy grain watercolor paper texture, cream-white #FAF9F6 --no text, patterns, images`
+                : `very faint high-quality paper texture background, solid light color, almost white, minimalist, clean --no text, blurry, distorted, messy, shadows`;
+        } else if (isWellness) {
+            fullPrompt = `${prompt}, hand-drawn charcoal lines, soft watercolor wash, ${theme.primary_accent} accents, minimal detail, white background --no 3d, text, shadows, frame`;
         } else {
             const styleDirective = styleAnchor ? `${styleAnchor}, ` : "";
             fullPrompt = `${styleDirective}${prompt}, minimalist line art, vector icon, flat colors, ${theme.primary_accent} accents, white background --no shadows, 3d, realistic, blurry, text`;

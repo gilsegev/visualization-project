@@ -44,8 +44,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         await this.ensureBrowser();
         // Create a new independent context for each task to ensure isolation
         const context = await this.browser.newContext({
-            viewport: { width: 1024, height: 1024 },
-            deviceScaleFactor: 1,
+            viewport: { width: 1200, height: 1200 },
+            deviceScaleFactor: 3,
             ...options, // Pass video options if provided
         });
         const page = await context.newPage();
@@ -79,7 +79,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
     async screenshotHtml(htmlContent: string): Promise<Buffer> {
         // Reuse getNewPage with high DPI setting for Retina quality as requested
-        const { context, page } = await this.getNewPage({ deviceScaleFactor: 2.0 } as any); // Type cast if options interface not fully updated
+        const { context, page } = await this.getNewPage({ deviceScaleFactor: 3.0 } as any);
         try {
             // Set viewport to 1200x1200 as requested
             await page.setViewportSize({ width: 1200, height: 1200 });
