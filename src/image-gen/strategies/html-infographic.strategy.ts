@@ -94,11 +94,12 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const payload = task.payload as any;
         const styleAnchor = payload?.style_anchor;
         const customPalette = payload?.custom_palette;
+        const expectedTemplateId = payload?.template_id;
 
         // 1. Generate Blueprint
         let blueprint: HtmlInfographicBlueprint;
         try {
-            blueprint = await this.generateBlueprint(task.refined_prompt, styleAnchor);
+            blueprint = await this.generateBlueprint(task.refined_prompt, styleAnchor, expectedTemplateId);
             this.logger.log(`Blueprint generated: Template=${blueprint.template_id}, Theme=${blueprint.theme_id}, Items=${blueprint.items.length}`);
         } catch (error) {
             this.logger.error(`Blueprint generation failed: ${error.message}`);
@@ -361,7 +362,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         };
     }
 
-    public async generateBlueprint(prompt: string, styleAnchor?: string): Promise<HtmlInfographicBlueprint> {
+    public async generateBlueprint(prompt: string, styleAnchor?: string, expectedTemplateId?: string): Promise<HtmlInfographicBlueprint> {
         if (!this.model) throw new Error('Gemini API Key not configured/found.');
 
         const systemPrompt = `
@@ -375,7 +376,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             ${styleAnchor ? `STRICT STYLE VIBE: ${styleAnchor}` : ''}
 
             Task:
-            1. Select Template & Theme.
+            1. Select Template & Theme. ${expectedTemplateId ? `REQUIRED TEMPLATE: ${expectedTemplateId}` : ''}
             2. Generate Items (3-9 normal, 3-5 vs).
             3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
             

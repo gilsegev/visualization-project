@@ -4,8 +4,10 @@ This feature enables the generation of multiple infographics for a full course o
 
 ## Features
 
-- **Global Style Anchor**: Uses Gemini to perform an "Architect Pre-Pass," defining a consistent visual vibe and color palette for the entire batch.
-- **Concurrent Processing**: Parallelizes image generation using `p-limit` to optimize performance while respecting API rate limits.
+- **High-Density Art Directive**: The Architect defines a 30-40 word "global style anchor" covering lighting, texture, and composition, which is prepended to every image prompt for deep visual harmony.
+- **Intelligent Template Mapping**: The Architect maps each visualization to the most appropriate template (e.g., `step_stone` for cycles, `bento_grid` for collections) based on content analysis.
+- **Contrast Safety**: Ensures that theme colors selected by the Architect maintain high legibility (text vs background).
+- **Concurrent Processing**: Parallelizes image generation using `p-limit` (concurrency 2) to optimize performance while respecting API rate limits.
 - **Resilient Generation**: Implements exponential backoff for Gemini API calls to handle `429 Resource Exhausted` errors during high-concurrency jobs.
 - **Organized Storage**: Automatically creates course-specific subdirectories (e.g., `public/generated-images/courses/{course_id}/`) to group related images.
 

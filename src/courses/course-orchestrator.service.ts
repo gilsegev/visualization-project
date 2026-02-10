@@ -29,7 +29,11 @@ export class CourseOrchestratorService {
 
         try {
             // 1. Pre-Pass (Architect Call)
-            const { global_style_anchor, theme_mapping } = await this.performArchitectPrePass(job);
+            const prePass = await this.performArchitectPrePass(job);
+            const global_style_anchor = prePass.global_style_anchor;
+            const theme_mapping = prePass.theme_mapping;
+            const template_suggestions = prePass.template_suggestions || {};
+
             this.logger.log(`Architect Style Anchor: ${global_style_anchor}`);
 
             // 2. Concurrency Setup
@@ -38,14 +42,18 @@ export class CourseOrchestratorService {
             // 3. Generation Loop
             this.logger.log(`Processing ${job.visualizations.length} visualizations...`);
             const tasks = job.visualizations.map((viz) => limit(async () => {
+                // Prepend style anchor as a mandatory prefix for deep visual harmony
+                const imagePromptPrefix = global_style_anchor ? `${global_style_anchor}, ` : '';
+
                 const task: ImageTask = {
                     type: 'infographic',
                     id: viz.id,
-                    refined_prompt: `${viz.title}: ${viz.description}`,
+                    refined_prompt: `${imagePromptPrefix}${viz.title}: ${viz.description}`,
                     payload: {
                         style_anchor: global_style_anchor,
                         custom_palette: theme_mapping,
-                        folder: path.join('courses', job.course_id)
+                        folder: path.join('courses', job.course_id),
+                        template_id: template_suggestions[viz.id]
                     }
                 };
 
@@ -76,27 +84,37 @@ export class CourseOrchestratorService {
     }
 
     private async performArchitectPrePass(job: CourseJob) {
+        const visualizationsSummary = job.visualizations.map(v => `- ${v.id}: ${v.title} (${v.description})`).join('\n');
+
         const prompt = `
-            You are a Creative Director. 
-            Analyze this course metadata and define a consistent visual vibe.
+            You are a Creative Director & Data Vis Architect. 
+            Define a unified Art Directive and Template Strategy for this course.
             
-            Course Title: ${job.course_metadata.title}
+            Title: ${job.course_metadata.title}
             Philosophy: ${job.course_metadata.global_style_guide.philosophy}
             Image Style: ${job.course_metadata.global_style_guide.image_style}
             Primary Palette: ${job.course_metadata.global_style_guide.palette.join(', ')}
 
+            Visualizations to generate:
+            ${visualizationsSummary}
+
             TASK:
-            1. Return a 20-word 'global_style_anchor' that describes the visual vibe (e.g. "Minimalist watercolor, soft textures, muted teal accents...").
-            2. Map the provided palette to specific UI roles: 'accent', 'background', 'text'.
+            1. global_style_anchor: A high-density Art Directive (30-40 words). 
+               Define Lighting (e.g. volumetric, soft), Texture (e.g. paper, digital grit), and Composition (e.g. centered, minimalist whitespace). 
+               Must act as a prefix for image prompts to hold the "vibe" together.
+            
+            2. theme_mapping: Map palette to 'accent', 'background', 'text'. 
+               STRICT RULE: Contrast Safety. 'text' must be highly legible against 'background'.
+            
+            3. template_suggestions: Map each viz ID to the best template. 
+               Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
+               Logic: Cycles/Processes -> step_stone. Lists -> step_list. Grids/Collections -> bento_grid. Hubs/Systems -> hub_radial. Comparisons -> versus_split.
             
             OUTPUT JSON ONLY:
             {
                 "global_style_anchor": "...",
-                "theme_mapping": {
-                    "accent": "#HEX",
-                    "background": "#HEX",
-                    "text": "#HEX"
-                }
+                "theme_mapping": { "accent": "#HEX", "background": "#HEX", "text": "#HEX" },
+                "template_suggestions": { "viz_id": "template_id" }
             }
         `;
 
