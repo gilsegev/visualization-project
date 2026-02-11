@@ -285,6 +285,41 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                     background: #FAF9F6 !important; 
                     border: 4px solid var(--theme-accent) !important;
                 }
+                
+                /* V2-DEBUG-03: OVERLORD CSS - FORCE CLEARANCE */
+                #main-wrapper, .absolute.inset-0 { 
+                    display: block !important; 
+                    flex: none !important; 
+                    position: relative !important;
+                    width: 1200px !important;
+                    height: 1200px !important;
+                }
+            
+                /* SPOKE PRECISION */
+                .spoke-container {
+                    position: absolute !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    width: 320px !important; /* Fixed width to prevent collapsing */
+                    z-index: 20 !important;
+                }
+            
+                /* CENTER VISIBILITY OVERRIDE */
+                #hub-center {
+                    position: absolute !important;
+                    top: 50% !important;
+                    left: 50% !important;
+                    transform: translate(-50%, -50%) !important;
+                    width: 400px !important;
+                    height: 400px !important;
+                    background: #FAF9F6 !important;
+                    border: 6px solid var(--theme-accent) !important;
+                    z-index: 1000 !important; /* Ensure it is on top of everything */
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    border-radius: 50% !important;
+                }
             `;
         }
 
@@ -406,10 +441,16 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 if (blueprint.template_id === 'hub_radial') {
                     // Absolute coordinate calculation for perfect circular alignment
                     const totalItems = blueprint.items.length;
+                    // V2-DEBUG-02: Start at 12 o'clock (-PI/2)
                     const angle = (index / totalItems) * 2 * Math.PI - (Math.PI / 2);
-                    const x = 50 + Math.cos(angle) * 34; // 34% radius (reduced from 38% for breathing room)
+                    const x = 50 + Math.cos(angle) * 34; // 34% radius
                     const y = 50 + Math.sin(angle) * 34;
-                    clone.setAttribute('style', `left: ${x}%; top: ${y}%; transform: translate(-50%, -50%); position: absolute;`);
+
+                    // V2-DEBUG-02: Enforce absolute positioning and centering
+                    clone.setAttribute('style', `left: ${x}%; top: ${y}%; transform: translate(-50%, -50%); position: absolute; z-index: 20;`);
+
+                    // V2-DEBUG-03: Direct DOM Math Verification
+                    console.log(`[FORENSIC] Final Style for Spoke ${index}: left=${x}%, top=${y}%`);
                 }
 
                 container!.appendChild(clone);
@@ -447,6 +488,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         let screenshotBuffer: Buffer;
         if (blueprint.template_id === 'hub_radial') {
             // Force 1200x1200 viewport to match rigid CSS frame
+            console.log('[FORENSIC] Viewport: Forcing 1200x1200 for hub_radial');
             const { context, page } = await this.browserService.getNewPage({ deviceScaleFactor: 2.0 } as any);
             try {
                 await page.setViewportSize({ width: 1200, height: 1200 });
