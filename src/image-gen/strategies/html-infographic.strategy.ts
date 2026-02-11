@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { JSDOM } from 'jsdom';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenerativeAI, GenerativeModel } from '@google/generative-ai';
+import OpenAI from 'openai';
 import { BrowserService } from '../browser.service';
 import { LocalStorageService } from '../local-storage.service';
 import axios from 'axios';
@@ -71,7 +71,7 @@ export interface HtmlInfographicBlueprint {
 
 @Injectable()
 export class HtmlInfographicStrategy extends BaseImageStrategy {
-    private model: GenerativeModel;
+    private openai: OpenAI;
 
     constructor(
         protected readonly configService: ConfigService,
@@ -79,16 +79,22 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         protected readonly localStorage: LocalStorageService
     ) {
         super();
-        const apiKey = this.configService.get<string>('GEMINI_API_KEY');
-        if (apiKey) {
-            const genAI = new GoogleGenerativeAI(apiKey);
-            this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-        } else {
-            this.logger.warn('GEMINI_API_KEY not found. Blueprint generation will fail.');
+        const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+        if (!apiKey) {
+            this.logger.warn('OPENROUTER_API_KEY not found. Blueprint generation will fail.');
         }
+        this.openai = new OpenAI({
+            apiKey: apiKey,
+            baseURL: 'https://openrouter.ai/api/v1',
+            defaultHeaders: {
+                'HTTP-Referer': 'https://visualization-project.local',
+                'X-Title': 'Visualization Project Infographic Generator'
+            }
+        });
     }
 
     public async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
+        console.log(`[FORENSIC] Strategy Input: ${task.refined_prompt}`);
         this.logger.log(`Starting HTML Infographic Generation for: ${task.refined_prompt}`);
 
         // 1. Generate Blueprint
@@ -337,6 +343,14 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         }
 
         const finalHtml = dom.serialize();
+
+        // HTML Autopsy Export
+        const autopsyDir = path.join(process.cwd(), 'public', 'generated-images');
+        const autopsyPath = path.join(autopsyDir, 'debug_last_run.html');
+        fs.mkdirSync(autopsyDir, { recursive: true });
+        fs.writeFileSync(autopsyPath, finalHtml, 'utf-8');
+        console.log(`[FORENSIC] HTML Autopsy: Saving file to ${autopsyPath}`);
+
         this.logger.log('Rendering HTML to Image...');
         const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
         const filename = `html_infographic_${Date.now()}.png`;
@@ -351,35 +365,44 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
     }
 
     public async generateBlueprint(prompt: string): Promise<HtmlInfographicBlueprint> {
-        if (!this.model) throw new Error('Gemini API Key not configured/found.');
+        if (!this.openai) throw new Error('OpenRouter API Key not configured/found.');
 
-        const systemPrompt = `
-            You are an expert Data Visualization Architect.
-            Goal: Select template, define style, generate structured content.
+        const systemPrompt = `You are an expert Data Visualization Architect.
+Goal: Select template, define style, generate structured content.
 
-            Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
-            Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
+Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
+Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
 
-            User Request: "${prompt}"
+Task:
+1. Select Template & Theme.
+2. Generate Items (3-9 normal, 3-5 vs).
+3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
 
-            Task:
-            1. Select Template & Theme.
-            2. Generate Items (3-9 normal, 3-5 vs).
-            3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
-            
-            OUTPUT JSON ONLY:
-            {
-                "template_id": "...",
-                "theme_id": "...",
-                "visual_style_directive": "...",
-                "versus_subjects": { "left_name": "", "right_name": "", "left_image_prompt": "", "right_image_prompt": "" },
-                "items": [ { "title": "...", "description": "..." } ]
-            }
-        `;
+OUTPUT ONLY VALID JSON, NO MARKDOWN:
+{
+  "template_id": "...",
+  "theme_id": "...",
+  "visual_style_directive": "...",
+  "versus_subjects": { "left_name": "", "right_name": "", "left_image_prompt": "", "right_image_prompt": "" },
+  "items": [ { "title": "...", "description": "..." } ]
+}`;
 
         try {
-            const result = await this.model.generateContent(systemPrompt);
-            const text = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+            const model = this.configService.get<string>('OPENROUTER_MODEL') || 'google/gemini-2.0-flash-001';
+            const response = await this.openai.chat.completions.create({
+                model: model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.7,
+                max_tokens: 2000
+            });
+
+            const content = response.choices[0]?.message?.content || '{}';
+            console.log(`[FORENSIC] LLM Blueprint Result: ${content}`);
+
+            const text = content.replace(/```json/g, '').replace(/```/g, '').trim();
             const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
             if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
             return parsed;
@@ -403,6 +426,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         let fullPrompt = isBackground
             ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, high resolution`
             : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}`;
+
+        console.log(`[FORENSIC] SiliconFlow Image Prompt: ${fullPrompt}`);
 
         try {
             const response = await axios.post(
