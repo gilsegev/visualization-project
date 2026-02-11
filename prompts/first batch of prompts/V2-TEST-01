@@ -1,0 +1,33 @@
+Goal: Generate one of each major template type using the Mindfulness/Wellness content to audit layout integrity and visual consistency.
+
+1. Create a "Diversity" Test Script:
+
+    Create scripts/test-v2-diversity.ts.
+
+    This script should trigger three distinct tasks in a single batch:
+
+        Task A (Step-Stone): "The 5 Stages of Burnout" (Linear progression).
+
+        Task B (Bento Grid): "4 Pillars of Mindfulness" (Non-linear categories).
+
+        Task C (Versus Split): "Sympathetic vs. Parasympathetic Nervous System" (Direct comparison).
+
+2. Enforce Wellness Styling:
+
+    Ensure all three tasks pass the wellness_mindful theme ID in their payload.
+
+    The agent must verify that the Solid Cream (#FAF9F6) and Dark Text (#2D3748) rules are being inherited by these templates.
+
+3. Forensic Audit Requirements:
+
+    For each generation, the agent must save the corresponding debug_{template}.html file.
+
+    The agent must log the [FORENSIC] LLM Blueprint Result for each to ensure the "Diversity" of templates is actually being respected by the Architect.
+
+4. Alignment & Asset Check:
+
+    Step-Stone: Verify the "Zig-Zag" lines correctly connect the icons to the text cards.
+
+    Bento Grid: Ensure the grid items aren't overlapping or leaving massive gaps.
+
+    Versus Split: Check that the "Left" and "Right" images are balanced and centered.

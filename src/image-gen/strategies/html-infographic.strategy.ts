@@ -37,7 +37,7 @@ export const THEME_LIBRARY = {
         text_main: '#292524',       // stone-800
         font_family: 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap',
         font_name: 'Quicksand',
-        image_style_suffix: 'organic style, soft lighting, natural colors, matte finish, botanic details, high quality render',
+        image_style_suffix: 'minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution',
         glass_color: 'rgba(255, 255, 255, 0.7)' // Soft organic glass
     },
     warm_creative: {
@@ -122,6 +122,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         console.log(`[FORENSIC] Mapping Data for Template: ${blueprint.template_id}`);
         if (blueprint.template_id === 'hub_radial' && blueprint.center_topic) {
             console.log(`[FORENSIC] Center Topic Detected: ${blueprint.center_topic.title}`);
+        }
+        if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
+            console.log(`[FORENSIC] Mapping Versus Left: ${blueprint.versus_subjects.left_name}`);
         }
 
         // 3. Image Generation
@@ -259,6 +262,22 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             }
         `;
 
+        // V2-DEBUG-09: "Wellness Book" Global CSS Pass
+        styleTag.textContent += `
+                .glass-card, .step-row, .versus-container {
+                    background: #FAF9F6 !important;
+                    color: #1a202c !important;
+                    border: 1px solid rgba(0,0,0,0.1) !important;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.05) !important;
+                }
+
+                /* V2-DEBUG-09: Versus Contrast Overrides */
+                #slot_title_left, #slot_title_right, .stat-row div {
+                    color: #1a202c !important;
+                    text-shadow: none !important;
+                }
+            `;
+
         // Anti-Mud Color Enforcement for Wellness Themes
         if (blueprint.theme_id === 'nature_fresh' || blueprint.visual_style_directive.toLowerCase().includes('wellness') || blueprint.visual_style_directive.toLowerCase().includes('mindful')) {
             styleTag.textContent += `
@@ -297,11 +316,32 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             
                 /* SPOKE PRECISION */
                 .spoke-container {
+                    width: 280px !important; /* V2-DEBUG-07: Reduced from 340px */
+                    height: auto !important;
+                    max-height: 450px !important;
+                    display: flex !important;
+                    flex-direction: column !important;
+                    align-items: center !important;
+                    text-align: center !important;
+                    transform: translate(-50%, -50%) !important;
+                    z-index: 50 !important;
                     position: absolute !important;
                     margin: 0 !important;
                     padding: 0 !important;
-                    width: 320px !important; /* Fixed width to prevent collapsing */
-                    z-index: 20 !important;
+                }
+                .spoke-container img {
+                    width: 120px !important; /* Keep large icon */
+                    height: 120px !important;
+                    object-fit: contain !important;
+                    margin-bottom: 1rem !important;
+                }
+                .spoke-container h3 {
+                    font-size: 1.15rem !important; /* V2-DEBUG-08 */
+                    line-height: 1.2 !important;
+                }
+                .spoke-container p {
+                    font-size: 0.85rem !important; /* V2-DEBUG-08 */
+                    line-height: 1.4 !important;
                 }
             
                 /* CENTER VISIBILITY OVERRIDE */
@@ -310,15 +350,26 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                     top: 50% !important;
                     left: 50% !important;
                     transform: translate(-50%, -50%) !important;
-                    width: 400px !important;
-                    height: 400px !important;
+                    width: 360px !important; /* V2-DEBUG-07: Reduced from 400px */
+                    height: 360px !important;
                     background: #FAF9F6 !important;
                     border: 6px solid var(--theme-accent) !important;
-                    z-index: 1000 !important; /* Ensure it is on top of everything */
+                    z-index: 1000 !important;
                     display: flex !important;
                     align-items: center !important;
                     justify-content: center !important;
                     border-radius: 50% !important;
+                }
+                
+                /* V2-DEBUG-04: FORCE VISIBILITY */
+                .spoke-container, .spoke-container *, [id^="slot_"] {
+                    visibility: visible !important;
+                    opacity: 1 !important;
+                    display: block !important; /* Force out of any hidden states */
+                }
+                #main-wrapper {
+                    background-color: #FAF9F6 !important; /* Ensure background doesn't hide spokes */
+                    overflow: visible !important; /* Allow spokes to breathe during math check */
                 }
             `;
         }
@@ -377,8 +428,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 container = document.getElementById('item-wrapper');
                 masterItem = container?.querySelector('.bento-item');
             } else if (blueprint.template_id === 'hub_radial') {
-                container = document.querySelector('.absolute.inset-0');
-                masterItem = container?.querySelector('.spoke-container');
+                container = document.getElementById('item-wrapper');
+                masterItem = document.querySelector('.spoke-template .spoke-container'); // Detached template
             } else if (blueprint.template_id === 'step_list') {
                 container = document.querySelector('.space-y-12');
                 masterItem = container?.querySelector('.group');
@@ -391,6 +442,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             container.innerHTML = '';
 
             blueprint.items.forEach((item, index) => {
+                if (blueprint.template_id === 'hub_radial' && index === 0) {
+                    console.log(`[FORENSIC] Appending ${blueprint.items.length} spokes to DOM.`);
+                }
                 if (blueprint.template_id === 'hub_radial') {
                     console.log(`[FORENSIC] Injecting into Spoke ${index}: ${item.title}`);
                 }
@@ -441,10 +495,15 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 if (blueprint.template_id === 'hub_radial') {
                     // Absolute coordinate calculation for perfect circular alignment
                     const totalItems = blueprint.items.length;
-                    // V2-DEBUG-02: Start at 12 o'clock (-PI/2)
+                    // V2-DEBUG-07: Start at 12 o'clock (-PI/2), Radius 38%
                     const angle = (index / totalItems) * 2 * Math.PI - (Math.PI / 2);
-                    const x = 50 + Math.cos(angle) * 34; // 34% radius
-                    const y = 50 + Math.sin(angle) * 34;
+                    const x = 50 + Math.cos(angle) * 38; // 38% radius
+                    const y = 50 + Math.sin(angle) * 38; // 38% radius
+
+                    if (index === 0) {
+                        console.log(`[FORENSIC] Radius set to 38% for ${blueprint.items.length} items.`);
+                    }                   // V2-DEBUG-04: Explicitly remove hidden classes
+                    clone.classList.remove('hidden', 'opacity-0', 'invisible');
 
                     // V2-DEBUG-02: Enforce absolute positioning and centering
                     clone.setAttribute('style', `left: ${x}%; top: ${y}%; transform: translate(-50%, -50%); position: absolute; z-index: 20;`);
@@ -468,10 +527,10 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             bgDiv.style.left = '0';
             bgDiv.style.width = '100vw';
             bgDiv.style.height = '100vh';
-            bgDiv.style.zIndex = '-50';
+            bgDiv.style.zIndex = '-1'; // V2-DEBUG-04: Prevent swallowing spokes
             bgDiv.style.backgroundImage = `url(${backgroundImage})`;
             bgDiv.style.backgroundSize = 'cover';
-            bgDiv.style.opacity = '0.3';
+            bgDiv.style.opacity = blueprint.template_id === 'versus_split' ? '0.2' : '0.3';
             document.body.prepend(bgDiv);
         }
 

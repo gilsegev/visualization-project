@@ -1,0 +1,38 @@
+Goal: Fix the Hub template by synchronizing the HTML IDs with the Strategy's injection logic and forcing high-contrast text.
+
+1. Template ID Audit (HTML):
+
+    Open hub_radial.html.
+
+    Center: Ensure the center title is exactly <h2 id="slot_title_center"></h2>.
+
+    Spokes: The "Master Spoke" that gets cloned MUST have an ID prefix. Ensure the title is <h3 id="slot_title"></h3> and the description is <p id="slot_txt"></p>.
+
+2. Strategy Injection Fix (TS):
+
+    In HtmlInfographicStrategy.ts, locate the hub_radial mapping logic.
+
+    Force Map: Ensure the loop correctly finds the center_topic first, THEN loops through items.
+
+    ID Logging: Add a console.log(\[FORENSIC] Injecting into Spoke ${index}: ${item.title}`)` to prove the loop is actually running.
+
+3. High-Contrast CSS Injection:
+
+    Force this block into the styleTag.textContent for the Hub:
+    CSS
+
+    #slot_title_center, .spoke-container h3, .spoke-container p {
+        color: #1a202c !important; /* Deep charcoal */
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+    #hub-center { 
+        background: #FAF9F6 !important; 
+        border: 4px solid var(--theme-accent) !important;
+    }
+
+4. Verification:
+
+    Run ONLY the Hub test.
+
+    Requirement: The agent must provide a screenshot of the debug_last_run.html showing the actual text (e.g., "Sympathetic Division") inside the HTML elements, not "Item Title."

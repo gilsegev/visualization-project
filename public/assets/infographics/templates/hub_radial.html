@@ -1,138 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html>
 <head>
-  <meta charset="UTF-8">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    :root {
-      --theme-glow: #00f7ff;
-      --hub-bg: #0a1128;
-      --radius: 300px;
-    }
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #5DA9A4;
+            --bg-page: #FAF9F6;
+            --text-main: #1a202c;
+        }
+        body {
+            background-color: var(--bg-page);
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+        #main-wrapper {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+        }
+        /* The Master Spoke (Hidden from view, used for cloning) */
+        .spoke-template { display: none; }
 
-    body {
-      background: radial-gradient(circle at center, #1a2c4e 0%, #050a14 100%);
-      color: white;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-    }
-
-    #main-wrapper {
-      width: 1200px;
-      height: 1200px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    #hub-center {
-      z-index: 100;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-    }
-
-    .hex-clip {
-      clip-path: polygon(50% 0%, 95% 25%, 95% 75%, 50% 100%, 5% 75%, 5% 25%);
-    }
-
-    .spoke-container {
-      padding: 0;
-      margin: 0;
-    }
-
-    .hub-glow {
-      box-shadow: 0 0 40px var(--theme-glow);
-      border: 2px solid var(--theme-glow);
-    }
-
-    .card-bg {
-      background: rgba(15, 23, 42, 0.9);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(0, 247, 255, 0.2);
-    }
-  </style>
+        .spoke-container {
+            position: absolute;
+            width: 340px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .glass-card {
+            background: #ffffff;
+            border: 2px solid rgba(0,0,0,0.05);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            width: 100%;
+        }
+        #hub-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 420px;
+            height: 420px;
+            background: #FAF9F6;
+            border: 8px solid var(--theme-accent);
+            border-radius: 50%;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+        }
+        #slot_img { width: 140px; height: 140px; object-fit: contain; margin-bottom: 1rem; }
+    </style>
 </head>
-
 <body>
-
-  <div id="main-wrapper">
-    <div class="relative w-full h-full flex justify-center items-center">
-
-      <div id="hub-center"
-        class="w-56 h-56 bg-slate-900 hex-clip flex flex-col justify-center items-center text-center p-6 hub-glow">
-        <h2 id="slot_title_center" class="text-2xl font-black text-cyan-400 tracking-tighter leading-none">TOPIC</h2>
-        <p id="slot_txt_center" class="text-[10px] uppercase tracking-[0.2em] mt-2 text-slate-400">Description</p>
-      </div>
-
-      <div class="absolute inset-0" style="--total: 6;">
-
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 0;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 id="slot_title" class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p id="slot_txt" class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
+    <div id="main-wrapper">
+        <div id="hub-center">
+            <h2 id="slot_title_center" style="font-size: 2.5rem; font-weight: 800; color: var(--text-main); line-height: 1.1;"></h2>
+            <p id="slot_txt_center" style="font-size: 1.1rem; color: #4a5568; margin-top: 0.5rem;"></p>
         </div>
 
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 1;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
-        </div>
+        <div id="item-wrapper" class="absolute inset-0"></div>
 
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 2;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
+        <div class="spoke-template">
+            <div class="spoke-container">
+                <img id="slot_img" src="" alt="">
+                <div class="glass-card">
+                    <h3 id="slot_title" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;"></h3>
+                    <p id="slot_txt" style="font-size: 1rem; color: #4a5568; line-height: 1.4;"></p>
+                </div>
+            </div>
         </div>
-
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 3;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
-        </div>
-
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 4;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
-        </div>
-
-        <div class="spoke-container flex flex-col items-center w-56" style="--i: 5;">
-          <div class="spoke-icon w-32 h-32 hex-clip bg-cyan-500 p-1 shadow-lg shadow-cyan-500/50">
-            <img src="[BASE64_PLACEHOLDER]" class="w-full h-full object-cover hex-clip">
-          </div>
-          <div class="card-bg mt-4 p-3 rounded-xl text-center">
-            <h3 class="text-cyan-400 font-bold text-sm">Item Title</h3>
-            <p class="text-[10px] text-slate-300 mt-1 leading-tight">Item description goes here.</p>
-          </div>
-        </div>
-
-      </div>
     </div>
 </body>
-
 </html>

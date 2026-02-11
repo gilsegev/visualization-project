@@ -111,7 +111,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
                 return await element.screenshot({ type: 'png' });
             } else {
                 // Fallback to full page if container not found
-                return await page.screenshot({ type: 'png', fullPage: true });
+                const buffer = await page.screenshot({ type: 'png', fullPage: true });
+                // V2-DEBUG-04: High-Res Snapshot Verification
+                const metadata = await page.evaluate(() => ({ w: document.body.scrollWidth, h: document.body.scrollHeight }));
+                this.logger.log(`[FORENSIC] PNG Dimensions: ${metadata.w}x${metadata.h}px`);
+                return buffer;
             }
         } finally {
             await context.close();
