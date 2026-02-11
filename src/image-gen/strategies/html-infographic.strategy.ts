@@ -57,6 +57,10 @@ export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split';
     theme_id: ThemeId;
     visual_style_directive: string;
+    center_topic?: {
+        title: string;
+        description: string;
+    };
     versus_subjects?: {
         left_name: string;
         right_name: string;
@@ -113,6 +117,12 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         // 2. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
         this.logger.log(`Template '${blueprint.template_id}' loaded successfully.`);
+
+        // Forensic Mapping Log
+        console.log(`[FORENSIC] Mapping Data for Template: ${blueprint.template_id}`);
+        if (blueprint.template_id === 'hub_radial' && blueprint.center_topic) {
+            console.log(`[FORENSIC] Center Topic Detected: ${blueprint.center_topic.title}`);
+        }
 
         // 3. Image Generation
         let itemImages: string[] = [];
@@ -210,7 +220,73 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
+            .spoke-container .spoke-icon img,
+            .spoke-container img,
+            .bento-item img,
+            .step-icon img,
+            .step-row img,
+            .group img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                object-position: center;
+            }
+            .spoke-container .spoke-icon,
+            .step-icon,
+            .bento-item .flex.items-center.justify-center.rounded-2xl {
+                overflow: hidden;
+                display: block;
+            }
+            .spoke-container h3,
+            .bento-item h3,
+            .step-row h3,
+            .group h3 {
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .spoke-container p,
+            .bento-item p,
+            .step-row p,
+            .group p {
+                display: -webkit-box;
+                -webkit-line-clamp: 4;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
         `;
+
+        // Anti-Mud Color Enforcement for Wellness Themes
+        if (blueprint.theme_id === 'nature_fresh' || blueprint.visual_style_directive.toLowerCase().includes('wellness') || blueprint.visual_style_directive.toLowerCase().includes('mindful')) {
+            styleTag.textContent += `
+                .card-bg, #hub-center {
+                    background: #FAF9F6 !important;
+                    backdrop-filter: none !important;
+                }
+                #hub-center h1, #hub-center p, #hub-center h2,
+                .card-bg h3, .card-bg p {
+                    color: #2D3748 !important;
+                }
+            `;
+        }
+
+        // V2-DEBUG-01 High-Contrast & ID Visibility Force
+        if (blueprint.template_id === 'hub_radial') {
+            styleTag.textContent += `
+                #slot_title_center, .spoke-container h3, .spoke-container p {
+                    color: #1a202c !important; /* Deep charcoal */
+                    opacity: 1 !important;
+                    visibility: visible !important;
+                }
+                #hub-center { 
+                    background: #FAF9F6 !important; 
+                    border: 4px solid var(--theme-accent) !important;
+                }
+            `;
+        }
 
         const link = document.createElement('link');
         link.rel = 'stylesheet';
@@ -248,6 +324,14 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 });
             }
         } else {
+            // Handle center_topic for hub_radial
+            if (blueprint.template_id === 'hub_radial' && blueprint.center_topic) {
+                const centerTitle = document.getElementById('slot_title_center');
+                const centerText = document.getElementById('slot_txt_center');
+                if (centerTitle) centerTitle.textContent = blueprint.center_topic.title;
+                if (centerText) centerText.textContent = blueprint.center_topic.description;
+            }
+
             let container: Element | null = null;
             let masterItem: Element | null = null;
 
@@ -272,6 +356,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             container.innerHTML = '';
 
             blueprint.items.forEach((item, index) => {
+                if (blueprint.template_id === 'hub_radial') {
+                    console.log(`[FORENSIC] Injecting into Spoke ${index}: ${item.title}`);
+                }
                 const clone = masterItem!.cloneNode(true) as Element;
 
                 // Identification Logic
@@ -317,7 +404,12 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 }
 
                 if (blueprint.template_id === 'hub_radial') {
-                    clone.setAttribute('style', `--i: ${index};`);
+                    // Absolute coordinate calculation for perfect circular alignment
+                    const totalItems = blueprint.items.length;
+                    const angle = (index / totalItems) * 2 * Math.PI - (Math.PI / 2);
+                    const x = 50 + Math.cos(angle) * 34; // 34% radius (reduced from 38% for breathing room)
+                    const y = 50 + Math.sin(angle) * 34;
+                    clone.setAttribute('style', `left: ${x}%; top: ${y}%; transform: translate(-50%, -50%); position: absolute;`);
                 }
 
                 container!.appendChild(clone);
@@ -348,11 +440,27 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const autopsyDir = path.join(process.cwd(), 'public', 'generated-images');
         const autopsyPath = path.join(autopsyDir, 'debug_last_run.html');
         fs.mkdirSync(autopsyDir, { recursive: true });
-        fs.writeFileSync(autopsyPath, finalHtml, 'utf-8');
-        console.log(`[FORENSIC] HTML Autopsy: Saving file to ${autopsyPath}`);
+        fs.writeFileSync(autopsyPath, finalHtml);
+        console.log(`[FORENSIC] HTML Autopsy saved to: ${autopsyPath}`);
 
-        this.logger.log('Rendering HTML to Image...');
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
+        // Screenshot with viewport matching
+        let screenshotBuffer: Buffer;
+        if (blueprint.template_id === 'hub_radial') {
+            // Force 1200x1200 viewport to match rigid CSS frame
+            const { context, page } = await this.browserService.getNewPage({ deviceScaleFactor: 2.0 } as any);
+            try {
+                await page.setViewportSize({ width: 1200, height: 1200 });
+                await page.setContent(finalHtml);
+                await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+                    console.warn('[WARN] Network idle timeout for hub_radial, proceeding with screenshot');
+                });
+                screenshotBuffer = await page.screenshot({ type: 'png', fullPage: false });
+            } finally {
+                await context.close();
+            }
+        } else {
+            screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
+        }
         const filename = `html_infographic_${Date.now()}.png`;
         const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
         this.logger.log(`Infographic saved to: ${publicUrl}`);
@@ -377,12 +485,14 @@ Task:
 1. Select Template & Theme.
 2. Generate Items (3-9 normal, 3-5 vs).
 3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
+4. FOR HUB_RADIAL: Provide the main subject in "center_topic" object and supporting details in "items" array. Do NOT repeat the center topic in the items array.
 
 OUTPUT ONLY VALID JSON, NO MARKDOWN:
 {
   "template_id": "...",
   "theme_id": "...",
   "visual_style_directive": "...",
+  "center_topic": { "title": "...", "description": "..." },
   "versus_subjects": { "left_name": "", "right_name": "", "left_image_prompt": "", "right_image_prompt": "" },
   "items": [ { "title": "...", "description": "..." } ]
 }`;
@@ -423,9 +533,15 @@ OUTPUT ONLY VALID JSON, NO MARKDOWN:
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
+        // Detect wellness/mindfulness content
+        const wellnessKeywords = ['wellness', 'mindfulness', 'stress', 'autonomic', 'nervous', 'meditation', 'breathing', 'relaxation'];
+        const isWellness = wellnessKeywords.some(kw => prompt.toLowerCase().includes(kw));
+
         let fullPrompt = isBackground
             ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, high resolution`
-            : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}`;
+            : isWellness
+                ? `${prompt}, hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows`
+                : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}`;
 
         console.log(`[FORENSIC] SiliconFlow Image Prompt: ${fullPrompt}`);
 

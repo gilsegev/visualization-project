@@ -86,9 +86,10 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
             await page.setContent(htmlContent);
 
-            // Wait for network idle to ensure any external resources (fonts, etc) load. 
-            // Although templates use CDN tailwind/fonts, so network required.
-            await page.waitForLoadState('networkidle');
+            // Wait for network idle with timeout to prevent hangs
+            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
+                this.logger.warn('Network idle timeout, proceeding with screenshot');
+            });
 
             // Screenshot. "Focus on .hub-container or .list-container"
             // We can try to locate specific container or just full page.
