@@ -12,37 +12,59 @@ async function run() {
     const browserService = new BrowserService();
     const htmlStrategy = new HtmlInfographicStrategy(configService, browserService, localStorage);
 
-    const task: ImageTask = {
-        refined_prompt: 'Explain the Autonomic Nervous System and its core components: Sympathetic (fight/flight), Parasympathetic (rest/digest), Enteric (gut brain), Heart Rate Variability, and Stress Response',
-        task_type: 'html_infographic',
-        metadata: {
-            center_topic: {
-                title: 'Autonomic Nervous System',
-                description: 'The body\'s automatic control center'
-            }
+    const testCases = [
+        {
+            name: '5 Spokes (Standard)',
+            prompt: 'Explain the Autonomic Nervous System and its 5 core components: Sympathetic, Parasympathetic, Enteric, HRV, Stress Response',
+            expectedItems: 5
+        },
+        {
+            name: '3 Spokes (Minimal)',
+            prompt: 'Explain the Autonomic Nervous System and its 3 core components: Sympathetic, Parasympathetic, Enteric',
+            expectedItems: 3
         }
-    } as any;
+    ];
 
     console.log('='.repeat(60));
-    console.log('V2-CORE-01 Verification Test: Hub Template');
+    console.log('V2-CORE-01 Verification Test: Hub Template (Multiple Scenarios)');
     console.log('='.repeat(60));
 
     try {
-        const result = await htmlStrategy.performGeneration(task, 0);
+        for (const [index, testCase] of testCases.entries()) {
+            console.log(`\nRunning Test Case ${index + 1}: ${testCase.name}`);
+
+            const task: ImageTask = {
+                refined_prompt: testCase.prompt,
+                task_type: 'html_infographic',
+                metadata: {
+                    center_topic: {
+                        title: 'Autonomic Nervous System',
+                        description: 'The body\'s automatic control center'
+                    }
+                }
+            } as any;
+
+            const result = await htmlStrategy.performGeneration(task, index);
+
+            console.log(`✅ ${testCase.name} Completed!`);
+            console.log(`Image URL: ${result.url}`);
+        }
 
         console.log('\n' + '='.repeat(60));
-        console.log('✅ Test Completed Successfully!');
+        console.log('All Tests Completed Successfully!');
         console.log('='.repeat(60));
-        console.log(`Image URL: ${result.url}`);
         console.log('\nVerification Checklist:');
-        console.log('1. Check terminal logs for [FORENSIC] Center Topic Detected: Autonomic Nervous System');
-        console.log('2. Open generated image to verify spokes are in perfect circle');
-        console.log('3. Verify center shows "Autonomic Nervous System" (NOT "NBA 2026")');
-        console.log('4. Check if watercolor style was applied to images');
+        console.log('1. Check terminal logs for [FORENSIC] output.');
+        console.log('2. Open generated images to verify alignment.');
+        console.log('3. Verify spoke counts (3 and 5) and strict alignment on Y axis.');
         console.log('='.repeat(60));
+
     } catch (error) {
         console.error('\n❌ Test Failed:', error.message);
         console.error(error.stack);
+    } finally {
+        // Cleanup: Close the browser to allow the script to exit
+        await browserService.onModuleDestroy();
     }
 }
 

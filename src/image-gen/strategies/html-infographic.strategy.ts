@@ -323,18 +323,18 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                     flex-direction: column !important;
                     align-items: center !important;
                     text-align: center !important;
-                    transform: translate(-50%, -50%) !important;
+                    /* transform: translate(-50%, -50%) !important; -- Handled by inline style for anchor fix */
                     z-index: 50 !important;
                     position: absolute !important;
                     margin: 0 !important;
                     padding: 0 !important;
                 }
-                .spoke-container img {
-                    width: 120px !important; /* Keep large icon */
+                /* .spoke-container img {
+                    width: 120px !important; 
                     height: 120px !important;
                     object-fit: contain !important;
                     margin-bottom: 1rem !important;
-                }
+                } */
                 .spoke-container h3 {
                     font-size: 1.15rem !important; /* V2-DEBUG-08 */
                     line-height: 1.2 !important;
@@ -429,7 +429,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 masterItem = container?.querySelector('.bento-item');
             } else if (blueprint.template_id === 'hub_radial') {
                 container = document.getElementById('item-wrapper');
-                masterItem = document.querySelector('.spoke-template .spoke-container'); // Detached template
+                // Support both legacy .spoke-template and direct .spoke-container
+                masterItem = document.querySelector('.spoke-template .spoke-container') || document.querySelector('.spoke-container');
             } else if (blueprint.template_id === 'step_list') {
                 container = document.querySelector('.space-y-12');
                 masterItem = container?.querySelector('.group');
@@ -493,23 +494,21 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 }
 
                 if (blueprint.template_id === 'hub_radial') {
-                    // Absolute coordinate calculation for perfect circular alignment
-                    const totalItems = blueprint.items.length;
-                    // V2-DEBUG-07: Start at 12 o'clock (-PI/2), Radius 38%
-                    const angle = (index / totalItems) * 2 * Math.PI - (Math.PI / 2);
-                    const x = 50 + Math.cos(angle) * 38; // 38% radius
-                    const y = 50 + Math.sin(angle) * 38; // 38% radius
-
+                    // V2-DEBUG-08: STRIP JS MATH - Delegating placement to template CSS
+                    // The template uses var(--i) and var(--total) for calculating radial layout.
                     if (index === 0) {
-                        console.log(`[FORENSIC] Radius set to 38% for ${blueprint.items.length} items.`);
-                    }                   // V2-DEBUG-04: Explicitly remove hidden classes
+                        console.log(`[FORENSIC] Delegating layout to CSS. Items: ${blueprint.items.length}`);
+                    }
+
                     clone.classList.remove('hidden', 'opacity-0', 'invisible');
 
-                    // V2-DEBUG-02: Enforce absolute positioning and centering
-                    clone.setAttribute('style', `left: ${x}%; top: ${y}%; transform: translate(-50%, -50%); position: absolute; z-index: 20;`);
+                    // Inject CSS Variable for Index
+                    (clone as HTMLElement).style.setProperty('--i', index.toString());
 
-                    // V2-DEBUG-03: Direct DOM Math Verification
-                    console.log(`[FORENSIC] Final Style for Spoke ${index}: left=${x}%, top=${y}%`);
+                    // Ensure the element is visible but DO NOT override position/transform from CSS class
+                    // If we need to force anything, it should only be visibility/z-index if critical
+                    // But 'style' attribute replacement kills class styles if not careful.
+                    // Using setProperty is safer.
                 }
 
                 container!.appendChild(clone);

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #5DA9A4;
+            --bg-page: #FAF9F6;
+            --text-main: #1a202c;
+        }
+        body {
+            background-color: var(--bg-page);
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+        #main-wrapper {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+        }
+        /* The Master Spoke (Hidden from view, used for cloning) */
+        .spoke-template { display: none; }
+
+        .spoke-container {
+            position: absolute;
+            width: 340px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+        .glass-card {
+            background: #ffffff;
+            border: 2px solid rgba(0,0,0,0.05);
+            border-radius: 1.5rem;
+            padding: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            width: 100%;
+        }
+        #hub-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 420px;
+            height: 420px;
+            background: #FAF9F6;
+            border: 8px solid var(--theme-accent);
+            border-radius: 50%;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+        }
+        #slot_img { width: 140px; height: 140px; object-fit: contain; margin-bottom: 1rem; }
+    </style>
+</head>
+<body>
+    <div id="main-wrapper">
+        <div id="hub-center">
+            <h2 id="slot_title_center" style="font-size: 2.5rem; font-weight: 800; color: var(--text-main); line-height: 1.1;"></h2>
+            <p id="slot_txt_center" style="font-size: 1.1rem; color: #4a5568; margin-top: 0.5rem;"></p>
+        </div>
+
+        <div id="item-wrapper" class="absolute inset-0"></div>
+
+        <div class="spoke-template">
+            <div class="spoke-container">
+                <img id="slot_img" src="" alt="">
+                <div class="glass-card">
+                    <h3 id="slot_title" style="font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem;"></h3>
+                    <p id="slot_txt" style="font-size: 1rem; color: #4a5568; line-height: 1.4;"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
