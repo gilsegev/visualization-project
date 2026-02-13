@@ -36,16 +36,24 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     }
 
     private async launchBrowser() {
-        this.logger.log('Launching Playwright browser (Singleton)...');
-        this.browser = await chromium.launch({ headless: true });
+        this.logger.log('Launching Playwright browser (Singleton) - V2-RESET-01 Primitive Config...');
+        this.browser = await chromium.launch({
+            headless: true,
+            args: [
+                '--disable-lcd-text',
+                '--disable-dev-shm-usage',
+                '--force-device-scale-factor=1', // Force 1:1 pixel parity
+                '--no-sandbox'
+            ]
+        });
     }
 
     async getNewPage(options: { recordVideo?: { dir: string } } = {}): Promise<{ context: BrowserContext; page: Page }> {
         await this.ensureBrowser();
         // Create a new independent context for each task to ensure isolation
         const context = await this.browser.newContext({
-            viewport: { width: 1024, height: 1024 },
-            deviceScaleFactor: 1,
+            viewport: { width: 1200, height: 1200 }, // V2-RESET-01: Locked to 1200x1200
+            deviceScaleFactor: 1, // V2-RESET-01: Parity
             ...options, // Pass video options if provided
         });
         const page = await context.newPage();
@@ -78,45 +86,39 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
     }
 
     async screenshotHtml(htmlContent: string): Promise<Buffer> {
-        // Reuse getNewPage with high DPI setting for Retina quality as requested
-        const { context, page } = await this.getNewPage({ deviceScaleFactor: 2.0 } as any); // Type cast if options interface not fully updated
+        // V2-RESET-01: "Clip-Only" Capture - Forces (0,0) Origin
+        // Re-use standard getNewPage which now defaults to 1200x1200px
+        const { context, page } = await this.getNewPage();
         try {
-            // Set viewport to 1200x1200 as requested
+            console.log(`[FORENSIC] Browser Viewport Locked to 1200x1200 (V2-RESET-01)`);
+
+            // V2-DEBUG-20: Double-Tap Viewport Lock
             await page.setViewportSize({ width: 1200, height: 1200 });
 
             await page.setContent(htmlContent);
+
+            // V2-DEBUG-20: Force Scroll Behavior to Auto (No smooth scroll interference)
+            await page.evaluate(() => {
+                document.documentElement.style.scrollBehavior = 'auto';
+                document.body.style.scrollBehavior = 'auto';
+                window.scrollTo(0, 0);
+            });
 
             // Wait for network idle with timeout to prevent hangs
             await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
                 this.logger.warn('Network idle timeout, proceeding with screenshot');
             });
 
-            // Screenshot. "Focus on .hub-container or .list-container"
-            // We can try to locate specific container or just full page.
-            // Prompt says: "Focus the screenshot on the .hub-container or .list-container specifically"
-
-            // Try step_list container first (it's .max-w-3xl usually, see template)
-            // Or hub_radial container (.relative w-[900px]...)
-            // Let's try locating a generic container wrapper if present, or fallback to body/fullPage.
-            // Based on templates:
-            // Hub: body > div.relative.w-[900px]
-            // Step: body > div.max-w-3xl
-
-            let element = await page.$('.relative.w-\\[900px\\]'); // Hub
-            if (!element) {
-                element = await page.$('.max-w-3xl'); // Step list
-            }
-
-            if (element) {
-                return await element.screenshot({ type: 'png' });
-            } else {
-                // Fallback to full page if container not found
-                const buffer = await page.screenshot({ type: 'png', fullPage: true });
-                // V2-DEBUG-04: High-Res Snapshot Verification
-                const metadata = await page.evaluate(() => ({ w: document.body.scrollWidth, h: document.body.scrollHeight }));
-                this.logger.log(`[FORENSIC] PNG Dimensions: ${metadata.w}x${metadata.h}px`);
-                return buffer;
-            }
+            // V2-RESET-01: Hard-Clipped Screenshot
+            const screenshotBuffer = await page.screenshot({
+                type: 'png',
+                // Forces capture of the top-left 1200px block
+                clip: { x: 0, y: 0, width: 1200, height: 1200 },
+                omitBackground: true, // Support zero-point transparency test
+                scale: 'css' // Ensures no high-DPI scaling occurs
+            });
+            console.log(`[FORENSIC] Screenshot captured with clip-at-zero.`);
+            return screenshotBuffer;
         } finally {
             await context.close();
         }
