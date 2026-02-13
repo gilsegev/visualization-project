@@ -1,51 +1,151 @@
-<style>
-  /* The "Spine" Line */
-  .timeline-container::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: linear-gradient(to bottom, transparent, var(--theme-accent), transparent);
-    transform: translateX(-50%);
-    opacity: 0.3;
-  }
+<!DOCTYPE html>
+<html lang="en">
 
-  /* Zig-Zag Alternating Logic */
-  .step-row:nth-child(even) { flex-direction: row-reverse; }
-  .step-row:nth-child(even) .text-container { text-align: left; padding-left: 2rem; padding-right: 0; }
-  .step-row:nth-child(odd) .text-container { text-align: right; padding-right: 2rem; padding-left: 0; }
-  
-  /* Text Legibility Anchor */
-  .glass-card {
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-  }
-</style>
+<head>
+  <meta charset="UTF-8" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --theme-accent: #3B82F6;
+      --bg-page: #FAF9F6;
+      --text-main: #1e293b;
+    }
 
-<div class="timeline-container relative w-[1200px] p-20 flex flex-col gap-32">
-  <div class="step-row flex items-center justify-between w-full relative">
-    <div class="w-[45%] flex justify-center">
-      <div class="relative w-72 h-72">
-        <div class="absolute inset-0 bg-blue-500 rounded-full blur-2xl opacity-20 animate-pulse"></div>
-        <img id="slot_img_n" class="relative w-full h-full object-cover rounded-full border-4 border-white shadow-2xl">
-      </div>
-    </div>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 1200px;
+      height: 1200px;
+      overflow: hidden;
+      background: var(--bg-page);
+    }
 
-    <div class="absolute left-1/2 -translate-x-1/2 w-10 h-10 rounded-full bg-white border-4 border-blue-600 z-10 flex items-center justify-center font-black text-xs text-blue-600">
-      01
-    </div>
+    #main-wrapper {
+      position: relative;
+      width: 1200px;
+      height: 1200px;
+      padding: 80px 0;
+      /* Padding for top/bottom */
+    }
 
-    <div class="w-[45%] text-container">
-      <div class="glass-card p-8 rounded-3xl">
-        <h2 id="slot_title_n" class="text-2xl font-black text-slate-800 uppercase tracking-tight mb-2">The Seed</h2>
-        <p id="slot_txt_n" class="text-slate-600 leading-relaxed text-sm">
-          Everything starts with a single point of focus. This stage represents the foundation of the entire process.
-        </p>
+    /* 🦴 The Spine */
+    .spine {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: linear-gradient(to bottom,
+          transparent,
+          var(--theme-accent) 15%,
+          var(--theme-accent) 85%,
+          transparent);
+      transform: translateX(-50%);
+      opacity: 0.2;
+      z-index: 1;
+    }
+
+    /* 📦 Rigid Step Container */
+    .step-row {
+      position: relative;
+      width: 1200px;
+      height: 300px;
+      /* FIXED HEIGHT ANCHOR */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    /* 🔄 Zig-Zag Flip */
+    .step-row:nth-child(even) {
+      flex-direction: row-reverse;
+    }
+
+    .image-col {
+      width: 500px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .text-col {
+      width: 500px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .image-box {
+      position: relative;
+      width: 240px;
+      height: 240px;
+      border-radius: 50%;
+      border: 8px solid white;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    .glass-card {
+      width: 420px;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 2rem;
+      padding: 2rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+    }
+
+    .step-number {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 48px;
+      height: 48px;
+      background: var(--theme-accent);
+      color: white;
+      font-weight: 900;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
+      border: 4px solid white;
+      z-index: 10;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="main-wrapper">
+    <div class="spine"></div>
+
+    <div id="item-wrapper" class="flex flex-col">
+      <!-- STEPS WILL BE INJECTED HERE -->
+      <div class="step-row">
+        <div class="step-number">01</div>
+
+        <div class="image-col">
+          <div class="image-box">
+            <img id="slot_img" src="https://via.placeholder.com/300" class="w-full h-full object-cover">
+          </div>
+        </div>
+
+        <div class="text-col">
+          <div class="glass-card">
+            <h2 id="slot_title" class="text-2xl font-black text-slate-800 uppercase mb-2">Step Title</h2>
+            <p id="slot_txt" class="text-slate-600 text-sm leading-relaxed">
+              Detailed description of this milestone. Built with rigid anchors to prevent layout shift.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-</div>
+
+</body>
+
+</html>

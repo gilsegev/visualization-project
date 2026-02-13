@@ -66,6 +66,26 @@ async function run() {
         console.error('❌ Versus Failed:', error.message);
         console.error(error.stack);
     }
+
+    // Test 3: Bento Grid (Product Features)
+    console.log('\n🟡 TEST 3: Bento Grid Template (Smart Home Devices)');
+    const taskBento: ImageTask = {
+        refined_prompt: 'Create a Bento Grid infographic about Smart Home Devices: Smart Hub, Smart Lock, Smart Camera. Cyber Neon theme.',
+        task_type: 'html_infographic',
+        metadata: {
+            template_id: 'bento_grid',
+            theme_id: 'cyber_neon'
+        }
+    } as any;
+
+    try {
+        console.log("Invoking performGeneration for Bento...");
+        const resultBento = await htmlStrategy.performGeneration(taskBento, 2);
+        console.log(`✅ Bento Generated: ${resultBento.url}`);
+    } catch (error) {
+        console.error('❌ Bento Failed:', error.message);
+        console.error(error.stack);
+    }
 }
 
 run().catch(err => console.error("Unhandled Error in run():", err));

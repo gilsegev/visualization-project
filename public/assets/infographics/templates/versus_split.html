@@ -2,75 +2,194 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+    :root {
+      --theme-accent: #3B82F6;
+      --bg-page: #0f172a;
+      --text-main: #f8fafc;
+    }
 
+    html,
     body {
+      margin: 0;
+      padding: 0;
+      width: 1200px;
+      height: 1200px;
+      overflow: hidden;
+      background: var(--bg-page);
       font-family: 'Inter', sans-serif;
     }
 
-    .vs-text-glow {
-      text-shadow: 0 0 20px rgba(255, 255, 255, 0.8), 0 0 40px var(--theme-accent);
+    #main-wrapper {
+      position: relative;
+      width: 1200px;
+      height: 1200px;
+    }
+
+    /* ⚔️ The Split Background */
+    .bg-split {
+      position: absolute;
+      inset: 0;
+      display: flex;
+    }
+
+    .bg-left,
+    .bg-right {
+      width: 600px;
+      height: 1200px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .bg-left {
+      background: #1e293b;
+    }
+
+    .bg-right {
+      background: #0f172a;
+    }
+
+    .bg-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      opacity: 0.4;
+    }
+
+    .gradient-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to right, rgba(15, 23, 42, 0.8), transparent, rgba(15, 23, 42, 0.8));
+    }
+
+    /* 🦴 The Spine Axis */
+    .spine-axis {
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateX(-50%);
+      z-index: 5;
+    }
+
+    /* 🎯 Anchor Points (300px, 900px midpoints) */
+    .subject-container {
+      position: absolute;
+      top: 40%;
+      width: 450px;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      z-index: 10;
+    }
+
+    .subject-left {
+      left: 300px;
+    }
+
+    .subject-right {
+      left: 900px;
+    }
+
+    .vs-badge {
+      position: absolute;
+      left: 50%;
+      top: 40%;
+      transform: translate(-50%, -50%);
+      font-size: 8rem;
+      font-weight: 900;
+      font-style: italic;
+      color: white;
+      text-shadow: 0 0 30px var(--theme-accent);
+      z-index: 20;
+      opacity: 0.9;
+    }
+
+    .stat-container {
+      position: absolute;
+      top: 65%;
+      left: 0;
+      width: 1200px;
+      padding: 0 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      z-index: 10;
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 15px;
+    }
+
+    .stat-value {
+      width: 400px;
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+
+    .stat-label {
+      width: 200px;
+      text-align: center;
+      font-size: 0.75rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--theme-accent);
+      background: rgba(0, 0, 0, 0.3);
+      padding: 4px 12px;
+      border-radius: 999px;
     }
   </style>
 </head>
 
-<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center overflow-hidden relative">
+<body>
 
-  <!-- Background Split -->
-  <div class="absolute inset-0 flex z-0">
-    <div class="w-1/2 h-full bg-slate-800 relative overflow-hidden">
-      <div class="absolute inset-0 bg-gradient-to-r from-transparent to-slate-900/90 z-10"></div>
-      <img id="slot_image_left" class="absolute inset-0 w-full h-full object-cover opacity-60">
-    </div>
-    <div class="w-1/2 h-full bg-slate-800 relative overflow-hidden">
-      <div class="absolute inset-0 bg-gradient-to-l from-transparent to-slate-900/90 z-10"></div>
-      <img id="slot_image_right" class="absolute inset-0 w-full h-full object-cover opacity-60">
-    </div>
-  </div>
-
-  <!-- Content Container -->
-  <div class="relative z-10 w-full max-w-5xl flex flex-col items-center">
-
-    <!-- VS Badge -->
-    <div class="mb-12 relative flex items-center justify-center">
-      <div class="absolute inset-0 rounded-full blur-xl opacity-50 bg-blue-500"
-        style="background-color: var(--theme-accent);"></div>
-      <h1 class="text-8xl font-black italic vs-text-glow relative z-10 tracking-tighter">VS</h1>
-    </div>
-
-    <!-- Comparison Grid -->
-    <div class="w-full grid grid-cols-3 gap-8 items-center text-center">
-
-      <!-- Left Subject Title -->
-      <div class="col-span-1 text-right">
-        <h2 id="slot_title_left" class="text-4xl font-bold uppercase tracking-wide text-slate-100">Subject A</h2>
+  <div id="main-wrapper">
+    <div class="bg-split">
+      <div class="bg-left">
+        <img id="slot_image_left" src="https://via.placeholder.com/600x1200" class="bg-img">
       </div>
-
-      <!-- Spine Header -->
-      <div class="col-span-1"></div>
-
-      <!-- Right Subject Title -->
-      <div class="col-span-1 text-left">
-        <h2 id="slot_title_right" class="text-4xl font-bold uppercase tracking-wide text-slate-100">Subject B</h2>
-      </div>
-
-    </div>
-
-    <!-- Stats Container -->
-    <div id="slot_stats_container" class="w-full mt-12 flex flex-col gap-6">
-      <!-- Stat Row Template (Hidden or JS Generated) -->
-      <div class="stat-row grid grid-cols-3 gap-8 items-center text-center py-4 border-b border-white/10">
-        <div class="text-xl font-bold text-slate-300 text-right">Stats A</div>
-        <div
-          class="text-sm font-black tracking-widest uppercase text-blue-400 bg-slate-900/50 px-3 py-1 rounded-full mx-auto"
-          style="color: var(--theme-accent);">Metric</div>
-        <div class="text-xl font-bold text-slate-300 text-left">Stats B</div>
+      <div class="bg-right">
+        <img id="slot_image_right" src="https://via.placeholder.com/600x1200" class="bg-img">
       </div>
     </div>
+    <div class="gradient-overlay"></div>
+    <div class="spine-axis"></div>
 
+    <div class="vs-badge">VS</div>
+
+    <!-- Subject Left -->
+    <div class="subject-container subject-left">
+      <h2 id="slot_title_left" class="text-5xl font-black uppercase tracking-tight text-white mb-4">Subject A</h2>
+    </div>
+
+    <!-- Subject Right -->
+    <div class="subject-container subject-right">
+      <h2 id="slot_title_right" class="text-5xl font-black uppercase tracking-tight text-white mb-4">Subject B</h2>
+    </div>
+
+    <!-- Stats Table (Injected via Strategy) -->
+    <div id="slot_stats_container" class="stat-container">
+      <!-- Rows will be injected here -->
+      <div class="stat-row">
+        <div class="stat-value text-right">Value A</div>
+        <div class="stat-label">Metric</div>
+        <div class="stat-value text-left">Value B</div>
+      </div>
+    </div>
   </div>
 
 </body>
