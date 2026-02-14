@@ -1,5 +1,25 @@
 # Changelog
 
+## [V2-DEBUG-23] - 2026-02-13
+
+### Fixed
+- **Versus Template Data Mapping**: Fixed issue where the right side of the Versus template remained empty.
+  - Updated `HtmlInfographicStrategy.ts` to correctly split comparison data using the `|` character.
+  - Refined LLM system prompt to enforce `Val A | Val B` format with exactly 4-5 items.
+  - Correctly populated `stat_list_left` and `stat_list_right` in the DOM.
+
+- **Vertical Centering (Middle-Out)**: Implemented "Middle-Out" vertical alignment for Versus subjects.
+  - Enforced `top: 40%` and `translateY(-50%)` via style injection for `.subject-container`.
+  - Ensured content grows symmetrically from the horizontal axis.
+
+### Changed
+- **Versus Template Realignment**: Replaced `versus_split.html` with the improved version from `_versus_split.html`.
+- **Styling Consistency**: Injected high-contrast styles for `stat-label` background and accessibility.
+
+### Added
+- **Versus Split Test Script**: Created `test-versus-split.ts` for targeted verification of Versus templates.
+
+
 ## [Unreleased] - 2026-02-10
 
 ### Added

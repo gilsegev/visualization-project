@@ -193,22 +193,39 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 text-overflow: ellipsis;
             }
 
-            /* V2-DEBUG-20: ANTI-CENTER & ZERO-ORIGIN FORCE */
-            html, body {
-                display: block !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                width: 1200px !important;
-                height: 1200px !important;
-                overflow: hidden !important;
-                text-align: left !important;
-            }
-            #main-wrapper {
+            /* VS Badge & Spine Stability */
+            .vs-badge {
                 position: absolute !important;
-                top: 0 !important;
-                left: 0 !important;
-                width: 1200px !important;
-                height: 1200px !important;
+                top: 40% !important; /* Match subject line */
+                left: 50% !important;
+                transform: translate(-50%, -50%) !important;
+                z-index: 50 !important;
+            }
+
+            /* V2-DEBUG-23: Middle-Out Vertical Centering */
+            .subject-container {
+                position: absolute !important;
+                top: 40% !important;
+                transform: translate(-50%, -50%) !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                text-align: center !important;
+                height: auto !important;
+                max-height: 500px !important;
+            }
+            .subject-left { left: 300px !important; }
+            .subject-right { left: 900px !important; }
+
+            /* Theme consistency for stats */
+            .stat-label {
+                background: rgba(0, 0, 0, 0.4) !important;
+                color: var(--theme-accent) !important;
+                border: 1px solid var(--theme-accent) !important;
+            }
+            .stat-value {
+                color: var(--text-main) !important;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
             }
         `;
 
@@ -229,22 +246,34 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             if (leftTitle) leftTitle.textContent = blueprint.versus_subjects.left_name;
             if (rightTitle) rightTitle.textContent = blueprint.versus_subjects.right_name;
 
-            const statsContainer = document.getElementById('slot_stats_container');
-            if (statsContainer) {
-                statsContainer.innerHTML = '';
-                blueprint.items.forEach(item => {
+            const listLeft = document.getElementById('stat_list_left');
+            const listRight = document.getElementById('stat_list_right');
+
+            if (listLeft && listRight) {
+                listLeft.innerHTML = '';
+                listRight.innerHTML = '';
+
+                blueprint.items.forEach((item, idx) => {
                     const parts = item.description.split('|');
                     const valA = parts[0]?.trim() || '-';
                     const valB = parts[1]?.trim() || '-';
 
-                    const row = document.createElement('div');
-                    row.className = 'stat-row flex items-center justify-between border-b border-white/5 pb-4';
-                    row.innerHTML = `
-                        <div class="stat-value text-right w-[400px] text-xl font-bold" style="color: var(--text-main)">${valA}</div>
-                        <div class="stat-label px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest bg-black/20" style="color: var(--theme-accent)">${item.title}</div>
-                        <div class="stat-value text-left w-[400px] text-xl font-bold" style="color: var(--text-main)">${valB}</div>
+                    // Create cards for both sides
+                    const cardA = document.createElement('div');
+                    cardA.className = 'glass-card';
+                    cardA.innerHTML = `
+                        <div class="stat-label mb-2">${item.title}</div>
+                        <div class="stat-value text-xl font-bold">${valA}</div>
                     `;
-                    statsContainer.appendChild(row);
+                    listLeft.appendChild(cardA);
+
+                    const cardB = document.createElement('div');
+                    cardB.className = 'glass-card';
+                    cardB.innerHTML = `
+                        <div class="stat-label mb-2">${item.title}</div>
+                        <div class="stat-value text-xl font-bold">${valB}</div>
+                    `;
+                    listRight.appendChild(cardB);
                 });
             }
         } else {
@@ -348,9 +377,10 @@ Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
 
 Task:
 1. Select Template & Theme.
-2. Generate Items (3-9 normal, 3-5 vs).
-3. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
-4. FOR HUB_RADIAL: Provide the main subject in "center_topic" object and supporting details in "items" array. Do NOT repeat the center topic in the items array.
+2. Generate Items (3-9 normal).
+3. FOR VERSUS_SPLIT: You MUST generate exactly 4-5 items. Each item "description" MUST contain two values separated by a pipe character '|' (e.g., "100k thrust | 80k thrust"). The first value relates to left_name, the second to right_name.
+4. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
+5. FOR HUB_RADIAL: Provide the main subject in "center_topic" object and supporting details in "items" array. Do NOT repeat the center topic in the items array.
 
 OUTPUT ONLY VALID JSON, NO MARKDOWN:
 {
@@ -359,7 +389,7 @@ OUTPUT ONLY VALID JSON, NO MARKDOWN:
   "visual_style_directive": "...",
   "center_topic": { "title": "...", "description": "..." },
   "versus_subjects": { "left_name": "", "right_name": "", "left_image_prompt": "", "right_image_prompt": "" },
-  "items": [ { "title": "...", "description": "..." } ]
+  "items": [ { "title": "Metric Name", "description": "Val A | Val B" } ]
 }`;
 
         try {

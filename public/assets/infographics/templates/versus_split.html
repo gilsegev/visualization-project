@@ -1,197 +1,136 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-  <meta charset="UTF-8" />
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    :root {
-      --theme-accent: #3B82F6;
-      --bg-page: #0f172a;
-      --text-main: #f8fafc;
-    }
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #3B82F6;
+            --bg-page: #0f172a;
+            --text-main: #f8fafc;
+        }
 
-    html,
-    body {
-      margin: 0;
-      padding: 0;
-      width: 1200px;
-      height: 1200px;
-      overflow: hidden;
-      background: var(--bg-page);
-      font-family: 'Inter', sans-serif;
-    }
+        /* 🔒 Deterministic canvas */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            background: var(--bg-page);
+            font-family: 'Inter', sans-serif;
+        }
 
-    #main-wrapper {
-      position: relative;
-      width: 1200px;
-      height: 1200px;
-    }
+        #main-wrapper {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+        }
 
-    /* ⚔️ The Split Background */
-    .bg-split {
-      position: absolute;
-      inset: 0;
-      display: flex;
-    }
+        /* ⚔️ The Split Background */
+        .bg-split {
+            position: absolute;
+            inset: 0;
+            display: flex;
+        }
 
-    .bg-left,
-    .bg-right {
-      width: 600px;
-      height: 1200px;
-      position: relative;
-      overflow: hidden;
-    }
+        .bg-left, .bg-right {
+            width: 600px;
+            height: 1200px;
+            position: relative;
+            overflow: hidden;
+        }
 
-    .bg-left {
-      background: #1e293b;
-    }
+        .bg-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.4;
+        }
 
-    .bg-right {
-      background: #0f172a;
-    }
+        .gradient-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.9));
+            z-index: 5;
+        }
 
-    .bg-img {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      opacity: 0.4;
-    }
+        /* 🎯 THE MAGNET ANCHORS */
+        .subject-container {
+            position: absolute;
+            top: 50%; /* Pinned to middle */
+            transform: translateY(-50%); /* Centers the box vertically around the pin */
+            width: 500px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
 
-    .gradient-overlay {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to right, rgba(15, 23, 42, 0.8), transparent, rgba(15, 23, 42, 0.8));
-    }
+        .subject-left { left: 50px; }
+        .subject-right { left: 650px; }
 
-    /* 🦴 The Spine Axis */
-    .spine-axis {
-      position: absolute;
-      left: 50%;
-      top: 0;
-      bottom: 0;
-      width: 2px;
-      background: rgba(255, 255, 255, 0.1);
-      transform: translateX(-50%);
-      z-index: 5;
-    }
+        .stat-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
 
-    /* 🎯 Anchor Points (300px, 900px midpoints) */
-    .subject-container {
-      position: absolute;
-      top: 40%;
-      width: 450px;
-      transform: translate(-50%, -50%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      z-index: 10;
-    }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
 
-    .subject-left {
-      left: 300px;
-    }
-
-    .subject-right {
-      left: 900px;
-    }
-
-    .vs-badge {
-      position: absolute;
-      left: 50%;
-      top: 40%;
-      transform: translate(-50%, -50%);
-      font-size: 8rem;
-      font-weight: 900;
-      font-style: italic;
-      color: white;
-      text-shadow: 0 0 30px var(--theme-accent);
-      z-index: 20;
-      opacity: 0.9;
-    }
-
-    .stat-container {
-      position: absolute;
-      top: 65%;
-      left: 0;
-      width: 1200px;
-      padding: 0 100px;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-      z-index: 10;
-    }
-
-    .stat-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      padding-bottom: 15px;
-    }
-
-    .stat-value {
-      width: 400px;
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #cbd5e1;
-    }
-
-    .stat-label {
-      width: 200px;
-      text-align: center;
-      font-size: 0.75rem;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: var(--theme-accent);
-      background: rgba(0, 0, 0, 0.3);
-      padding: 4px 12px;
-      border-radius: 999px;
-    }
-  </style>
+        .vs-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--theme-accent);
+            color: white;
+            font-weight: 900;
+            font-size: 2rem;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            border: 4px solid var(--bg-page);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+        }
+    </style>
 </head>
-
 <body>
+    <div id="main-wrapper">
+        <div class="bg-split">
+            <div class="bg-left"><img id="slot_image_left" class="bg-img"></div>
+            <div class="bg-right"><img id="slot_image_right" class="bg-img"></div>
+        </div>
+        <div class="gradient-overlay"></div>
+        <div class="vs-badge">VS</div>
 
-  <div id="main-wrapper">
-    <div class="bg-split">
-      <div class="bg-left">
-        <img id="slot_image_left" src="https://via.placeholder.com/600x1200" class="bg-img">
-      </div>
-      <div class="bg-right">
-        <img id="slot_image_right" src="https://via.placeholder.com/600x1200" class="bg-img">
-      </div>
+        <div class="subject-container subject-left">
+            <h2 id="slot_title_left" class="text-4xl font-bold mb-8 text-white">Subject A</h2>
+            <div id="stat_list_left" class="stat-list">
+                </div>
+        </div>
+
+        <div class="subject-container subject-right">
+            <h2 id="slot_title_right" class="text-4xl font-bold mb-8 text-white">Subject B</h2>
+            <div id="stat_list_right" class="stat-list">
+                </div>
+        </div>
     </div>
-    <div class="gradient-overlay"></div>
-    <div class="spine-axis"></div>
-
-    <div class="vs-badge">VS</div>
-
-    <!-- Subject Left -->
-    <div class="subject-container subject-left">
-      <h2 id="slot_title_left" class="text-5xl font-black uppercase tracking-tight text-white mb-4">Subject A</h2>
-    </div>
-
-    <!-- Subject Right -->
-    <div class="subject-container subject-right">
-      <h2 id="slot_title_right" class="text-5xl font-black uppercase tracking-tight text-white mb-4">Subject B</h2>
-    </div>
-
-    <!-- Stats Table (Injected via Strategy) -->
-    <div id="slot_stats_container" class="stat-container">
-      <!-- Rows will be injected here -->
-      <div class="stat-row">
-        <div class="stat-value text-right">Value A</div>
-        <div class="stat-label">Metric</div>
-        <div class="stat-value text-left">Value B</div>
-      </div>
-    </div>
-  </div>
-
 </body>
-
 </html>
