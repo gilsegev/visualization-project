@@ -1,5 +1,13 @@
 # Changelog
 
+## [V2-VERSUS-ALIGNMENT] - 2026-02-13
+
+### Fixed
+- **Unified Title Scaling**: Implemented logic to share the same font size between both titles for visual balance.
+- **Strict Grid Centering**: Refined the `versus_split` grid and padding to ensure categories are perfectly centered on the spine.
+- **Alignment Offset**: Removed asymmetric padding that caused the right title and categories to be offset.
+
+
 ## [V2-VERSUS-SCALING] - 2026-02-13
 
 ### Changed

@@ -114,8 +114,7 @@
 
         /* 📏 DYNAMIC HEADER SCALING */
         .subject-title {
-            /* Shrinks from 5rem down to 3.5rem if space is tight */
-            font-size: clamp(3.5rem, 8vw, 5rem);
+            font-size: 5rem;
             font-weight: 900;
             text-transform: uppercase;
             letter-spacing: -0.06em;
@@ -123,6 +122,7 @@
             margin: 0;
             line-height: 0.85;
             filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+            width: 100%;
         }
 
         .val-text {
@@ -130,29 +130,34 @@
             font-weight: 500;
             color: #f1f5f9;
             line-height: 1.4;
+            width: 100%;
         }
 
         .left-align {
             text-align: right;
-            padding-right: 60px;
+            padding-right: 40px;
         }
 
         .right-align {
             text-align: left;
-            padding-left: 60px;
+            padding-left: 40px;
         }
 
         .label-pill {
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 44px;
+            width: 220px;
+            margin: 0 auto;
             font-size: 0.8rem;
             font-weight: 900;
             color: var(--theme-accent);
             text-transform: uppercase;
-            letter-spacing: 0.2em;
-            background: rgba(0, 0, 0, 0.7);
+            letter-spacing: 0.15em;
+            background: rgba(0, 0, 0, 0.8);
             backdrop-filter: blur(12px);
-            padding: 8px 18px;
-            border-radius: 10px;
+            border-radius: 999px;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
     </style>

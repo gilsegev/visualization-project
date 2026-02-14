@@ -265,21 +265,21 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             const leftTitle = document.getElementById('slot_title_left');
             const rightTitle = document.getElementById('slot_title_right');
-            if (leftTitle) {
+            if (leftTitle && rightTitle) {
+                const lenL = blueprint.versus_subjects.left_name.length;
+                const lenR = blueprint.versus_subjects.right_name.length;
+                const maxLen = Math.max(lenL, lenR);
+
+                let unifiedSize = 5.0;
+                if (maxLen > 12) {
+                    unifiedSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / maxLen)));
+                }
+
                 leftTitle.textContent = blueprint.versus_subjects.left_name;
-                const len = blueprint.versus_subjects.left_name.length;
-                if (len > 12) {
-                    const dynamicSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / len)));
-                    leftTitle.style.fontSize = `${dynamicSize}rem`;
-                }
-            }
-            if (rightTitle) {
+                leftTitle.style.fontSize = `${unifiedSize}rem`;
+
                 rightTitle.textContent = blueprint.versus_subjects.right_name;
-                const len = blueprint.versus_subjects.right_name.length;
-                if (len > 12) {
-                    const dynamicSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / len)));
-                    rightTitle.style.fontSize = `${dynamicSize}rem`;
-                }
+                rightTitle.style.fontSize = `${unifiedSize}rem`;
             }
 
             const rowsContainer = document.getElementById('stat_rows_container');
