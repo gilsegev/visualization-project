@@ -127,17 +127,12 @@
         .step-icon-circle {
             display: grid;
             place-content: center;
-
             grid-row: 1 / span calc(1 + var(--i));
             grid-column: calc(1 + var(--p)) / span 1;
 
-            align-self: center;
-            justify-self: center;
-            /* critical fix */
-
-            z-index: 10;
-
+            margin: 0 auto;
             border: solid 0.5em #ffffff;
+            /* Larger white border */
             width: var(--num-d);
             height: var(--num-d);
             border-radius: 50%;
@@ -145,10 +140,10 @@
             box-shadow:
                 0 8px 24px rgba(0, 0, 0, 0.15),
                 0 0 0 2px var(--c0);
+            /* Color ring outside white border */
 
             overflow: hidden;
         }
-
 
         .step-icon {
             width: 100%;

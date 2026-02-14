@@ -151,15 +151,33 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             this.logger.log(`Starting parallel image generation for ${blueprint.items.length} items...`);
             const itemImagePromises = blueprint.items.map((item, idx) =>
                 this.generateImage(`${item.title}: ${item.description}`, theme.primary_accent, false, imageSuffix)
-                    .then(base64 => ({ index: idx, base64 }))
+                    .then(base64 => {
+                        // DEBUG LOGGING
+                        if (!base64 || base64.length < 100) {
+                            this.logger.warn(`[ImageGen] Item ${idx} returned empty/short base64!`);
+                        } else {
+                            this.logger.log(`[ImageGen] Item ${idx} generated (${base64.slice(0, 20)}...)`);
+                        }
+                        return { index: idx, base64 };
+                    })
+                    .catch(err => {
+                        this.logger.error(`[ImageGen] Item ${idx} failed: ${err.message}`);
+                        return { index: idx, base64: '' }; // Fallback
+                    })
             );
             const backgroundImagePromise = this.generateImage("Abstract background texture", theme.primary_accent, true, imageSuffix)
                 .then(base64 => ({ index: -1, base64 }));
+
             const results = await Promise.all([...itemImagePromises, backgroundImagePromise]);
             itemImages = new Array(blueprint.items.length);
             results.forEach(res => {
                 if (res.index === -1) backgroundImage = res.base64;
                 else itemImages[res.index] = res.base64;
+            });
+
+            // Verify Logic
+            itemImages.forEach((img, i) => {
+                if (!img) this.logger.warn(`[ImageGen] FINAL CHECK: Index ${i} is missing!`);
             });
         }
         metrics.images = performance.now() - imagesStart;
@@ -283,60 +301,132 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 if (centerText) centerText.textContent = blueprint.center_topic.description;
             }
 
-            const itemWrapper = document.getElementById('item-wrapper');
-            const masterItem = document.querySelector('.spoke-container') ||
-                document.querySelector('.step-row') ||
-                document.querySelector('.bento-card') ||
-                document.querySelector('.group');
+            if (blueprint.template_id === 'step_list' && blueprint.center_topic) {
+                // Header Injection (Optional - user removed from template, but logic can remain if ID exists)
+                const header = document.getElementById('infographic-header');
+                if (header) {
+                    header.style.display = 'block';
+                    const titleEl = header.querySelector('.infographic-title');
+                    const subtEl = header.querySelector('.infographic-subtitle');
+                    if (titleEl) titleEl.textContent = blueprint.center_topic.title;
+                    if (subtEl) subtEl.textContent = blueprint.center_topic.description;
+                }
 
-            if (itemWrapper && masterItem) {
-                itemWrapper.innerHTML = '';
-                blueprint.items.forEach((item, index) => {
-                    const clone = masterItem.cloneNode(true) as HTMLElement;
-                    clone.id = `item_${index}`;
+                // Dynamic Step Generation (New Article/Grid Logic)
+                console.log("--- RELOADING STRATEGY: Step List Article Layout ---");
+                const container = document.getElementById('steps-container');
+                if (container) {
+                    container.innerHTML = ''; // Clear existing
+                    document.documentElement.style.setProperty('--n', blueprint.items.length.toString());
 
-                    // Add absolute anchor classes for Bento
-                    if (blueprint.template_id === 'bento_grid') {
-                        clone.classList.add(`card-${index}`);
-                    }
-
-                    // Hub Radial Positioning
-                    if (blueprint.template_id === 'hub_radial') {
-                        const radiusPct = 38;
-                        const total = blueprint.items.length;
-                        const angle = (index / total) * 2 * Math.PI - (Math.PI / 2);
-                        const posX_pct = 50 + (radiusPct * Math.cos(angle));
-                        const posY_pct = 50 + (radiusPct * Math.sin(angle));
-                        clone.style.position = 'absolute';
-                        clone.style.left = `${posX_pct}%`;
-                        clone.style.top = `${posY_pct}%`;
-                        clone.style.transform = 'translate(-50%, -50%)';
-                    }
-
-                    const updateId = (prefix: string) => {
-                        const el = clone.querySelector(`[id^="${prefix}"]`);
-                        if (el) el.id = `${prefix}_${index}`;
-                        return el;
+                    // Color Palette Generator (Vibrant Theme)
+                    const getColors = (idx: number) => {
+                        const palettes = [
+                            ['#6366f1', '#818cf8', '#4f46e5'], // Indigo
+                            ['#f59e0b', '#fbbf24', '#d97706'], // Amber
+                            ['#10b981', '#34d399', '#059669'], // Emerald
+                            ['#ec4899', '#f472b6', '#db2777'], // Pink
+                            ['#3b82f6', '#60a5fa', '#2563eb'], // Blue
+                            ['#8b5cf6', '#a78bfa', '#7c3aed'], // Violet
+                        ];
+                        return palettes[idx % palettes.length];
                     };
 
-                    const img = updateId('slot_img');
-                    if (img) img.setAttribute('src', itemImages[index]);
+                    blueprint.items.forEach((item, index) => {
+                        const [c0, c1, c2] = getColors(index);
 
-                    const title = updateId('slot_title') || clone.querySelector('h2') || clone.querySelector('h3');
-                    if (title) title.textContent = item.title;
+                        const article = document.createElement('article');
+                        article.className = 'step-article';
+                        article.style.setProperty('--c0', c0);
+                        article.style.setProperty('--c1', c1);
+                        article.style.setProperty('--c2', c2);
+                        article.style.setProperty('--idx', index.toString());
 
-                    const txt = updateId('slot_txt') || clone.querySelector('p');
-                    if (txt) {
-                        txt.classList.add('line-clamp-4');
-                        txt.textContent = item.description;
+                        // Content Injection
+                        article.innerHTML = `
+                            <div class="step-icon-circle">
+                                <img class="step-icon" src="${itemImages[index]}" alt="Step ${index + 1}">
+                            </div>
+                            <h3 class="step-title">${item.title}</h3>
+                            <p class="step-description">${item.description.replace('|', '').trim()}</p>
+                        `;
+
+                        container.appendChild(article);
+                    });
+
+                    // Update wrapper height based on content
+                    const wrapper = document.getElementById('main-wrapper');
+                    if (wrapper) {
+                        const steps = blueprint.items.length;
+                        const minHeight = Math.max(1600, (steps * 280) + 300);
+                        wrapper.style.minHeight = `${minHeight}px`;
                     }
+                }
+            } else {
+                // Legacy Step List or Hub Radial (Fallback)
+                if (blueprint.template_id === 'hub_radial' && blueprint.center_topic) {
+                    const centerTitle = document.getElementById('slot_title_center');
+                    const centerText = document.getElementById('slot_txt_center');
+                    if (centerTitle) centerTitle.textContent = blueprint.center_topic.title;
+                    if (centerText) centerText.textContent = blueprint.center_topic.description;
+                }
 
-                    const stepNumEl = clone.querySelector('.step-number');
-                    if (stepNumEl) stepNumEl.textContent = String(index + 1).padStart(2, '0');
+                const itemWrapper = document.getElementById('item-wrapper');
+                const masterItem = document.querySelector('.group');
+                const separator = document.getElementById('slot_separator');
 
-                    clone.classList.remove('hidden', 'opacity-0', 'invisible');
-                    itemWrapper.appendChild(clone);
-                });
+                if (itemWrapper && masterItem) {
+                    itemWrapper.innerHTML = '';
+                    blueprint.items.forEach((item, index) => {
+                        const clone = masterItem.cloneNode(true) as HTMLElement;
+                        clone.id = `item_${index}`;
+
+                        let badgeText = '';
+                        let cleanDescription = item.description;
+                        if (item.description.includes('|')) {
+                            const parts = item.description.split('|');
+                            badgeText = parts[0].trim();
+                            cleanDescription = parts[1].trim();
+                        }
+
+                        const updateId = (prefix: string) => {
+                            const el = clone.querySelector(`[id^="${prefix}"]`);
+                            if (el) el.id = `${prefix}_${index}`;
+                            return el;
+                        };
+
+                        const img = updateId('slot_img');
+                        if (img) img.setAttribute('src', itemImages[index]);
+
+                        const title = updateId('slot_title') || clone.querySelector('h2') || clone.querySelector('h3');
+                        if (title) title.textContent = item.title;
+
+                        const txt = updateId('slot_txt') || clone.querySelector('p');
+                        if (txt) {
+                            txt.classList.add('line-clamp-4');
+                            txt.textContent = cleanDescription;
+                        }
+
+                        const badge = updateId('slot_badge');
+                        if (badge && badgeText) {
+                            badge.textContent = badgeText;
+                        } else if (badge) {
+                            badge.textContent = `STEP ${String(index + 1).padStart(2, '0')}`;
+                        }
+
+                        const stepNumEl = clone.querySelector('.step-number');
+                        if (stepNumEl) stepNumEl.textContent = String(index + 1).padStart(2, '0');
+
+                        clone.classList.remove('hidden', 'opacity-0', 'invisible');
+                        itemWrapper.appendChild(clone);
+
+                        if (separator && index < blueprint.items.length - 1) {
+                            const sepClone = separator.cloneNode(true) as HTMLElement;
+                            sepClone.id = `separator_${index}`;
+                            itemWrapper.appendChild(sepClone);
+                        }
+                    });
+                }
             }
         }
 
@@ -390,15 +480,15 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const systemPrompt = `You are an expert Data Visualization Architect.
 Goal: Select template, define style, generate structured content.
 
-Templates: 'hub_radial', 'step_list', 'step_stone', 'bento_grid', 'versus_split'.
+Templates: 'hub_radial' (circular hub), 'step_list' (vertical sequence), 'step_stone' (zigzag path), 'bento_grid' (grid), 'versus_split' (comparison).
 Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
 
 Task:
 1. Select Template & Theme.
 2. Generate Items (3-9 normal).
-3. FOR VERSUS_SPLIT: You MUST generate exactly 4-5 items. Each item "description" MUST contain two values separated by a pipe character '|' (e.g., "100k thrust | 80k thrust"). The first value relates to left_name, the second to right_name.
-4. FOR THEME: Select based on topic (Tech->Cyber, Biz->Corp, Nature->Nature, Fun->Warm).
-5. FOR HUB_RADIAL: Provide the main subject in "center_topic" object and supporting details in "items" array. Do NOT repeat the center topic in the items array.
+3. FOR STEP_LIST: Use this for vertical "roadmaps" or lists. In the "description" field, you MUST use a pipe character '|' to separate a short stage name from the detailed description (e.g., "Foundation | Long detailed text...").
+4. FOR STEP_STONE: Use this for zigzag path layouts.
+5. FOR VERSUS_SPLIT: You MUST generate exactly 4-5 items. Each item "description" MUST contain two values separated by a pipe character '|' (e.g., "100k thrust | 80k thrust"). The first value relates to left_name, the second to right_name.
 
 OUTPUT ONLY VALID JSON, NO MARKDOWN:
 {

@@ -1,0 +1,38 @@
+{
+  "course_metadata": {
+    "title": "Mindfulness & Stress Management",
+    "target_audience": "General public, ages 20-60",
+    "global_style_guide": {
+      "philosophy": "Warm, approachable, wellness bookshop aesthetic",
+      "palette": ["#5B9A8B", "#F5E6D3", "#E8A598", "#4A5568", "#FAF9F6", "#2D3748"],
+      "font_preferences": "Sans-serif, clean, professional but soft",
+      "image_style": "Soft watercolor illustrations or minimalist 3D with studio lighting"
+    }
+  },
+  "visualizations": [
+    {
+      "id": "viz_1_1",
+      "lesson": "The Science of Stress",
+      "title": "The Autonomic Nervous System",
+      "objective": "Compare Sympathetic vs Parasympathetic functions",
+      "description": "A split-screen visual showing a 'cluttered' mind/tense body vs. a 'clear' mind/relaxed body.",
+      "suggested_template": "versus_split"
+    },
+    {
+      "id": "viz_1_3",
+      "lesson": "The Science of Stress",
+      "title": "Nervous System Hierarchy",
+      "objective": "Map the hierarchy of the nervous system",
+      "description": "A diagram starting with the Central Nervous System at the center, branching out to Peripheral systems.",
+      "suggested_template": "hub_radial"
+    },
+    {
+      "id": "viz_2_1",
+      "lesson": "The Stress Cycle",
+      "title": "The 6 Stages of Stress",
+      "objective": "Show the sequential progression of a stress response",
+      "description": "A zig-zag journey from Perception of Threat to Exhaustion.",
+      "suggested_template": "step_stone"
+    }
+  ]
+}
