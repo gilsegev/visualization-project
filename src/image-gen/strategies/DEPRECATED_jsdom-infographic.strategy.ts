@@ -12,47 +12,11 @@ import axios from 'axios';
 import * as pLimit from 'p-limit';
 import { performance } from 'perf_hooks';
 
-// 1. Define Theme Library
-export const THEME_LIBRARY = {
-    cyber_neon: {
-        primary_accent: '#00f3ff',
-        background_main: '#09090b', // zinc-950
-        text_main: '#e4e4e7',       // zinc-200
-        font_family: 'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap',
-        font_name: 'Orbitron',
-        image_style_suffix: 'cyberpunk aesthetic, neon lighting, dark background, futuristic, glowing accents, volumetric fog',
-        glass_color: 'rgba(0, 0, 0, 0.6)' // Darker glass for better contrast
-    },
-    corp_blue: {
-        primary_accent: '#2563eb',  // blue-600
-        background_main: '#ffffff',
-        text_main: '#1e293b',       // slate-800
-        font_family: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap',
-        font_name: 'Inter',
-        image_style_suffix: 'corporate memphis style, clean vector art, flat design, professional, white background, minimalist',
-        glass_color: 'rgba(255, 255, 255, 0.8)' // Light frost
-    },
-    nature_fresh: {
-        primary_accent: '#16a34a',  // green-600
-        background_main: '#fcfbf9', // warm cream
-        text_main: '#292524',       // stone-800
-        font_family: 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap',
-        font_name: 'Quicksand',
-        image_style_suffix: 'minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution',
-        glass_color: 'rgba(255, 255, 255, 0.7)' // Soft organic glass
-    },
-    warm_creative: {
-        primary_accent: '#f59e0b',  // amber-500
-        background_main: '#fffbeb', // amber-50
-        text_main: '#451a03',       // amber-950
-        font_family: 'https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap',
-        font_name: 'Playfair Display',
-        image_style_suffix: 'playful 3D style, warm lighting, round shapes, vibrant colors, claymorphism, cheerful',
-        glass_color: 'rgba(255, 255, 255, 0.6)' // Warm glass
-    }
-} as const;
+import { THEME_LIBRARY, Theme, ThemeId } from '../themes.config';
 
-export type ThemeId = keyof typeof THEME_LIBRARY;
+// Removed local THEME_LIBRARY definition
+
+
 
 export interface HtmlInfographicBlueprint {
     template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split';
@@ -75,7 +39,7 @@ export interface HtmlInfographicBlueprint {
 }
 
 @Injectable()
-export class HtmlInfographicStrategy extends BaseImageStrategy {
+export class DEPRECATED_HtmlInfographicStrategy extends BaseImageStrategy {
     private openai: OpenAI;
 
     constructor(
@@ -123,8 +87,15 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             throw error;
         }
 
-        const theme = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
-        const imageSuffix = theme.image_style_suffix;
+        // Resolve Theme (Payload > Blueprint > Default)
+        let theme: Theme;
+        const taskAny = task as any;
+        if (taskAny.metadata?.custom_theme) {
+            this.logger.log(`[Theme] Using Custom Theme override from payload.`);
+            theme = taskAny.metadata.custom_theme as Theme;
+        } else {
+            theme = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
+        }
 
         // 2. Load Template
         const templateContent = this.loadTemplate(blueprint.template_id);
@@ -138,11 +109,11 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
         if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
             this.logger.log(`Generating Versus images for subjects...`);
-            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme.primary_accent, false, imageSuffix)
+            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme, false)
                 .then(b64 => ({ key: 'left', base64: b64 }));
-            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme.primary_accent, false, imageSuffix)
+            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme, false)
                 .then(b64 => ({ key: 'right', base64: b64 }));
-            const pBg = this.generateImage("Subtle abstract background, split screen contest", theme.primary_accent, true, imageSuffix)
+            const pBg = this.generateImage("Subtle abstract background, split screen contest", theme, true)
                 .then(b64 => ({ key: 'bg', base64: b64 }));
             const results = await Promise.all([p1, p2, pBg]);
             results.forEach(r => versusImages[r.key] = r.base64);
@@ -150,7 +121,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         } else {
             this.logger.log(`Starting parallel image generation for ${blueprint.items.length} items...`);
             const itemImagePromises = blueprint.items.map((item, idx) =>
-                this.generateImage(`${item.title}: ${item.description}`, theme.primary_accent, false, imageSuffix)
+                this.generateImage(`${item.title}: ${item.description}`, theme, false)
                     .then(base64 => {
                         // DEBUG LOGGING
                         if (!base64 || base64.length < 100) {
@@ -165,7 +136,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                         return { index: idx, base64: '' }; // Fallback
                     })
             );
-            const backgroundImagePromise = this.generateImage("Abstract background texture", theme.primary_accent, true, imageSuffix)
+            const backgroundImagePromise = this.generateImage("Abstract background texture", theme, true)
                 .then(base64 => ({ index: -1, base64 }));
 
             const results = await Promise.all([...itemImagePromises, backgroundImagePromise]);
@@ -187,6 +158,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const domStart = performance.now();
         const dom = new JSDOM(templateContent);
         const document = dom.window.document;
+        let debugLog = "<!-- LAYOUT DEBUG LOG\n"; // Init Debug Log
+        debugLog += `Generated at: ${new Date().toISOString()}\n`;
+        debugLog += `Template: ${blueprint.template_id}\n`;
 
         // Inject Styles (Theme + Layout Fixes)
         const styleTag = document.querySelector('style') || document.createElement('style');
@@ -228,6 +202,11 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             .left-align { text-align: right !important; }
             .right-align { text-align: left !important; }
+
+            /* Sticker Blend Fix */
+            img, .step-icon, .slot-img, #slot_img { 
+                mix-blend-mode: multiply !important; 
+            }
         `;
 
         const link = document.createElement('link');
@@ -332,6 +311,9 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                         return palettes[idx % palettes.length];
                     };
 
+                    debugLog += `--- Step List Layout ---\n`;
+                    debugLog += `Item Count: ${blueprint.items.length}\n`;
+
                     blueprint.items.forEach((item, index) => {
                         const [c0, c1, c2] = getColors(index);
 
@@ -362,17 +344,62 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                         wrapper.style.minHeight = `${minHeight}px`;
                     }
                 }
-            } else {
-                // Legacy Step List or Hub Radial (Fallback)
-                if (blueprint.template_id === 'hub_radial' && blueprint.center_topic) {
-                    const centerTitle = document.getElementById('slot_title_center');
-                    const centerText = document.getElementById('slot_txt_center');
-                    if (centerTitle) centerTitle.textContent = blueprint.center_topic.title;
-                    if (centerText) centerText.textContent = blueprint.center_topic.description;
-                }
+            } else if (blueprint.template_id === 'hub_radial') {
+                // HUB RADIAL SPECIFIC LOGIC
+                console.log("--- RELOADING STRATEGY: Hub Radial Layout ---");
+
+                // Update Center
+                const centerTitle = document.getElementById('hub-center')?.querySelector('h2');
+                const centerText = document.getElementById('hub-center')?.querySelector('p');
+                if (centerTitle && blueprint.center_topic) centerTitle.textContent = blueprint.center_topic.title;
+                if (centerText && blueprint.center_topic) centerText.textContent = blueprint.center_topic.description;
 
                 const itemWrapper = document.getElementById('item-wrapper');
-                const masterItem = document.querySelector('.group');
+                // Use the FIRST spoke as the master template
+                const masterSpoke = itemWrapper?.querySelector('.spoke-container');
+
+                if (itemWrapper && masterSpoke) {
+                    // Clone the master before clearing
+                    const templateSpoke = masterSpoke.cloneNode(true) as HTMLElement;
+                    itemWrapper.innerHTML = ''; // Clear initial spokes
+
+                    const count = blueprint.items.length;
+                    const radius = 400; // Distance from center
+                    const centerX = 600; // Canvas center X
+                    const centerY = 600; // Canvas center Y
+
+                    debugLog += `--- Hub Radial Layout ---\nCenter: (${centerX}, ${centerY}), Radius: ${radius}\n`;
+
+                    blueprint.items.forEach((item, index) => {
+                        const spoke = templateSpoke.cloneNode(true) as HTMLElement;
+                        const angle = (index / count) * 2 * Math.PI - (Math.PI / 2); // Start at top
+
+                        const x = centerX + radius * Math.cos(angle);
+                        const y = centerY + radius * Math.sin(angle);
+
+                        spoke.style.left = `${x}px`;
+                        spoke.style.top = `${y}px`;
+
+                        debugLog += `Item ${index}: Angle=${angle.toFixed(2)}rad, X=${x.toFixed(1)}, Y=${y.toFixed(1)}\n`;
+
+                        // Inject Data
+                        const img = spoke.querySelector('img');
+                        if (img) img.src = itemImages[index];
+
+                        const title = spoke.querySelector('h3');
+                        if (title) title.textContent = item.title;
+
+                        const desc = spoke.querySelector('p');
+                        if (desc) desc.textContent = item.description;
+
+                        itemWrapper.appendChild(spoke);
+                    });
+                }
+
+            } else {
+                // Legacy / Standard Fallback (Step List, Bento, etc if not handled above)
+                const itemWrapper = document.getElementById('item-wrapper');
+                const masterItem = document.querySelector('.group'); // Expects Tailwind 'group' class for hover effects often used in these templates
                 const separator = document.getElementById('slot_separator');
 
                 if (itemWrapper && masterItem) {
@@ -457,6 +484,17 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
         this.logger.log(`Infographic saved to: ${publicUrl}`);
 
+        // Save Debug HTML
+        // Save Debug HTML
+        debugLog += "-->";
+        // Safe injection into body
+        const debugComment = document.createComment(debugLog.replace(/<!--|-->/g, ''));
+        document.body.insertBefore(debugComment, document.body.firstChild);
+
+        const htmlFilename = filename.replace('.png', '.html');
+        await this.localStorage.save(htmlFilename, Buffer.from(dom.serialize()));
+        this.logger.log(`Debug HTML saved to: ${htmlFilename}`);
+
         return {
             url: publicUrl,
             posterUrl: publicUrl,
@@ -532,19 +570,20 @@ OUTPUT ONLY VALID JSON, NO MARKDOWN:
         return fs.readFileSync(filePath, 'utf-8');
     }
 
-    private async generateImage(prompt: string, accentColor: string, isBackground: boolean, styleDirective: string): Promise<string> {
+    private async generateImage(prompt: string, theme: Theme, isBackground: boolean): Promise<string> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
-        // Detect wellness/mindfulness content
-        const wellnessKeywords = ['wellness', 'mindfulness', 'stress', 'autonomic', 'nervous', 'meditation', 'breathing', 'relaxation'];
-        const isWellness = wellnessKeywords.some(kw => prompt.toLowerCase().includes(kw));
+        // Atomic "Sticker-Style" Prompt Construction
+        // We remove conflicting terms like "8k", "studio", "volumetric" to ensure flat vector style.
+        let fullPrompt = '';
 
-        let fullPrompt = isBackground
-            ? `${styleDirective}, abstract background texture, minimalist, harmonious with ${accentColor}, high resolution`
-            : isWellness
-                ? `${prompt}, hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows`
-                : `${styleDirective}, ${prompt}, centered, high resolution, professional design, isolated on white background, matching ${accentColor}`;
+        if (isBackground) {
+            fullPrompt = `very faint paper texture, off-white, minimalist, high resolution, subtle grain, absolutely no text, no characters, no busy patterns`;
+        } else {
+            // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
+            fullPrompt = `${prompt}, ${theme.image_style_suffix}, flat vector icon style, isolated on white background, matching ${theme.primary_accent} color --no shadows, text, blurry, complex background, 3d, realistic, photo`;
+        }
 
         console.log(`[FORENSIC] SiliconFlow Image Prompt: ${fullPrompt}`);
 

@@ -10,7 +10,9 @@ import { DataVizStrategy } from './strategies/data-viz.strategy';
 import { MathFormulaStrategy } from './strategies/math-formula.strategy';
 import { BeautifySlideStrategy } from './strategies/beautify-slide.strategy';
 import { InfographicStrategy } from './strategies/infographic.strategy';
-import { HtmlInfographicStrategy } from './strategies/html-infographic.strategy';
+import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdom-infographic.strategy';
+import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
+import { TemplateStampingService } from './services/template-stamping.service';
 import { BrowserService } from './browser.service';
 
 @Module({
@@ -26,7 +28,9 @@ import { BrowserService } from './browser.service';
         MathFormulaStrategy,
         BeautifySlideStrategy,
         InfographicStrategy,
-        HtmlInfographicStrategy,
+        DEPRECATED_HtmlInfographicStrategy,
+        TemplateStampingStrategy,
+        TemplateStampingService,
         BrowserService,
     ],
 })

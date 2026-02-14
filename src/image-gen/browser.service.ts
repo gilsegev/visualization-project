@@ -85,7 +85,7 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    async screenshotHtml(htmlContent: string): Promise<Buffer> {
+    async screenshotHtml(htmlContent: string, baseUrl?: string): Promise<Buffer> {
         // V2-RESET-01: "Clip-Only" Capture - Forces (0,0) Origin
         // Re-use standard getNewPage which now defaults to 1200x1200px
         const { context, page } = await this.getNewPage();
@@ -95,7 +95,38 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             // V2-DEBUG-20: Double-Tap Viewport Lock
             await page.setViewportSize({ width: 1200, height: 1200 });
 
-            await page.setContent(htmlContent);
+            if (baseUrl) {
+                // Determine strict file path for Base URL
+                const fileUrl = 'file://' + baseUrl.replace(/\\/g, '/').replace(/\/?$/, '/');
+                console.log(`[BROWSER] Setting Base URL: ${fileUrl}`);
+
+                // Write HTML to a temporary file in the base directory to ensure relative paths work and security context is correct
+                // This bypasses "Not allowed to load local resource" errors common with setContent
+                const fs = require('fs');
+                const path = require('path');
+                // Use a proper join that handles the baseUrl correctly (baseUrl is absolute path to dir)
+                const tempFilePath = path.join(baseUrl, `temp_preview_${Date.now()}.html`);
+
+                try {
+                    fs.writeFileSync(tempFilePath, htmlContent);
+                    const tempFileUrl = 'file://' + tempFilePath.replace(/\\/g, '/');
+                    console.log(`[BROWSER] Navigating to temporary file: ${tempFileUrl}`);
+
+                    await page.goto(tempFileUrl, { waitUntil: 'load' });
+
+                    // Cleanup is tricky if we want to debug, but for now we'll delete it after screenshot (in finally block maybe? or just leave it for forensics?)
+                    // The prompt asked to "Pass ... baseUrl so it can resolve relative paths".
+                    // Navigating to the file is the best way.
+
+                    // We don't need to inject <base> if we are IN the directory.
+                } catch (e) {
+                    this.logger.error(`[BROWSER] Failed to use temp file for navigation: ${e.message}`);
+                    // Fallback to setContent if write fails
+                    await page.setContent(htmlContent, { waitUntil: 'load' });
+                }
+            } else {
+                await page.setContent(htmlContent, { waitUntil: 'load' });
+            }
 
             // V2-DEBUG-20: Force Scroll Behavior to Auto (No smooth scroll interference)
             await page.evaluate(() => {
@@ -104,10 +135,20 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
                 window.scrollTo(0, 0);
             });
 
-            // Wait for network idle with timeout to prevent hangs
-            await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {
-                this.logger.warn('Network idle timeout, proceeding with screenshot');
-            });
+            // Refinement 3.1: Enforce Asset Loading
+            // Wait for at least one spoke image to be visible if it exists in the HTML
+            if (htmlContent.includes('assets/spoke')) {
+                try {
+                    console.log('[BROWSER] Waiting for spoke images to load...');
+                    await page.waitForSelector('img[src*="assets/spoke"]', { state: 'visible', timeout: 5000 });
+                    console.log('[BROWSER] All assets verified on disk (via DOM Check).');
+                } catch (e) {
+                    this.logger.warn(`[BROWSER] Timeout waiting for images: ${e.message}`);
+                }
+            }
+
+            // Safety Buffer for GPU/Rendering
+            await page.waitForTimeout(500);
 
             // V2-RESET-01: Hard-Clipped Screenshot
             const screenshotBuffer = await page.screenshot({

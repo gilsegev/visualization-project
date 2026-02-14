@@ -10,6 +10,16 @@ import { LocalStorageService } from '../src/image-gen/local-storage.service';
 import { ImageTask } from '../src/image-gen/image-task.schema';
 import { ConfigService } from '@nestjs/config';
 
+
+process.on('uncaughtException', (err) => {
+    console.error('🔥 CRITICAL: Uncaught Exception:', err);
+    process.exit(1);
+});
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('🔥 CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
+});
+
 async function runJsonTest() {
     console.log("📋 Starting E2E Test with JSON Input...");
 
@@ -25,10 +35,13 @@ async function runJsonTest() {
     console.log(`ℹ️  Course: ${inputData.course_metadata.title}`);
     console.log(`ℹ️  Style Philosophy: ${inputData.course_metadata.global_style_guide.philosophy}`);
 
+    console.log("ℹ️  Initializing services...");
     const configService = { get: (key: string) => process.env[key] } as ConfigService;
     const localStorage = new LocalStorageService();
     const browserService = new BrowserService();
+    console.log("ℹ️  BrowserService initialized.");
     const strategy = new HtmlInfographicStrategy(configService, browserService, localStorage);
+    console.log("ℹ️  Strategy initialized.");
 
     // Map style guide to a supported theme roughly
     // "Warm, approachable, wellness bookshop aesthetic" -> 'nature_fresh' or 'warm_creative'
@@ -56,7 +69,17 @@ async function runJsonTest() {
             status: 'pending',
             metadata: {
                 template_id: viz.suggested_template,
-                theme_id: theme
+                theme_id: theme,
+                style_anchor: "Soft, organic, minimalist vector style",
+                custom_theme: {
+                    primary_accent: '#5B9A8B',
+                    background_main: '#FAF9F6',
+                    text_main: '#2D3748',
+                    font_family: 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap',
+                    font_name: 'Quicksand',
+                    image_style_suffix: 'mindfulness aesthetic, soft lighting, organic shapes, flat vector icon style, isolated on white background',
+                    glass_color: 'rgba(255, 255, 255, 0.7)'
+                }
             }
         } as any;
 

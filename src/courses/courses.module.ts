@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { CourseController } from './course.controller';
 import { CourseOrchestratorService } from './course-orchestrator.service';
-import { HtmlInfographicStrategy } from '../image-gen/strategies/html-infographic.strategy';
+import { DEPRECATED_HtmlInfographicStrategy } from '../image-gen/strategies/DEPRECATED_jsdom-infographic.strategy';
 import { BrowserService } from '../image-gen/browser.service';
 import { LocalStorageService } from '../image-gen/local-storage.service';
 
@@ -11,7 +11,7 @@ import { LocalStorageService } from '../image-gen/local-storage.service';
     controllers: [CourseController],
     providers: [
         CourseOrchestratorService,
-        HtmlInfographicStrategy,
+        DEPRECATED_HtmlInfographicStrategy,
         BrowserService,
         LocalStorageService
     ]

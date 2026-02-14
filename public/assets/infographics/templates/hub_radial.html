@@ -1,186 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8" />
-    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8" />
+<script src="https://cdn.tailwindcss.com"></script>
 
-    <style>
-        :root {
-            --theme-accent: #5DA9A4;
-            --bg-page: #FAF9F6;
-            --text-main: #1a202c;
-        }
+<style>
+:root {
+    --theme-accent: #5DA9A4;
+    --bg-page: #FAF9F6;
+    --text-main: #1a202c;
+    --radius: 38%;
+}
 
-        /* 🔒 Deterministic canvas */
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 1200px;
-            height: 1200px;
-            overflow: hidden;
-            background: var(--bg-page);
-        }
+/* 🔒 Hard reset — deterministic canvas */
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 1200px;
+    height: 1200px;
+    overflow: hidden;
+    background: var(--bg-page);
+}
 
-        /* 🎯 Single coordinate root */
-        #main-wrapper {
-            position: relative;
-            width: 1200px;
-            height: 1200px;
-            background: radial-gradient(circle at center,
-                    rgba(93, 169, 164, 0.05) 0%,
-                    transparent 70%);
-        }
+/* 🎯 Single coordinate root */
+#main-wrapper {
+    position: relative;
+    width: 1200px;
+    height: 1200px;
+    background: radial-gradient(circle at center,
+        rgba(93,169,164,0.05) 0%,
+        transparent 70%);
+}
 
-        /* ========================= */
-        /*          HUB              */
-        /* ========================= */
+/* 🟢 Hub */
+#hub-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 360px;
+    height: 360px;
+    background: #ffffff;
+    border: 8px solid var(--theme-accent);
+    border-radius: 50%;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem;
+    text-align: center;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+}
 
-        #hub-center {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 360px;
-            height: 360px;
-            background: #ffffff;
-            border: 8px solid var(--theme-accent);
-            border-radius: 50%;
-            z-index: 1000;
+/* 🟢 FIXED: Real containing block */
+#item-wrapper {
+    position: absolute;
+    inset: 0;               /* top:0 left:0 right:0 bottom:0 */
+    width: 100%;
+    height: 100%;
+    pointer-events: none;   /* optional */
+}
 
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 2.5rem;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
-        }
+/* 🟢 Spoke anchor */
+.spoke-container {
+    position: absolute;
+    width: 280px;
+    height: 0;
+    transform: translate(-50%, -50%);
+    overflow: visible;
+    z-index: 50;
+}
 
-        /* ========================= */
-        /*        SPOKES ROOT        */
-        /* ========================= */
+/* 🟢 Content offset from anchor */
+.spoke-content {
+    position: absolute;
+    top: -50px;
+    left: -140px;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
 
-        #item-wrapper {
-            position: absolute;
-            inset: 0;
-        }
+/* Card */
+.glass-card {
+    background: #ffffff;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 1.25rem;
+    padding: 1.25rem;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    width: 100%;
+}
 
-        /* ========================= */
-        /*      SPOKE ANCHOR         */
-        /* ========================= */
+/* Icon */
+.icon-circle {
+    width: 100px;
+    height: 100px;
+    background: #f8fafc;
+    border-radius: 50%;
+    margin-bottom: -40px;
+    border: 4px solid #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    z-index: 60;
+}
 
-        .spoke-container {
-            position: absolute;
+.icon-circle img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
 
-            /* anchor exactly at math coordinate */
-            transform: translate(-50%, -50%);
-
-            /* REAL BOX — not zero height */
-            width: 280px;
-
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        /* ========================= */
-        /*      SPOKE CONTENT        */
-        /* ========================= */
-
-        .icon-circle {
-            width: 100px;
-            height: 100px;
-            background: #f8fafc;
-            border-radius: 50%;
-            border: 4px solid #ffffff;
-
-            display: flex;
-            align-items: center;
-            justify-content: center;
-
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-        }
-
-        .icon-circle img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        /* Card */
-
-        .glass-card {
-            margin-top: 20px;
-            /* natural spacing instead of negative tricks */
-
-            background: #ffffff;
-            border: 1px solid rgba(0, 0, 0, 0.08);
-            border-radius: 1.25rem;
-            padding: 1.25rem;
-            width: 100%;
-
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
-
-            text-align: center;
-        }
-
-        /* Debug guide */
-
-        .debug-circle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: calc(1200px * 0.76);
-            height: calc(1200px * 0.76);
-            border: 2px dashed rgba(93, 169, 164, 0.2);
-            border-radius: 50%;
-            pointer-events: none;
-        }
-    </style>
+/* Optional debug circle */
+.debug-circle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(1200px * 0.76);
+    height: calc(1200px * 0.76);
+    border: 2px dashed rgba(93,169,164,0.2);
+    border-radius: 50%;
+    pointer-events: none;
+}
+</style>
 </head>
 
 <body>
 
-    <div id="main-wrapper">
+<div id="main-wrapper">
 
-        <div class="debug-circle"></div>
+    <div class="debug-circle"></div>
 
-        <!-- HUB -->
-        <div id="hub-center">
-            <h2 style="font-size: 2.2rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.5rem;">
-                The Central Topic
-            </h2>
-            <p style="font-size: 1rem; color: #64748b;">
-                A brief overview of the main concept being visualized.
-            </p>
-        </div>
+    <!-- Hub -->
+    <div id="hub-center">
+        <h2 id="slot_title_center"
+            style="font-size: 2.2rem; font-weight: 800; color: var(--text-main); margin-bottom: 0.5rem;">
+            The Central Topic
+        </h2>
+        <p id="slot_txt_center"
+            style="font-size: 1rem; color: #64748b;">
+            A brief overview of the main concept being visualized.
+        </p>
+    </div>
 
-        <!-- SPOKES -->
-        <div id="item-wrapper">
+    <!-- Spokes -->
+    <div id="item-wrapper">
 
-            <!-- Example top spoke -->
-            <div class="spoke-container" style="left: 600px; top: 144px;">
+        <div class="spoke-container" style="left: 600px; top: 144px;">
+            <div class="spoke-content">
                 <div class="icon-circle">
-                    <img id="slot_img" src="https://via.placeholder.com/150" alt="">
+                    <img src="https://via.placeholder.com/150" alt="">
                 </div>
                 <div class="glass-card">
-                    <h3 id="slot_title"
-                        style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.4rem;">
+                    <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-main); margin-top: 1.5rem;">
                         Spoke One
                     </h3>
-                    <p id="slot_txt" style="font-size: 0.85rem; color: #475569; line-height: 1.4;">
+                    <p style="font-size: 0.85rem; color: #475569;">
                         Supporting detail describing the first major division.
                     </p>
                 </div>
             </div>
-
         </div>
+
+        <!-- Additional spokes injected here -->
 
     </div>
 
-</body>
+</div>
 
+</body>
 </html>

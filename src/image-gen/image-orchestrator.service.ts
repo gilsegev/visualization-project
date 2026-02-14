@@ -28,7 +28,7 @@ export class ImageOrchestratorService {
         const promises = tasks.map((task, index) => {
             return limit(async () => {
                 try {
-                    const strategy = this.strategyFactory.getStrategy(task.type);
+                    const strategy = this.strategyFactory.getStrategy(task);
                     const result = await strategy.generate(task, index + 1);
                     return {
                         status: 'fulfilled',
