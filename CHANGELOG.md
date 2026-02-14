@@ -1,5 +1,12 @@
 # Changelog
 
+## [V2-VERSUS-SCALING] - 2026-02-13
+
+### Changed
+- **Dynamic Title Scaling**: Replaced static character threshold with a sliding scale (`Math.max(3.0, Math.min(5.0, 5.0 * (12 / length)))rem`) to ensure titles fit on one line.
+- **Template Reversion**: Reverted the optical anchor to **50% center** for standard alignment.
+- **Content Integrity**: Removed automatic truncation of comparison values.
+
 ## [V2-FIX-VERSUS] - 2026-02-13
 
 ### Changed

@@ -265,8 +265,22 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
             const leftTitle = document.getElementById('slot_title_left');
             const rightTitle = document.getElementById('slot_title_right');
-            if (leftTitle) leftTitle.textContent = blueprint.versus_subjects.left_name;
-            if (rightTitle) rightTitle.textContent = blueprint.versus_subjects.right_name;
+            if (leftTitle) {
+                leftTitle.textContent = blueprint.versus_subjects.left_name;
+                const len = blueprint.versus_subjects.left_name.length;
+                if (len > 12) {
+                    const dynamicSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / len)));
+                    leftTitle.style.fontSize = `${dynamicSize}rem`;
+                }
+            }
+            if (rightTitle) {
+                rightTitle.textContent = blueprint.versus_subjects.right_name;
+                const len = blueprint.versus_subjects.right_name.length;
+                if (len > 12) {
+                    const dynamicSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / len)));
+                    rightTitle.style.fontSize = `${dynamicSize}rem`;
+                }
+            }
 
             const rowsContainer = document.getElementById('stat_rows_container');
 
@@ -275,8 +289,8 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
                 blueprint.items.forEach((item, idx) => {
                     const parts = item.description.split('|');
-                    const valA = parts[0]?.trim() || '-';
-                    const valB = parts[1]?.trim() || '-';
+                    let valA = parts[0]?.trim();
+                    let valB = parts[1]?.trim();
 
                     // Create row div
                     const row = document.createElement('div');
