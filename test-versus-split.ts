@@ -5,7 +5,7 @@ import * as path from 'path';
 async function runVersusSplitTest() {
     console.log('⚔️ Starting "Versus Split" Test...');
     // Specific prompt to trigger 'versus_split' logic
-    const prompt = "Create a versus comparison between SpaceX and Blue Origin. SpaceX: rapid innovation, reusable rockets. Blue Origin: slow and steady, New Glenn development. Theme: cyber_neon.";
+    const prompt = "Create a versus comparison between Artificial Intelligence and Human Intuition. AI: speed, data processing, scalability. Human Intuition: context, creativity, emotional intelligence. Theme: cyber_neon.";
 
     try {
         console.log(`\n📤 Sending Request: "${prompt}"`);

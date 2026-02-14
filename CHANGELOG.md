@@ -1,5 +1,22 @@
 # Changelog
 
+## [V2-FIX-VERSUS] - 2026-02-13
+
+### Changed
+- **Shared Axis Row Refactor**: Refactored the `versus_split` infographic to a unified row-based model.
+  - Replaced independent subject containers with a centralized `#stat_rows_container`.
+  - Implemented 3-column grid alignment (`1fr 180px 1fr`) for perfectly aligned comparison points.
+  - Applied "Magnet Anchor" logic (`top: 50%`, `transform: translateY(-50%)`) for deterministic vertical centering.
+  - Improved responsive typography and high-contrast label pills.
+  - Added stylistic "VS" backdrop and pinned subject titles to the top.
+
+### Technical Details
+- **Files Modified**:
+  - `public/assets/infographics/templates/versus_split.html`: Complete structure rewrite.
+  - `src/image-gen/strategies/html-infographic.strategy.ts`: Updated injection logic and injected styles.
+  - `test-versus-split.ts`: Updated with "AI vs Human Intuition" test case.
+
+
 ## [V2-DEBUG-23] - 2026-02-13
 
 ### Fixed

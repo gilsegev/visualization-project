@@ -193,40 +193,62 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 text-overflow: ellipsis;
             }
 
-            /* VS Badge & Spine Stability */
+            /* VS Badge & Backdrop */
             .vs-badge {
                 position: absolute !important;
-                top: 40% !important; /* Match subject line */
+                top: 50% !important;
                 left: 50% !important;
                 transform: translate(-50%, -50%) !important;
-                z-index: 50 !important;
+                font-size: 10rem !important;
+                font-weight: 900 !important;
+                font-style: italic !important;
+                color: rgba(255, 255, 255, 0.05) !important;
+                z-index: 10 !important;
+                pointer-events: none !important;
             }
 
-            /* V2-DEBUG-23: Middle-Out Vertical Centering */
-            .subject-container {
+            /* V2-FIX-VERSUS: Shared Axis Grid */
+            #item-wrapper {
                 position: absolute !important;
-                top: 40% !important;
-                transform: translate(-50%, -50%) !important;
+                top: 50% !important;
+                left: 0 !important;
+                width: 1200px !important;
+                transform: translateY(-50%) !important;
                 display: flex !important;
                 flex-direction: column !important;
                 align-items: center !important;
-                text-align: center !important;
-                height: auto !important;
-                max-height: 500px !important;
+                justify-content: center !important;
+                z-index: 20 !important;
             }
-            .subject-left { left: 300px !important; }
-            .subject-right { left: 900px !important; }
 
-            /* Theme consistency for stats */
-            .stat-label {
-                background: rgba(0, 0, 0, 0.4) !important;
+            .stat-row {
+                display: grid !important;
+                grid-template-columns: 1fr 180px 1fr !important;
+                align-items: center !important;
+                gap: 1rem !important;
+                width: 1000px !important;
+                margin-bottom: 1.5rem !important;
+            }
+
+            .label-pill {
+                background: rgba(0, 0, 0, 0.5) !important;
                 color: var(--theme-accent) !important;
                 border: 1px solid var(--theme-accent) !important;
+                padding: 8px 16px !important;
+                text-align: center !important;
+                border-radius: 999px !important;
+                font-weight: 900 !important;
+                text-transform: uppercase !important;
+                font-size: 0.75rem !important;
             }
-            .stat-value {
+
+            .val-text {
                 color: var(--text-main) !important;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+                font-size: 1.5rem !important;
+                font-weight: 700 !important;
             }
+            .left-align { text-align: right !important; }
+            .right-align { text-align: left !important; }
         `;
 
         const link = document.createElement('link');
@@ -246,34 +268,25 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             if (leftTitle) leftTitle.textContent = blueprint.versus_subjects.left_name;
             if (rightTitle) rightTitle.textContent = blueprint.versus_subjects.right_name;
 
-            const listLeft = document.getElementById('stat_list_left');
-            const listRight = document.getElementById('stat_list_right');
+            const rowsContainer = document.getElementById('stat_rows_container');
 
-            if (listLeft && listRight) {
-                listLeft.innerHTML = '';
-                listRight.innerHTML = '';
+            if (rowsContainer) {
+                rowsContainer.innerHTML = '';
 
                 blueprint.items.forEach((item, idx) => {
                     const parts = item.description.split('|');
                     const valA = parts[0]?.trim() || '-';
                     const valB = parts[1]?.trim() || '-';
 
-                    // Create cards for both sides
-                    const cardA = document.createElement('div');
-                    cardA.className = 'glass-card';
-                    cardA.innerHTML = `
-                        <div class="stat-label mb-2">${item.title}</div>
-                        <div class="stat-value text-xl font-bold">${valA}</div>
+                    // Create row div
+                    const row = document.createElement('div');
+                    row.className = 'stat-row';
+                    row.innerHTML = `
+                        <div class="val-text left-align">${valA}</div>
+                        <div class="label-pill">${item.title}</div>
+                        <div class="val-text right-align">${valB}</div>
                     `;
-                    listLeft.appendChild(cardA);
-
-                    const cardB = document.createElement('div');
-                    cardB.className = 'glass-card';
-                    cardB.innerHTML = `
-                        <div class="stat-label mb-2">${item.title}</div>
-                        <div class="stat-value text-xl font-bold">${valB}</div>
-                    `;
-                    listRight.appendChild(cardB);
+                    rowsContainer.appendChild(row);
                 });
             }
         } else {

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <script src="https://cdn.tailwindcss.com"></script>
@@ -11,7 +12,8 @@
         }
 
         /* 🔒 Deterministic canvas */
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
             width: 1200px;
@@ -34,7 +36,8 @@
             display: flex;
         }
 
-        .bg-left, .bg-right {
+        .bg-left,
+        .bg-right {
             width: 600px;
             height: 1200px;
             position: relative;
@@ -47,47 +50,90 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            opacity: 0.4;
+            opacity: 0.2;
         }
 
         .gradient-overlay {
             position: absolute;
             inset: 0;
-            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.9));
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.4), rgba(15, 23, 42, 0.9));
             z-index: 5;
         }
 
-        /* 🎯 THE MAGNET ANCHORS */
-        .subject-container {
+        /* ⚓ THE MAGNET ANCHOR */
+        #item-wrapper {
             position: absolute;
-            top: 50%; /* Pinned to middle */
-            transform: translateY(-50%); /* Centers the box vertically around the pin */
-            width: 500px;
-            z-index: 20;
+            top: 50%;
+            left: 0;
+            width: 1200px;
+            transform: translateY(-50%);
             display: flex;
             flex-direction: column;
             align-items: center;
-            text-align: center;
+            justify-content: center;
+            z-index: 20;
         }
 
-        .subject-left { left: 50px; }
-        .subject-right { left: 650px; }
-
-        .stat-list {
-            width: 100%;
+        #stat_rows_container {
+            width: 1000px;
             display: flex;
             flex-direction: column;
             gap: 1.5rem;
         }
 
-        .glass-card {
-            background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 1.25rem;
-            padding: 1.5rem;
+        .stat-row {
+            display: grid;
+            grid-template-columns: 1fr 180px 1fr;
+            align-items: center;
+            gap: 1rem;
             width: 100%;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .val-text {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--text-main);
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .left-align {
+            text-align: right;
+        }
+
+        .right-align {
+            text-align: left;
+        }
+
+        .label-pill {
+            text-align: center;
+            font-size: 0.75rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--theme-accent);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--theme-accent);
+        }
+
+        .subject-titles {
+            position: absolute;
+            top: 100px;
+            width: 1200px;
+            display: flex;
+            justify-content: space-around;
+            z-index: 30;
+        }
+
+        .subject-title {
+            font-size: 3.5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            color: white;
+            text-align: center;
+            width: 450px;
+            text-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
         }
 
         .vs-badge {
@@ -95,22 +141,16 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: var(--theme-accent);
-            color: white;
+            font-size: 10rem;
             font-weight: 900;
-            font-size: 2rem;
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 100;
-            border: 4px solid var(--bg-page);
-            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+            font-style: italic;
+            color: rgba(255, 255, 255, 0.05);
+            z-index: 10;
+            pointer-events: none;
         }
     </style>
 </head>
+
 <body>
     <div id="main-wrapper">
         <div class="bg-split">
@@ -120,17 +160,17 @@
         <div class="gradient-overlay"></div>
         <div class="vs-badge">VS</div>
 
-        <div class="subject-container subject-left">
-            <h2 id="slot_title_left" class="text-4xl font-bold mb-8 text-white">Subject A</h2>
-            <div id="stat_list_left" class="stat-list">
-                </div>
+        <div class="subject-titles">
+            <h2 id="slot_title_left" class="subject-title">Subject A</h2>
+            <h2 id="slot_title_right" class="subject-title">Subject B</h2>
         </div>
 
-        <div class="subject-container subject-right">
-            <h2 id="slot_title_right" class="text-4xl font-bold mb-8 text-white">Subject B</h2>
-            <div id="stat_list_right" class="stat-list">
-                </div>
+        <div id="item-wrapper">
+            <div id="stat_rows_container">
+                <!-- Rows injected here -->
+            </div>
         </div>
     </div>
 </body>
+
 </html>
