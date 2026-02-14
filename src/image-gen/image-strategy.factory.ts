@@ -4,6 +4,7 @@ import { DataVizStrategy } from './strategies/data-viz.strategy';
 import { MathFormulaStrategy } from './strategies/math-formula.strategy';
 import { BeautifySlideStrategy } from './strategies/beautify-slide.strategy';
 import { InfographicStrategy } from './strategies/infographic.strategy';
+import { HtmlInfographicStrategy } from './strategies/html-infographic.strategy';
 import { ImageGeneratorStrategy } from './image-generator.strategy';
 
 @Injectable()
@@ -13,7 +14,7 @@ export class ImageStrategyFactory {
         private readonly dataVizStrategy: DataVizStrategy,
         private readonly mathFormulaStrategy: MathFormulaStrategy,
         private readonly beautifySlideStrategy: BeautifySlideStrategy,
-        private readonly infographicStrategy: InfographicStrategy,
+        private readonly infographicStrategy: HtmlInfographicStrategy,
     ) { }
 
     getStrategy(type: string): ImageGeneratorStrategy {

@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #3B82F6;
+            --bg-page: #0f172a;
+        }
+
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            background: var(--bg-page);
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+
+        #main-wrapper {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+        }
+
+        /* 🏔️ BACKGROUND: Enhanced Visibility */
+        .bg-split {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            z-index: 1;
+        }
+
+        .bg-half {
+            width: 600px;
+            height: 1200px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bg-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.4;
+        }
+
+        .vignette {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.9));
+            z-index: 2;
+        }
+
+        /* ⚡ THE SPINE */
+        .spine {
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, transparent, var(--theme-accent), transparent);
+            z-index: 5;
+            transform: translateX(-50%);
+            opacity: 0.6;
+        }
+
+        .vs-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--theme-accent);
+            color: white;
+            font-weight: 900;
+            font-size: 2.2rem;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            border: 8px solid var(--bg-page);
+            box-shadow: 0 0 60px rgba(59, 130, 246, 0.6);
+        }
+
+        #item-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            width: 1200px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            z-index: 50;
+            padding: 0 60px;
+        }
+
+        .stat-row {
+            display: grid;
+            grid-template-columns: 1fr 240px 1fr;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 2.2rem;
+        }
+
+        /* 📏 DYNAMIC HEADER SCALING */
+        .subject-title {
+            font-size: 5rem;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: -0.06em;
+            color: #ffffff;
+            margin: 0;
+            line-height: 0.85;
+            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
+            width: 100%;
+        }
+
+        .val-text {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: #f1f5f9;
+            line-height: 1.4;
+            width: 100%;
+        }
+
+        .left-align {
+            text-align: right;
+            padding-right: 40px;
+        }
+
+        .right-align {
+            text-align: left;
+            padding-left: 40px;
+        }
+
+        .label-pill {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 44px;
+            width: 220px;
+            margin: 0 auto;
+            font-size: 0.8rem;
+            font-weight: 900;
+            color: var(--theme-accent);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(12px);
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="main-wrapper">
+        <div class="bg-split">
+            <div class="bg-half"><img id="slot_image_left" class="bg-img"></div>
+            <div class="bg-half"><img id="slot_image_right" class="bg-img"></div>
+        </div>
+        <div class="vignette"></div>
+        <div class="spine"></div>
+        <div class="vs-badge">VS</div>
+
+        <div id="item-wrapper">
+            <div class="stat-row" style="margin-bottom: 6rem;">
+                <h2 id="slot_title_left" class="subject-title left-align">Subject A</h2>
+                <div></div>
+                <h2 id="slot_title_right" class="subject-title right-align">Subject B</h2>
+            </div>
+
+            <div id="stat_rows_container" class="w-full"></div>
+        </div>
+    </div>
+</body>
+
+</html>

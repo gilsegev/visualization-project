@@ -10,6 +10,7 @@ import { DataVizStrategy } from './strategies/data-viz.strategy';
 import { MathFormulaStrategy } from './strategies/math-formula.strategy';
 import { BeautifySlideStrategy } from './strategies/beautify-slide.strategy';
 import { InfographicStrategy } from './strategies/infographic.strategy';
+import { HtmlInfographicStrategy } from './strategies/html-infographic.strategy';
 import { BrowserService } from './browser.service';
 
 @Module({
@@ -25,6 +26,7 @@ import { BrowserService } from './browser.service';
         MathFormulaStrategy,
         BeautifySlideStrategy,
         InfographicStrategy,
+        HtmlInfographicStrategy,
         BrowserService,
     ],
 })

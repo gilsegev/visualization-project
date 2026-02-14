@@ -1,5 +1,14 @@
 # Changelog
 
+## [V2-VERSUS-PREMIUM] - 2026-02-13
+
+### Added
+- **Premium Glassmorphism Template**: Integrated the new `versus_split.html` featuring high-fidelity glass-card rows, glowing spine, and dynamic background images.
+
+### Changed
+- **Strategy Injection Refactor**: Updated `HtmlInfographicStrategy.ts` to support `backgroundImage` injection and the new complex stat row structure.
+
+
 ## [V2-VERSUS-ALIGNMENT] - 2026-02-13
 
 ### Fixed

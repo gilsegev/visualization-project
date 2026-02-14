@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #3B82F6;
+            --bg-page: #0f172a;
+            --text-main: #f8fafc;
+        }
+
+        /* 🔒 Deterministic canvas */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            background: var(--bg-page);
+            font-family: 'Inter', sans-serif;
+        }
+
+        #main-wrapper {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+        }
+
+        /* ⚔️ The Split Background */
+        .bg-split {
+            position: absolute;
+            inset: 0;
+            display: flex;
+        }
+
+        .bg-left, .bg-right {
+            width: 600px;
+            height: 1200px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .bg-img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            opacity: 0.4;
+        }
+
+        .gradient-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.9));
+            z-index: 5;
+        }
+
+        /* 🎯 THE MAGNET ANCHORS */
+        .subject-container {
+            position: absolute;
+            top: 50%; /* Pinned to middle */
+            transform: translateY(-50%); /* Centers the box vertically around the pin */
+            width: 500px;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .subject-left { left: 50px; }
+        .subject-right { left: 650px; }
+
+        .stat-list {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.25rem;
+            padding: 1.5rem;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .vs-badge {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--theme-accent);
+            color: white;
+            font-weight: 900;
+            font-size: 2rem;
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            border: 4px solid var(--bg-page);
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="main-wrapper">
+        <div class="bg-split">
+            <div class="bg-left"><img id="slot_image_left" class="bg-img"></div>
+            <div class="bg-right"><img id="slot_image_right" class="bg-img"></div>
+        </div>
+        <div class="gradient-overlay"></div>
+        <div class="vs-badge">VS</div>
+
+        <div class="subject-container subject-left">
+            <h2 id="slot_title_left" class="text-4xl font-bold mb-8 text-white">Subject A</h2>
+            <div id="stat_list_left" class="stat-list">
+                </div>
+        </div>
+
+        <div class="subject-container subject-right">
+            <h2 id="slot_title_right" class="text-4xl font-bold mb-8 text-white">Subject B</h2>
+            <div id="stat_list_right" class="stat-list">
+                </div>
+        </div>
+    </div>
+</body>
+</html>

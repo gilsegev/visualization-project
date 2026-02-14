@@ -1,0 +1,92 @@
+﻿[dotenv@17.2.3] injecting env (0) from .env -- tip: ΓÜÖ∩╕Å  override existing env vars with { override: true }
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +8ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mServeStaticModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] CWD: D:\visualization  project[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] GEMINI_API_KEY: Found[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCoursesModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mImageGenModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mImageGenController {/generate}:[39m[38;5;3m +4ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/generate, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCourseController {/courses}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/courses/generate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton)...[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton)...[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:17 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +46ms[39m
+Application is running on: http://localhost:3000
+POST /generate
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:20 PM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mStarting course generation for content length: 174[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:20 PM [32m    LOG[39m [38;5;3m[ImageRouterService] [39m[32mClassifying content: "Create a wellness hub radial infographic about stress relief. Center topic: Stress Relief. Items: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh."[39m
+[95m[Nest] 30588  - [39m02/12/2026, 11:54:21 PM [95m  DEBUG[39m [38;5;3m[ImageRouterService] [39m[95mRaw LLM Response: [
+  {
+    "type": "infographic",
+    "id": "4a443d2e-45c1-4f2a-b09c-750674472256",
+    "refined_prompt": "Radial infographic illustrating a wellness hub for stress relief, centered around 'Stress Relief'. Featuring connected nodes for: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh.",
+    "payload": {}
+  }
+][39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:21 PM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mClassified 1 tasks.[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:21 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting generation for task 4a443d2e-45c1-4f2a-b09c-750674472256 (infographic)[39m
+[33m[Nest] 30588  - [39m02/12/2026, 11:54:21 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Strategy Input: Radial infographic illustrating a wellness hub for stress relief, centered around 'Stress Relief'. Featuring connected nodes for: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh.[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:21 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting HTML Infographic Generation for: Radial infographic illustrating a wellness hub for stress relief, centered around 'Stress Relief'. Featuring connected nodes for: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh.[39m
+[FORENSIC] LLM Blueprint Result: ```json
+{
+  "template_id": "hub_radial",
+  "theme_id": "nature_fresh",
+  "visual_style_directive": "Use a color palette inspired by nature, with greens, blues, and browns. Ensure the radial connections are smooth and organic, resembling natural pathways. Use icons that represent each item, such as a lotus for meditation or running shoes for exercise.",
+  "center_topic": {
+    "title": "Stress Relief",
+    "description": "A central hub for managing and alleviating stress."
+  },
+  "versus_subjects": {
+    "left_name": "",
+    "right_name": "",
+    "left_image_prompt": "",
+    "right_image_prompt": ""
+  },
+  "items": [
+    {
+      "title": "Meditation",
+      "description": "Practicing mindfulness and calming the mind through focused breathing and awareness."
+    },
+    {
+      "title": "Exercise",
+      "description": "Engaging in physical activity to release endorphins and reduce stress hormones."
+    },
+    {
+      "title": "Sleep",
+      "description": "Prioritizing restful sleep to allow the body and mind to recover and rejuvenate."
+    },
+    {
+      "title": "Diet",
+      "description": "Nourishing the body with a balanced diet to support overall well-being and stress resilience."
+    },
+    {
+      "title": "Mindfulness",
+      "description": "Cultivating present moment awareness to reduce anxiety and improve emotional regulation."
+    },
+    {
+      "title": "Nature",
+      "description": "Spending time outdoors to connect with nature and experience its calming and restorative effects."
+    }
+  ]
+}
+```
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mBlueprint generated: Template=hub_radial, Theme=nature_fresh, Items=6[39m
+[33m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 1 (LLM Output): {"template_id":"hub_radial","theme_id":"nature_fresh","visual_style_directive":"Use a color palette inspired by nature, with greens, blues, and browns. Ensure the radial connections are smooth and organic, resembling natural pathways. Use icons that represent each item, such as a lotus for meditation or running shoes for exercise.","center_topic":{"title":"Stress Relief","description":"A central hub for managing and alleviating stress."},"versus_subjects":{"left_name":"","right_name":"","left_image_prompt":"","right_image_prompt":""},"items":[{"title":"Meditation","description":"Practicing mindfulness and calming the mind through focused breathing and awareness."},{"title":"Exercise","description":"Engaging in physical activity to release endorphins and reduce stress hormones."},{"title":"Sleep","description":"Prioritizing restful sleep to allow the body and mind to recover and rejuvenate."},{"title":"Diet","description":"Nourishing the body with a balanced diet to support overall well-being and stress resilience."},{"title":"Mindfulness","description":"Cultivating present moment awareness to reduce anxiety and improve emotional regulation."},{"title":"Nature","description":"Spending time outdoors to connect with nature and experience its calming and restorative effects."}]}[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mTemplate 'hub_radial' loaded successfully.[39m
+[33m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Mapping Data for Template: hub_radial[39m
+[33m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Center Topic Detected: Stress Relief[39m
+[32m[Nest] 30588  - [39m02/12/2026, 11:54:24 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting parallel image generation for 6 items...[39m
+[FORENSIC] SiliconFlow Image Prompt: Meditation: Practicing mindfulness and calming the mind through focused breathing and awareness., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: Exercise: Engaging in physical activity to release endorphins and reduce stress hormones., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, Sleep: Prioritizing restful sleep to allow the body and mind to recover and rejuvenate., centered, high resolution, professional design, isolated on white background, matching #16a34a
+[FORENSIC] SiliconFlow Image Prompt: Diet: Nourishing the body with a balanced diet to support overall well-being and stress resilience., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: Mindfulness: Cultivating present moment awareness to reduce anxiety and improve emotional regulation., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, Nature: Spending time outdoors to connect with nature and experience its calming and restorative effects., centered, high resolution, professional design, isolated on white background, matching #16a34a
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, abstract background texture, minimalist, harmonious with #16a34a, high resolution

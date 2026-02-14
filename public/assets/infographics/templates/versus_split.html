@@ -1,188 +1,436 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=1200, height=1200">
+    <title>Versus Infographic Template - Professional Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        :root {
-            --theme-accent: #3B82F6;
-            --bg-page: #0f172a;
-        }
-
-        html,
-        body {
+        * {
             margin: 0;
             padding: 0;
-            width: 1200px;
-            height: 1200px;
-            overflow: hidden;
-            background: var(--bg-page);
-            font-family: 'Inter', system-ui, sans-serif;
+            box-sizing: border-box;
         }
-
+        
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
         #main-wrapper {
-            position: relative;
             width: 1200px;
             height: 1200px;
-        }
-
-        /* 🏔️ BACKGROUND: Enhanced Visibility */
-        .bg-split {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            z-index: 1;
-        }
-
-        .bg-half {
-            width: 600px;
-            height: 1200px;
-            position: relative;
             overflow: hidden;
+            position: relative;
+            background: #0f172a;
         }
-
-        .bg-img {
+        
+        /* Background Images */
+        .bg-image {
             position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.4;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.25;
         }
-
-        .vignette {
+        
+        .bg-image-left {
+            left: 0;
+            background-image: url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=1200&fit=crop&q=80');
+        }
+        
+        .bg-image-right {
+            right: 0;
+            background-image: url('https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&h=1200&fit=crop&q=80');
+        }
+        
+        /* Gradient Overlays - Stronger for better text contrast */
+        .gradient-overlay-left {
             position: absolute;
-            inset: 0;
-            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.2), rgba(15, 23, 42, 0.9));
-            z-index: 2;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%);
+            pointer-events: none;
         }
-
-        /* ⚡ THE SPINE */
+        
+        .gradient-overlay-right {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 50%;
+            background: linear-gradient(225deg, rgba(56, 113, 255, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%);
+            pointer-events: none;
+        }
+        
+        /* The Spine - Subtle, non-distracting */
         .spine {
             position: absolute;
             left: 50%;
             top: 0;
             bottom: 0;
-            width: 2px;
-            background: linear-gradient(to bottom, transparent, var(--theme-accent), transparent);
-            z-index: 5;
+            width: 1px;
+            background: linear-gradient(180deg, 
+                transparent 0%,
+                rgba(148, 163, 184, 0.2) 20%,
+                rgba(148, 163, 184, 0.4) 50%,
+                rgba(148, 163, 184, 0.2) 80%,
+                transparent 100%
+            );
             transform: translateX(-50%);
-            opacity: 0.6;
         }
-
+        
+        /* VS Badge - Subtle text-only overlay */
         .vs-badge {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 8rem;
+            font-weight: 900;
+            color: rgba(241, 245, 249, 0.15);
+            letter-spacing: 0.2em;
+            z-index: 1;
+            pointer-events: none;
+            text-shadow: 0 0 80px rgba(148, 163, 184, 0.25);
+            user-select: none;
+        }
+        
+        /* Dynamic Title Scaling - Improved */
+        .dynamic-title {
+            font-size: clamp(3rem, 7vw, 4.5rem);
+            line-height: 1.1;
+            font-weight: 900;
+            letter-spacing: -0.03em;
+        }
+        
+        /* Header subtitle - more visible */
+        .header-subtitle {
+            font-size: 1.125rem;
+            font-weight: 500;
+            color: #94a3b8;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-top: 0.75rem;
+        }
+        
+        /* Glassmorphism Cards - Refined */
+        .glass-card {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(148, 163, 184, 0.12);
+            border-radius: 1.25rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
+        }
+        
+        .glass-card:hover {
+            background: rgba(30, 41, 59, 0.65);
+            border-color: rgba(148, 163, 184, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Shared Axis Grid - Better spacing */
+        .stat-row {
+            display: grid;
+            grid-template-columns: 1fr 280px 1fr;
+            gap: 0;
+            align-items: center;
+            min-height: 100px;
+            padding: 1.5rem 0;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .stat-left {
+            text-align: right;
+            padding-right: 3rem;
+        }
+        
+        .stat-center {
+            text-align: center;
+            padding: 0 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #cbd5e1;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            line-height: 1.3;
+            position: relative;
+        }
+        
+        /* Add subtle background to center labels for better visibility */
+        .stat-center::before {
+            content: '';
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: var(--theme-accent);
-            color: white;
-            font-weight: 900;
-            font-size: 2.2rem;
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-            border: 8px solid var(--bg-page);
-            box-shadow: 0 0 60px rgba(59, 130, 246, 0.6);
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 0.5rem;
+            z-index: -1;
         }
-
-        #item-wrapper {
+        
+        .stat-right {
+            text-align: left;
+            padding-left: 3rem;
+        }
+        
+        /* Improved value styling - larger, more readable */
+        .stat-value {
+            font-size: 2.75rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Better label styling - more prominent */
+        .stat-label {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #cbd5e1;
+            line-height: 1.4;
+        }
+        
+        /* Color Accents - Higher contrast */
+        .accent-red {
+            color: #f87171;
+            text-shadow: 0 0 20px rgba(248, 113, 113, 0.4);
+        }
+        
+        .accent-blue {
+            color: #60a5fa;
+            text-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
+        }
+        
+        /* Magnet Anchor - Better vertical distribution */
+        .content-container {
             position: absolute;
             top: 50%;
-            left: 0;
-            width: 1200px;
-            transform: translateY(-50%);
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100%;
+            max-width: 1080px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            z-index: 50;
-            padding: 0 60px;
+            gap: 3rem;
         }
-
-        .stat-row {
+        
+        .header-section {
+            width: 100%;
             display: grid;
-            grid-template-columns: 1fr 240px 1fr;
-            align-items: center;
-            width: 100%;
-            margin-bottom: 2.2rem;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 3rem;
+            align-items: end;
+            margin-bottom: 1rem;
         }
-
-        /* 📏 DYNAMIC HEADER SCALING */
-        .subject-title {
-            font-size: 5rem;
-            font-weight: 900;
-            text-transform: uppercase;
-            letter-spacing: -0.06em;
-            color: #ffffff;
-            margin: 0;
-            line-height: 0.85;
-            filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.5));
-            width: 100%;
-        }
-
-        .val-text {
-            font-size: 1.2rem;
-            font-weight: 500;
-            color: #f1f5f9;
-            line-height: 1.4;
-            width: 100%;
-        }
-
-        .left-align {
+        
+        .header-left {
             text-align: right;
-            padding-right: 40px;
+            padding-right: 2rem;
         }
-
-        .right-align {
+        
+        .header-right {
             text-align: left;
-            padding-left: 40px;
+            padding-left: 2rem;
         }
-
-        .label-pill {
+        
+        .header-spacer {
+            width: 140px;
+        }
+        
+        /* Add visual separators between sections */
+        .stats-wrapper {
+            width: 100%;
+            position: relative;
+        }
+        
+        /* Improved spacing in stats container */
+        #stat_rows_container {
             display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 44px;
-            width: 220px;
-            margin: 0 auto;
-            font-size: 0.8rem;
-            font-weight: 900;
-            color: var(--theme-accent);
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(12px);
-            border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            flex-direction: column;
+            gap: 1rem;
         }
     </style>
 </head>
-
 <body>
     <div id="main-wrapper">
-        <div class="bg-split">
-            <div class="bg-half"><img id="slot_image_left" class="bg-img"></div>
-            <div class="bg-half"><img id="slot_image_right" class="bg-img"></div>
-        </div>
-        <div class="vignette"></div>
+        <!-- Background Images -->
+        <div id="slot_image_left" class="bg-image bg-image-left"></div>
+        <div id="slot_image_right" class="bg-image bg-image-right"></div>
+        
+        <!-- Gradient Overlays -->
+        <div class="gradient-overlay-left"></div>
+        <div class="gradient-overlay-right"></div>
+        
+        <!-- The Spine -->
         <div class="spine"></div>
-        <div class="vs-badge">VS</div>
-
-        <div id="item-wrapper">
-            <div class="stat-row" style="margin-bottom: 6rem;">
-                <h2 id="slot_title_left" class="subject-title left-align">Subject A</h2>
-                <div></div>
-                <h2 id="slot_title_right" class="subject-title right-align">Subject B</h2>
+        
+        <!-- Content Container (Magnet Anchor) -->
+        <div class="content-container">
+            <!-- Header Section -->
+            <div class="header-section">
+                <!-- Left Header -->
+                <div class="header-left">
+                    <h1 id="slot_title_left" class="dynamic-title accent-red">
+                        Red Team
+                    </h1>
+                    <p class="header-subtitle">Offensive Security</p>
+                </div>
+                
+                <!-- Spacer for VS badge -->
+                <div class="header-spacer"></div>
+                
+                <!-- Right Header -->
+                <div class="header-right">
+                    <h1 id="slot_title_right" class="dynamic-title accent-blue">
+                        Blue Team
+                    </h1>
+                    <p class="header-subtitle">Defensive Security</p>
+                </div>
             </div>
-
-            <div id="stat_rows_container" class="w-full"></div>
+            
+            <!-- Stats Wrapper -->
+            <div class="stats-wrapper">
+                <!-- Stats Container (Shared Axis Grid) -->
+                <div id="stat_rows_container" style="position: relative;">
+                    <!-- VS Badge anchored to this container -->
+                    <div class="vs-badge">VS</div>
+                    
+                    <!-- Example Row 1 -->
+                    <div class="glass-card stat-row">
+                        <div class="stat-left">
+                            <div class="stat-value accent-red">127</div>
+                            <div class="stat-label">Active Exploits</div>
+                        </div>
+                        <div class="stat-center">
+                            Attack<br>Vectors
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-value accent-blue">342</div>
+                            <div class="stat-label">Blocked Threats</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Example Row 2 -->
+                    <div class="glass-card stat-row">
+                        <div class="stat-left">
+                            <div class="stat-value accent-red">98.7%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                        <div class="stat-center">
+                            Effectiveness
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-value accent-blue">99.2%</div>
+                            <div class="stat-label">Detection Rate</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Example Row 3 -->
+                    <div class="glass-card stat-row">
+                        <div class="stat-left">
+                            <div class="stat-value accent-red">14</div>
+                            <div class="stat-label">Zero-Days Found</div>
+                        </div>
+                        <div class="stat-center">
+                            Vulnerabilities
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-value accent-blue">14</div>
+                            <div class="stat-label">Zero-Days Patched</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Example Row 4 -->
+                    <div class="glass-card stat-row">
+                        <div class="stat-left">
+                            <div class="stat-value accent-red">2.3s</div>
+                            <div class="stat-label">Average Breach Time</div>
+                        </div>
+                        <div class="stat-center">
+                            Response<br>Speed
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-value accent-blue">1.8s</div>
+                            <div class="stat-label">Average Block Time</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+    
+    <script>
+        // Dynamic background image injection
+        function setBackgroundImage(side, imageUrl) {
+            const element = document.getElementById(`slot_image_${side}`);
+            if (element && imageUrl) {
+                element.style.backgroundImage = `url('${imageUrl}')`;
+            }
+        }
+        
+        // Title injection
+        function setTitle(side, title, subtitle) {
+            const titleElement = document.getElementById(`slot_title_${side}`);
+            if (titleElement && title) {
+                titleElement.textContent = title;
+            }
+            if (subtitle) {
+                const subtitleElement = titleElement.nextElementSibling;
+                if (subtitleElement) {
+                    subtitleElement.textContent = subtitle;
+                }
+            }
+        }
+        
+        // Stat row injection - improved structure
+        function addStatRow(leftValue, leftLabel, category, rightValue, rightLabel) {
+            const container = document.getElementById('stat_rows_container');
+            const row = document.createElement('div');
+            row.className = 'glass-card stat-row';
+            
+            // Handle multi-line categories by replacing spaces with line breaks if needed
+            const categoryDisplay = category.length > 15 ? category.replace(' ', '<br>') : category;
+            
+            row.innerHTML = `
+                <div class="stat-left">
+                    <div class="stat-value accent-red">${leftValue}</div>
+                    <div class="stat-label">${leftLabel}</div>
+                </div>
+                <div class="stat-center">
+                    ${categoryDisplay}
+                </div>
+                <div class="stat-right">
+                    <div class="stat-value accent-blue">${rightValue}</div>
+                    <div class="stat-label">${rightLabel}</div>
+                </div>
+            `;
+            container.appendChild(row);
+        }
+        
+        // Clear rows
+        function clearStatRows() {
+            const container = document.getElementById('stat_rows_container');
+            // Keep the VS badge, clear everything else
+            const vsBadge = container.querySelector('.vs-badge');
+            container.innerHTML = '';
+            if (vsBadge) {
+                container.appendChild(vsBadge);
+            }
+        }
+    </script>
 </body>
-
 </html>

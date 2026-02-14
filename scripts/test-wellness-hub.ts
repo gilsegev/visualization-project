@@ -14,13 +14,13 @@ async function run() {
 
     const testCases = [
         {
-            name: '5 Spokes (Standard)',
-            prompt: 'Explain the Autonomic Nervous System and its 5 core components: Sympathetic, Parasympathetic, Enteric, HRV, Stress Response',
+            name: '5 Spokes (Dark Theme - Cyber Neon)',
+            prompt: 'Create a Cyberpunk style infographic about Future Tech with 5 core components: AI, Crypto, VR, Quantum, Biotech. Use a dark neon aesthetic.',
             expectedItems: 5
         },
         {
-            name: '3 Spokes (Minimal)',
-            prompt: 'Explain the Autonomic Nervous System and its 3 core components: Sympathetic, Parasympathetic, Enteric',
+            name: '3 Spokes (Light Theme - Nature Fresh)',
+            prompt: 'Create a Wellness infographic about Morning Routines with 3 steps: Hydrate, Meditate, Stretch. Use a fresh natural aesthetic.',
             expectedItems: 3
         }
     ];

@@ -10,6 +10,7 @@ import { BrowserService } from '../browser.service';
 import { LocalStorageService } from '../local-storage.service';
 import axios from 'axios';
 import * as pLimit from 'p-limit';
+import { performance } from 'perf_hooks';
 
 // 1. Define Theme Library
 export const THEME_LIBRARY = {
@@ -98,14 +99,25 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
     }
 
     public async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
+        const metrics = {
+            start: performance.now(),
+            blueprint: 0,
+            images: 0,
+            dom: 0,
+            browser: 0,
+            total: 0
+        };
+
         this.logger.warn(`[FORENSIC] Strategy Input: ${task.refined_prompt}`);
         this.logger.log(`Starting HTML Infographic Generation for: ${task.refined_prompt}`);
 
         // 1. Generate Blueprint
+        const blueprintStart = performance.now();
         let blueprint: HtmlInfographicBlueprint;
         try {
             blueprint = await this.generateBlueprint(task.refined_prompt);
-            this.logger.log(`Blueprint generated: Template=${blueprint.template_id}, Theme=${blueprint.theme_id}, Items=${blueprint.items.length}`);
+            metrics.blueprint = performance.now() - blueprintStart;
+            this.logger.log(`Blueprint generated in ${metrics.blueprint.toFixed(2)}ms: Template=${blueprint.template_id}, Theme=${blueprint.theme_id}, Items=${blueprint.items.length}`);
         } catch (error) {
             this.logger.error(`Blueprint generation failed: ${error.message}`);
             throw error;
@@ -119,6 +131,7 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         this.logger.log(`Template '${blueprint.template_id}' loaded successfully.`);
 
         // 3. Image Generation
+        const imagesStart = performance.now();
         let itemImages: string[] = [];
         let backgroundImage = '';
         let versusImages: Record<string, string> = {};
@@ -149,9 +162,11 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 else itemImages[res.index] = res.base64;
             });
         }
-        this.logger.log('Image generation completed.');
+        metrics.images = performance.now() - imagesStart;
+        this.logger.log(`Image generation completed in ${metrics.images.toFixed(2)}ms.`);
 
         // 4. DOM Manipulation
+        const domStart = performance.now();
         const dom = new JSDOM(templateContent);
         const document = dom.window.document;
 
@@ -193,60 +208,6 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
                 text-overflow: ellipsis;
             }
 
-            /* VS Badge & Backdrop */
-            .vs-badge {
-                position: absolute !important;
-                top: 50% !important;
-                left: 50% !important;
-                transform: translate(-50%, -50%) !important;
-                font-size: 10rem !important;
-                font-weight: 900 !important;
-                font-style: italic !important;
-                color: rgba(255, 255, 255, 0.05) !important;
-                z-index: 10 !important;
-                pointer-events: none !important;
-            }
-
-            /* V2-FIX-VERSUS: Shared Axis Grid */
-            #item-wrapper {
-                position: absolute !important;
-                top: 50% !important;
-                left: 0 !important;
-                width: 1200px !important;
-                transform: translateY(-50%) !important;
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-                justify-content: center !important;
-                z-index: 20 !important;
-            }
-
-            .stat-row {
-                display: grid !important;
-                grid-template-columns: 1fr 180px 1fr !important;
-                align-items: center !important;
-                gap: 1rem !important;
-                width: 1000px !important;
-                margin-bottom: 1.5rem !important;
-            }
-
-            .label-pill {
-                background: rgba(0, 0, 0, 0.5) !important;
-                color: var(--theme-accent) !important;
-                border: 1px solid var(--theme-accent) !important;
-                padding: 8px 16px !important;
-                text-align: center !important;
-                border-radius: 999px !important;
-                font-weight: 900 !important;
-                text-transform: uppercase !important;
-                font-size: 0.75rem !important;
-            }
-
-            .val-text {
-                color: var(--text-main) !important;
-                font-size: 1.5rem !important;
-                font-weight: 700 !important;
-            }
             .left-align { text-align: right !important; }
             .right-align { text-align: left !important; }
         `;
@@ -258,10 +219,10 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
 
         // Data Injection
         if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
-            const leftImg = document.getElementById('slot_image_left');
-            const rightImg = document.getElementById('slot_image_right');
-            if (leftImg) leftImg.setAttribute('src', versusImages['left']);
-            if (rightImg) rightImg.setAttribute('src', versusImages['right']);
+            const leftImgDiv = document.getElementById('slot_image_left');
+            const rightImgDiv = document.getElementById('slot_image_right');
+            if (leftImgDiv) leftImgDiv.style.backgroundImage = `url('${versusImages['left']}')`;
+            if (rightImgDiv) rightImgDiv.style.backgroundImage = `url('${versusImages['right']}')`;
 
             const leftTitle = document.getElementById('slot_title_left');
             const rightTitle = document.getElementById('slot_title_right');
@@ -285,20 +246,31 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             const rowsContainer = document.getElementById('stat_rows_container');
 
             if (rowsContainer) {
+                // PRESERVE the VS Badge (v3 Template)
+                const vsBadge = rowsContainer.querySelector('.vs-badge');
                 rowsContainer.innerHTML = '';
+                if (vsBadge) {
+                    rowsContainer.appendChild(vsBadge);
+                }
 
                 blueprint.items.forEach((item, idx) => {
                     const parts = item.description.split('|');
-                    let valA = parts[0]?.trim();
-                    let valB = parts[1]?.trim();
+                    let valA = parts[0]?.trim() || '-';
+                    let valB = parts[1]?.trim() || '-';
 
-                    // Create row div
+                    // Create row div (Glassmorphism structure)
                     const row = document.createElement('div');
-                    row.className = 'stat-row';
+                    row.className = 'glass-card stat-row';
                     row.innerHTML = `
-                        <div class="val-text left-align">${valA}</div>
-                        <div class="label-pill">${item.title}</div>
-                        <div class="val-text right-align">${valB}</div>
+                        <div class="stat-left">
+                            <div class="stat-value accent-red">${valA}</div>
+                        </div>
+                        <div class="stat-center">
+                            ${item.title}
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-value accent-blue">${valB}</div>
+                        </div>
                     `;
                     rowsContainer.appendChild(row);
                 });
@@ -379,8 +351,17 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
             document.body.prepend(bgDiv);
         }
 
+        metrics.dom = performance.now() - domStart;
+        this.logger.log(`DOM manipulation completed in ${metrics.dom.toFixed(2)}ms.`);
+
+        // 5. Browser Screenshot
+        const browserStart = performance.now();
         const finalHtml = dom.serialize();
         const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml);
+        metrics.browser = performance.now() - browserStart;
+
+        metrics.total = performance.now() - metrics.start;
+        this.logger.log(`Overall generation time: ${metrics.total.toFixed(2)}ms`);
 
         const filename = `html_infographic_${Date.now()}.png`;
         const publicUrl = await this.localStorage.save(filename, screenshotBuffer);
@@ -389,7 +370,17 @@ export class HtmlInfographicStrategy extends BaseImageStrategy {
         return {
             url: publicUrl,
             posterUrl: publicUrl,
-            payload: { blueprint, html: finalHtml }
+            payload: {
+                blueprint,
+                html: finalHtml,
+                metrics: {
+                    blueprint_ms: metrics.blueprint.toFixed(2),
+                    images_ms: metrics.images.toFixed(2),
+                    dom_ms: metrics.dom.toFixed(2),
+                    browser_ms: metrics.browser.toFixed(2),
+                    total_ms: metrics.total.toFixed(2)
+                }
+            }
         };
     }
 

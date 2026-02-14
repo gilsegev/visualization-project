@@ -1,0 +1,161 @@
+﻿[dotenv@17.2.3] injecting env (0) from .env -- tip: ≡ƒöÉ encrypt with Dotenvx: https://dotenvx.com
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +6ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mServeStaticModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] CWD: D:\visualization  project[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] GEMINI_API_KEY: Found[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCoursesModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mImageGenModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mImageGenController {/generate}:[39m[38;5;3m +2ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/generate, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCourseController {/courses}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/courses/generate, POST} route[39m[38;5;3m +0ms[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton)...[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton)...[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:01 PM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +39ms[39m
+Application is running on: http://localhost:3000
+POST /generate
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:24 PM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mStarting course generation for content length: 174[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:24 PM [32m    LOG[39m [38;5;3m[ImageRouterService] [39m[32mClassifying content: "Create a wellness hub radial infographic about stress relief. Center topic: Stress Relief. Items: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh."[39m
+[95m[Nest] 3760  - [39m02/12/2026, 11:23:25 PM [95m  DEBUG[39m [38;5;3m[ImageRouterService] [39m[95mRaw LLM Response: [
+  {
+    "type": "infographic",
+    "id": "83cecfd8-9739-4769-92df-082dd7b8a959",
+    "refined_prompt": "Radial infographic about a wellness hub for stress relief. The central topic is Stress Relief. Include the following items: Meditation, Exercise, Sleep, Diet, Mindfulness, and Nature. The theme is nature fresh.",
+    "payload": {}
+  }
+][39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:25 PM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mClassified 1 tasks.[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:25 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting generation for task 83cecfd8-9739-4769-92df-082dd7b8a959 (infographic)[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:25 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Strategy Input: Radial infographic about a wellness hub for stress relief. The central topic is Stress Relief. Include the following items: Meditation, Exercise, Sleep, Diet, Mindfulness, and Nature. The theme is nature fresh.[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:25 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting HTML Infographic Generation for: Radial infographic about a wellness hub for stress relief. The central topic is Stress Relief. Include the following items: Meditation, Exercise, Sleep, Diet, Mindfulness, and Nature. The theme is nature fresh.[39m
+[FORENSIC] LLM Blueprint Result: ```json
+{
+  "template_id": "hub_radial",
+  "theme_id": "nature_fresh",
+  "visual_style_directive": "Use natural green and blue gradients. Icons should be simple line drawings with a touch of color.",
+  "center_topic": {
+    "title": "Stress Relief",
+    "description": "Your path to inner peace and well-being."
+  },
+  "versus_subjects": {
+    "left_name": "",
+    "right_name": "",
+    "left_image_prompt": "",
+    "right_image_prompt": ""
+  },
+  "items": [
+    {
+      "title": "Meditation",
+      "description": "Find your center through guided meditation and mindful breathing."
+    },
+    {
+      "title": "Exercise",
+      "description": "Release tension and boost endorphins with physical activity."
+    },
+    {
+      "title": "Sleep",
+      "description": "Prioritize restorative sleep for optimal mental and physical health."
+    },
+    {
+      "title": "Diet",
+      "description": "Nourish your body with a balanced diet to support stress resilience."
+    },
+    {
+      "title": "Mindfulness",
+      "description": "Cultivate present moment awareness to reduce anxiety and stress."
+    },
+    {
+      "title": "Nature",
+      "description": "Connect with the outdoors for a calming and grounding experience."
+    }
+  ]
+}
+```
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mBlueprint generated: Template=hub_radial, Theme=nature_fresh, Items=6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 1 (LLM Output): {"template_id":"hub_radial","theme_id":"nature_fresh","visual_style_directive":"Use natural green and blue gradients. Icons should be simple line drawings with a touch of color.","center_topic":{"title":"Stress Relief","description":"Your path to inner peace and well-being."},"versus_subjects":{"left_name":"","right_name":"","left_image_prompt":"","right_image_prompt":""},"items":[{"title":"Meditation","description":"Find your center through guided meditation and mindful breathing."},{"title":"Exercise","description":"Release tension and boost endorphins with physical activity."},{"title":"Sleep","description":"Prioritize restorative sleep for optimal mental and physical health."},{"title":"Diet","description":"Nourish your body with a balanced diet to support stress resilience."},{"title":"Mindfulness","description":"Cultivate present moment awareness to reduce anxiety and stress."},{"title":"Nature","description":"Connect with the outdoors for a calming and grounding experience."}]}[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mTemplate 'hub_radial' loaded successfully.[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Mapping Data for Template: hub_radial[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Center Topic Detected: Stress Relief[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:28 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mStarting parallel image generation for 6 items...[39m
+[FORENSIC] SiliconFlow Image Prompt: Meditation: Find your center through guided meditation and mindful breathing., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, Exercise: Release tension and boost endorphins with physical activity., centered, high resolution, professional design, isolated on white background, matching #16a34a
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, Sleep: Prioritize restorative sleep for optimal mental and physical health., centered, high resolution, professional design, isolated on white background, matching #16a34a
+[FORENSIC] SiliconFlow Image Prompt: Diet: Nourish your body with a balanced diet to support stress resilience., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: Mindfulness: Cultivate present moment awareness to reduce anxiety and stress., hand-drawn watercolor illustration, soft charcoal edges, isolated on white background --no text, 3d, realistic, shadows
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, Nature: Connect with the outdoors for a calming and grounding experience., centered, high resolution, professional design, isolated on white background, matching #16a34a
+[FORENSIC] SiliconFlow Image Prompt: minimalist vector icon, ample whitespace around subject, soft edges, organic style, soft lighting, natural colors, matte finish, botanic details, high quality render, abstract background texture, minimalist, high resolution, abstract background texture, minimalist, harmonious with #16a34a, high resolution
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mImage generation completed.[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 2 (DOM Initial): Found 20 slot elements.[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 3 (Asset State): itemImages length: 6. Image Index 0 exists: true[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 5 (CSS Audit): 
+        :root {
+            --theme-accent: #5DA9A4;
+            --bg-page: #FAF9F6;
+            --text-main: #1a202c;
+            /* TOTAL IS NOW INJECTED PER SPOKE */
+            /* THE GOLDEN RADIUS FOR 1200px CANVAS */
+            --radius: 38%;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            margin: 0;
+            width: 1200px;
+            height: 1200px;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+            display: fl...[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 0 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 0 locked at 600.00px, 144.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Center Hub Positioned at: top: 50%, left: 50%[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 600px; top: 144px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 1 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 1 locked at 994.91px, 372.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 994.907584125704px; top: 372px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 2 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 2 locked at 994.91px, 828.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 994.907584125704px; top: 827.9999999999999px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 3 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 3 locked at 600.00px, 1056.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 600px; top: 1056px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 4 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 4 locked at 205.09px, 828.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 205.09241587429602px; top: 828.0000000000001px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 4 (Math & Injection): Item Index: 5 | Total: 6[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Spoke 5 locked at 205.09px, 372.00px[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Inline Styles: --i: 0; position: absolute; left: 205.09241587429602px; top: 371.99999999999994px; transform: translate(-50%, -50%);[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 6 (Final Serialization) Start: <!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --theme-accent: #5DA9A4;
+            --bg-page: #FAF9F6;
+            --text-main: #1a202c;
+            /* TOTAL IS NOW INJECTED PER SPOKE */
+            /* THE GOLDEN RADIUS FOR 1200px CANVAS */
+            --radius: 38%;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            margin: 0;
+            width: 120[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] Stage 6 (Final Serialization) End: boost endorphins with physical activity."},{"title":"Sleep","description":"Prioritize restorative sleep for optimal mental and physical health."},{"title":"Diet","description":"Nourish your body with a balanced diet to support stress resilience."},{"title":"Mindfulness","description":"Cultivate present moment awareness to reduce anxiety and stress."},{"title":"Nature","description":"Connect with the outdoors for a calming and grounding experience."}]}
+            </script>
+        </body></html>[39m
+[33m[Nest] 3760  - [39m02/12/2026, 11:23:39 PM [33m   WARN[39m [38;5;3m[HtmlInfographicStrategy] [39m[33m[FORENSIC] HTML Autopsy saved to: D:\visualization  project\public\generated-images\debug_last_run.html[39m
+[FORENSIC] Viewport: Forcing 1200x1200 for hub_radial (Scale 1.0)
+[95m[Nest] 3760  - [39m02/12/2026, 11:23:40 PM [95m  DEBUG[39m [38;5;3m[BrowserService] [39m[95m[BROWSER] A parser-blocking, cross site (i.e. different eTLD+1) script, https://cdn.tailwindcss.com/, is invoked via document.write. The network request for this script MAY be blocked by the browser in this or a future page load due to poor network connectivity. If blocked in this page load, it will be confirmed in a subsequent console message. See https://www.chromestatus.com/feature/5718547946799104 for more details.[39m
+[95m[Nest] 3760  - [39m02/12/2026, 11:23:40 PM [95m  DEBUG[39m [38;5;3m[BrowserService] [39m[95m[BROWSER] A parser-blocking, cross site (i.e. different eTLD+1) script, https://cdn.tailwindcss.com/, is invoked via document.write. The network request for this script MAY be blocked by the browser in this or a future page load due to poor network connectivity. If blocked in this page load, it will be confirmed in a subsequent console message. See https://www.chromestatus.com/feature/5718547946799104 for more details.[39m
+[95m[Nest] 3760  - [39m02/12/2026, 11:23:40 PM [95m  DEBUG[39m [38;5;3m[BrowserService] [39m[95m[BROWSER] cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation[39m
+[95m[Nest] 3760  - [39m02/12/2026, 11:23:40 PM [95m  DEBUG[39m [38;5;3m[BrowserService] [39m[95m[BROWSER] [FORENSIC] Center Calibration Dot Injected at 600,600[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:41 PM [32m    LOG[39m [38;5;3m[LocalStorageService] [39m[32mSaved file: D:\visualization  project\public\generated-images\html_infographic_1770960221357.png[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:41 PM [32m    LOG[39m [38;5;3m[HtmlInfographicStrategy] [39m[32mInfographic saved to: /generated-images/html_infographic_1770960221357.png[39m
+[32m[Nest] 3760  - [39m02/12/2026, 11:23:41 PM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mGenerated 1/1 images in 16.93 seconds.[39m

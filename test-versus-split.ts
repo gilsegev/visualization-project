@@ -5,7 +5,7 @@ import * as path from 'path';
 async function runVersusSplitTest() {
     console.log('⚔️ Starting "Versus Split" Test...');
     // Specific prompt to trigger 'versus_split' logic
-    const prompt = "Create a versus comparison between Sam Winchester and Dean Winchester. Sam: intellect, lore expert, empathy. Dean: hunter instincts, combat prowess, unwavering loyalty. Theme: dark_modern.";
+    const prompt = "Create a versus comparison between a Solar Paladin and a Void Assassin. Paladin: radiant armor, sun blade, healing touch. Assassin: shadow mantle, daggers, teleportation. Theme: dark_modern.";
 
     try {
         console.log(`\n📤 Sending Request: "${prompt}"`);
@@ -28,6 +28,16 @@ async function runVersusSplitTest() {
                 console.log(`\n🎨 Template: ${blueprint.template_id}`);
                 console.log(`🎨 Theme: ${blueprint.theme_id}`);
                 console.log(`📊 Versus Subjects: ${blueprint.versus_subjects?.left_name} vs ${blueprint.versus_subjects?.right_name}`);
+            }
+
+            const metrics = results[0].payload?.metrics;
+            if (metrics) {
+                console.log(`\n🚀 Performance Metrics:`);
+                console.log(`   - Blueprint: ${metrics.blueprint_ms}ms`);
+                console.log(`   - Images:    ${metrics.images_ms}ms`);
+                console.log(`   - DOM:       ${metrics.dom_ms}ms`);
+                console.log(`   - Browser:   ${metrics.browser_ms}ms`);
+                console.log(`   - Total:     ${metrics.total_ms}ms`);
             }
 
             // Save as versus-split-debug.png
