@@ -1,3 +1,4 @@
+/*
 import { HtmlInfographicStrategy } from '../src/image-gen/strategies/html-infographic.strategy';
 import { ConfigService } from '@nestjs/config';
 import { BrowserService } from '../src/image-gen/browser.service';
@@ -55,3 +56,4 @@ async function run() {
 }
 
 run();
+*/

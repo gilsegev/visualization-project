@@ -1,4 +1,6 @@
-import { HtmlInfographicStrategy } from '../src/image-gen/strategies/html-infographic.strategy';
+/*
+// import { HtmlInfographicStrategy } from '../src/image-gen/strategies/html-infographic.strategy';
+import { TemplateStampingStrategy } from '../src/image-gen/strategies/template-stamping.strategy';
 import { ConfigService } from '@nestjs/config';
 import { BrowserService } from '../src/image-gen/browser.service';
 import { LocalStorageService } from '../src/image-gen/local-storage.service';
@@ -19,7 +21,8 @@ async function run() {
     const localStorageService = new LocalStorageService();
 
     // 2. Instantiate Strategy
-    const strategy = new HtmlInfographicStrategy(configService, browserService, localStorageService);
+    // const strategy = new HtmlInfographicStrategy(configService, browserService, localStorageService);
+    const strategy = new TemplateStampingStrategy(browserService, configService, localStorageService);
 
     // 3. Define Prompt for Bento Grid
     // "The 6 core features of a modern Electric Vehicle." -> Should trigger bento_grid with 6 items.
@@ -53,3 +56,4 @@ async function run() {
 }
 
 run();
+*/

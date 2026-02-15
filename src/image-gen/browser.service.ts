@@ -85,15 +85,20 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    async screenshotHtml(htmlContent: string, baseUrl?: string): Promise<Buffer> {
-        // V2-RESET-01: "Clip-Only" Capture - Forces (0,0) Origin
-        // Re-use standard getNewPage which now defaults to 1200x1200px
-        const { context, page } = await this.getNewPage();
-        try {
-            console.log(`[FORENSIC] Browser Viewport Locked to 1200x1200 (V2-RESET-01)`);
+    async screenshotHtml(htmlContent: string, baseUrl?: string, options: { width?: number; height?: number } = {}): Promise<Buffer> {
+        // Default to 1200x1200 if not specified
+        const width = options.width || 1200;
+        const height = options.height || 1200;
 
-            // V2-DEBUG-20: Double-Tap Viewport Lock
-            await page.setViewportSize({ width: 1200, height: 1200 });
+        // Re-use standard getNewPage
+        // Note: getNewPage currently hardcodes 1200x1200 in newContext, but we override it immediately with setViewportSize.
+        const { context, page } = await this.getNewPage();
+
+        try {
+            console.log(`[FORENSIC] Browser Viewport set to ${width}x${height}`);
+
+            // Set Viewport
+            await page.setViewportSize({ width, height });
 
             if (baseUrl) {
                 // Determine strict file path for Base URL
@@ -101,10 +106,8 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
                 console.log(`[BROWSER] Setting Base URL: ${fileUrl}`);
 
                 // Write HTML to a temporary file in the base directory to ensure relative paths work and security context is correct
-                // This bypasses "Not allowed to load local resource" errors common with setContent
                 const fs = require('fs');
                 const path = require('path');
-                // Use a proper join that handles the baseUrl correctly (baseUrl is absolute path to dir)
                 const tempFilePath = path.join(baseUrl, `temp_preview_${Date.now()}.html`);
 
                 try {
@@ -113,52 +116,44 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
                     console.log(`[BROWSER] Navigating to temporary file: ${tempFileUrl}`);
 
                     await page.goto(tempFileUrl, { waitUntil: 'load' });
-
-                    // Cleanup is tricky if we want to debug, but for now we'll delete it after screenshot (in finally block maybe? or just leave it for forensics?)
-                    // The prompt asked to "Pass ... baseUrl so it can resolve relative paths".
-                    // Navigating to the file is the best way.
-
-                    // We don't need to inject <base> if we are IN the directory.
                 } catch (e) {
                     this.logger.error(`[BROWSER] Failed to use temp file for navigation: ${e.message}`);
-                    // Fallback to setContent if write fails
                     await page.setContent(htmlContent, { waitUntil: 'load' });
                 }
             } else {
                 await page.setContent(htmlContent, { waitUntil: 'load' });
             }
 
-            // V2-DEBUG-20: Force Scroll Behavior to Auto (No smooth scroll interference)
+            // Force Scroll Behavior to Auto
             await page.evaluate(() => {
                 document.documentElement.style.scrollBehavior = 'auto';
                 document.body.style.scrollBehavior = 'auto';
                 window.scrollTo(0, 0);
             });
 
-            // Refinement 3.1: Enforce Asset Loading
-            // Wait for at least one spoke image to be visible if it exists in the HTML
-            if (htmlContent.includes('assets/spoke')) {
+            // Enforce Asset Loading
+            if (htmlContent.includes('assets/')) {
                 try {
-                    console.log('[BROWSER] Waiting for spoke images to load...');
-                    await page.waitForSelector('img[src*="assets/spoke"]', { state: 'visible', timeout: 5000 });
-                    console.log('[BROWSER] All assets verified on disk (via DOM Check).');
+                    console.log('[BROWSER] Waiting for local assets to load...');
+                    // Generic wait for any image with src containing 'assets/'
+                    await page.waitForSelector('img[src*="assets/"]', { state: 'visible', timeout: 5000 });
                 } catch (e) {
-                    this.logger.warn(`[BROWSER] Timeout waiting for images: ${e.message}`);
+                    // It's possible there are no images or they loaded instantly
+                    this.logger.warn(`[BROWSER] Timeout waiting for assets (non-critical if none present): ${e.message}`);
                 }
             }
 
-            // Safety Buffer for GPU/Rendering
+            // Safety Buffer
             await page.waitForTimeout(500);
 
-            // V2-RESET-01: Hard-Clipped Screenshot
+            // Hard-Clipped Screenshot
             const screenshotBuffer = await page.screenshot({
                 type: 'png',
-                // Forces capture of the top-left 1200px block
-                clip: { x: 0, y: 0, width: 1200, height: 1200 },
-                omitBackground: true, // Support zero-point transparency test
-                scale: 'css' // Ensures no high-DPI scaling occurs
+                clip: { x: 0, y: 0, width, height },
+                omitBackground: true,
+                scale: 'css'
             });
-            console.log(`[FORENSIC] Screenshot captured with clip-at-zero.`);
+            console.log(`[FORENSIC] Screenshot captured at ${width}x${height}.`);
             return screenshotBuffer;
         } finally {
             await context.close();

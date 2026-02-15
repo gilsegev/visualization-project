@@ -3,6 +3,7 @@ import { ImageRouterService } from './image-router.service';
 import { ImageStrategyFactory } from './image-strategy.factory';
 import * as pLimit from 'p-limit';
 import { performance } from 'perf_hooks';
+import { ObservabilityGateway } from '../observability/observability.gateway';
 
 @Injectable()
 export class ImageOrchestratorService {
@@ -11,18 +12,19 @@ export class ImageOrchestratorService {
     constructor(
         private readonly imageRouter: ImageRouterService,
         private readonly strategyFactory: ImageStrategyFactory,
+        private readonly observability: ObservabilityGateway,
     ) { }
 
     async generateCourse(content: string) {
         const start = performance.now();
         this.logger.log(`Starting course generation for content length: ${content.length}`);
+        this.observability.emitLog('info', `Starting course generation`, 'Orchestrator');
 
         // 1. Classification
         const tasks = await this.imageRouter.classify(content);
         this.logger.log(`Classified ${tasks.length} tasks.`);
 
         // 2. Parallel Execution with Limit
-        // Global limit of 15. VisualConceptStrategy has internal limit of 8.
         const limit = pLimit(15);
 
         const promises = tasks.map((task, index) => {
@@ -48,9 +50,7 @@ export class ImageOrchestratorService {
             });
         });
 
-        // 3. Resillience (Promise.allSettled logic is handled by wrapping catch above effectively,
-        // but strict allSettled returns structure {status, value/reason}.
-        // Since we want to process them, we can just await Promise.all of our wrapped promises since they never throw.
+        // 3. Resilience
         const results = await Promise.all(promises);
 
         const end = performance.now();
@@ -63,6 +63,128 @@ export class ImageOrchestratorService {
             metadata: {
                 total: tasks.length,
                 success: successCount,
+                durationSeconds: parseFloat(duration)
+            },
+            results: results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason, taskId: r.taskId })
+        };
+    }
+
+    async generateFromManifest(manifest: any) {
+        const start = performance.now();
+        const courseTitle = manifest.course?.title || 'Untitled Course';
+        this.logger.log(`Starting Batch Generation from Hierarchical Manifest: ${courseTitle}`);
+        this.observability.emitLog('info', `Starting Batch Generation: ${courseTitle}`, 'Orchestrator');
+
+        const globalStyle = manifest.course?.globalStyleGuide || {};
+        const designPhilosophy = manifest.course?.designPhilosophy || 'Professional';
+
+        // 1. Parse Manifest into Tasks
+        const tasks: any[] = [];
+        const courseSlug = courseTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+
+        // Support both root-level lessons and course.lessons, just in case
+        const lessons = manifest.lessons || manifest.course?.lessons || [];
+
+        lessons.forEach((lesson: any, lessonIdx: number) => {
+            const visualItems = lesson.visualizations || lesson.items || [];
+            visualItems.forEach((viz: any) => {
+                // Clean up visualization ID/content for prompt
+                const { visualizationId, ...vizContent } = viz;
+                const vizJson = JSON.stringify(vizContent, null, 2);
+
+                const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${viz.description}. Context: ${viz.context || ''}`;
+
+                tasks.push({
+                    id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    type: 'infographic',
+                    refined_prompt: refinedPrompt.trim(),
+                    payload: {},
+                    metadata: {
+                        course_id: courseSlug,
+                        lesson_id: lesson.lessonId,
+                        lesson_title: lesson.title,
+                        lesson_index: lessonIdx + 1, // 1-based index
+                        dimensions: viz.dimensions,
+                        target_audience: manifest.course?.targetAudience,
+                        custom_theme: {
+                            id: 'manifest_theme',
+                            name: 'Manifest Theme',
+                            primary_accent: globalStyle.colorPalette?.mutedTeal || '#5B9A8B',
+                            secondary_accent: globalStyle.colorPalette?.softCoral || '#E8A598',
+                            background_main: globalStyle.colorPalette?.creamWhite || '#FAF9F6',
+                            text_main: globalStyle.colorPalette?.deepNavy || '#1A365D',
+                            font_family: globalStyle.typography?.fontFamily?.[0] || 'Inter',
+                            image_style_suffix: `${designPhilosophy}, flat vector style`
+                        }
+                    }
+                });
+            });
+        });
+
+        this.logger.log(`Parsed ${tasks.length} tasks from manifest.`);
+        this.observability.emitLog('info', `Parsed ${tasks.length} tasks from manifest`, 'Orchestrator');
+
+        // 2. Emit INTAKE status for all tasks immediately
+        tasks.forEach(task => {
+            this.observability.emitProgress({
+                taskId: task.id,
+                status: 'pending', // mapped to Intake in UI
+                stage: 'Intake',
+                details: { title: task.metadata.title || task.metadata.lesson_title },
+                metadata: {
+                    course_id: task.metadata.course_id,
+                    lesson_id: task.metadata.lesson_id,
+                    lesson_title: task.metadata.lesson_title,
+                    lesson_index: task.metadata.lesson_index
+                }
+            });
+        });
+
+        // 3. Execution
+        const limit = pLimit(3);
+        let completedCount = 0;
+
+        const promises = tasks.map((task: any, index: number) => {
+            return limit(async () => {
+                try {
+                    // Triage Phase
+                    this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
+                    await new Promise(r => setTimeout(r, 500)); // Simulate Triage/Queue time
+
+                    // Processing Phase
+                    this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });
+
+                    const strategy = this.strategyFactory.getStrategy(task);
+                    const result = await (strategy as any).performGeneration(task, index + 1);
+
+                    completedCount++;
+                    this.observability.emitBatchProgress({ total: tasks.length, completed: completedCount, current: task.id });
+
+                    this.observability.emitProgress({
+                        taskId: task.id,
+                        status: 'completed',
+                        url: result.url,
+                        metrics: result.payload.metrics
+                    });
+
+                    return { status: 'fulfilled', value: { taskId: task.id, url: result.url, metrics: result.payload.metrics } };
+                } catch (error) {
+                    this.logger.error(`Manifest Task ${task.id} failed: ${error.message}`);
+                    this.observability.emitProgress({ taskId: task.id, status: 'failed', details: { error: error.message } });
+                    return { status: 'rejected', reason: error.message, taskId: task.id };
+                }
+            });
+        });
+
+        const results = await Promise.all(promises);
+        const end = performance.now();
+        const duration = ((end - start) / 1000).toFixed(2);
+
+        this.logger.log(`Batch Complete. Total Duration: ${duration}s`);
+
+        return {
+            metadata: {
+                total: tasks.length,
                 durationSeconds: parseFloat(duration)
             },
             results: results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason, taskId: r.taskId })

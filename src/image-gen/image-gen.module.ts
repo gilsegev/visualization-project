@@ -14,9 +14,13 @@ import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdo
 import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
 import { TemplateStampingService } from './services/template-stamping.service';
 import { BrowserService } from './browser.service';
+import { ObservabilityModule } from '../observability/observability.module';
 
 @Module({
-    imports: [ConfigModule],
+    imports: [
+        ConfigModule,
+        ObservabilityModule,
+    ],
     controllers: [ImageGenController],
     providers: [
         ImageRouterService,

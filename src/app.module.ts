@@ -4,14 +4,16 @@ import { join } from 'path';
 import { ImageGenModule } from './image-gen/image-gen.module';
 import { ConfigModule } from '@nestjs/config';
 import { CoursesModule } from './courses/courses.module';
+import { ObservabilityModule } from './observability/observability.module';
 
 @Module({
     imports: [
-        ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+        ConfigModule.forRoot({ isGlobal: true }),
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', '..', 'public'), // Check path depth depending on dist structure
+            rootPath: join(process.cwd(), 'public'), // Serve public folder including dashboard
         }),
         ImageGenModule,
+        ObservabilityModule,
         CoursesModule
     ],
 })

@@ -15,4 +15,12 @@ export class ImageGenController {
 
         return this.orchestrator.generateCourse(content);
     }
+
+    @Post('manifest')
+    async generateFromManifest(@Body() manifest: any) {
+        if (!manifest || (!manifest.visualizations && !manifest.lessons)) {
+            return { error: 'Valid manifest with visualizations or lessons is required' };
+        }
+        return this.orchestrator.generateFromManifest(manifest);
+    }
 }

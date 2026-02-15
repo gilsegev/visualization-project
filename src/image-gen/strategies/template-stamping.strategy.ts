@@ -13,6 +13,7 @@ import { THEME_LIBRARY, Theme } from '../themes.config';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import { ObservabilityGateway } from '../../observability/observability.gateway'; // Import Gateway
 
 @Injectable()
 export class TemplateStampingStrategy extends BaseImageStrategy {
@@ -23,6 +24,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         private readonly browserService: BrowserService,
         private readonly localStorage: LocalStorageService,
         private readonly configService: ConfigService,
+        private readonly observability: ObservabilityGateway, // Inject Gateway
     ) {
         super();
         const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
@@ -47,8 +49,10 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         };
 
         this.logger.log(`[StampingStrategy] Starting generation for: ${task.refined_prompt}`);
+        this.observability.emitLog('info', `Starting generation task for ${task.id}`, 'StampingStrategy');
 
         // 1. Generate Blueprint
+        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Blueprinting' });
         const blueprintStart = performance.now();
         const blueprint = await this.generateBlueprint(task.refined_prompt);
         // Inject Radius Override if present in Task Metadata (Phase 3)
@@ -57,9 +61,12 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         }
 
         metrics.blueprint = performance.now() - blueprintStart;
+        metrics.blueprint = performance.now() - blueprintStart;
         this.logger.log(`Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`);
+        this.observability.emitLog('info', `Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`, 'StampingStrategy');
 
         // 1.5 Image Generation & Asset Management
+        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Generating Assets' });
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Starting parallel image generation...');
 
@@ -71,8 +78,10 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const taskId = task.id || `task-${Date.now()}`;
 
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
+        // e.g. 2026-02-14/course-1/lesson-2/task-123/
         const relativeOutputDir = path.join(dateStr, courseId, lessonId, taskId);
         this.logger.log(`[StampingStrategy] Output Context: ${relativeOutputDir}`);
+        this.observability.emitLog('info', `Output Context: ${relativeOutputDir}`, 'StampingStrategy');
 
         // Resolve Theme
         let theme: Theme;
@@ -149,33 +158,65 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         }
 
         metrics.images = performance.now() - imagesStart;
+
         this.logger.log(`Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`);
+        this.observability.emitLog('info', `Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`, 'StampingStrategy');
 
 
         // 2. Stamp Template
+        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Stamping HTML' });
         const stampingStart = performance.now();
         const finalHtml = this.stampingService.stamp(blueprint.template_id, blueprint);
         metrics.stamping = performance.now() - stampingStart;
+
         this.logger.log(`Template stamped in ${metrics.stamping.toFixed(2)}ms`);
+        this.observability.emitLog('info', `Template stamped in ${metrics.stamping.toFixed(2)}ms`, 'StampingStrategy');
 
         // 3. Browser Screenshot (Re-enabled per 2.md)
+        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Finalizing Poster' });
         const browserStart = performance.now();
 
         // Refinement 5: Update Base URL to the specific task directory
         const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl);
+
+        // Handle Dimensions from Metadata
+        const dimensions = (task as any).metadata?.dimensions || {};
+        const width = dimensions.width || 1200;
+        const height = dimensions.height || 1200;
+
+        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl, { width, height });
 
         metrics.browser = performance.now() - browserStart;
-        this.logger.log(`Screenshot taken in ${metrics.browser.toFixed(2)}ms`);
+        metrics.browser = performance.now() - browserStart;
+        this.logger.log(`Screenshot taken in ${metrics.browser.toFixed(2)}ms at ${width}x${height}`);
+        this.observability.emitLog('info', `Screenshot taken in ${metrics.browser.toFixed(2)}ms`, 'StampingStrategy');
 
-        // Inject Viewport Constraints
+        // Inject Viewport Constraints matching the actual dimensions
         const fixedHtml = finalHtml.replace('</head>', `
     <style>
-        body { width: 1200px !important; height: 1200px !important; overflow: hidden !important; }
+        body { width: ${width}px !important; height: ${height}px !important; overflow: hidden !important; }
     </style>
 </head>`);
 
         metrics.total = performance.now() - metrics.start;
+
+        // Calculate Bottleneck
+        const timings = {
+            'Blueprint Gen': metrics.blueprint,
+            'Parallel Image Gen': metrics.images,
+            'HTML Stamping': metrics.stamping,
+            'Browser Capture': metrics.browser
+        };
+        const bottleneck = Object.entries(timings).reduce((a, b) => a[1] > b[1] ? a : b);
+
+        this.logger.log(`
+[Timing Signature] Task: ${task.id}
+    Blueprint Gen: ${metrics.blueprint.toFixed(2)}ms
+    Parallel Image Gen (SiliconFlow): ${metrics.images.toFixed(2)}ms
+    HTML Stamping: ${metrics.stamping.toFixed(2)}ms
+    Browser Capture (Playwright): ${metrics.browser.toFixed(2)}ms
+    >> Primary Bottleneck: ${bottleneck[0]} (${bottleneck[1].toFixed(2)}ms)
+`);
 
         // Save Results in Structured Directory
         const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
@@ -195,8 +236,10 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                     images_ms: metrics.images.toFixed(2),
                     stamping_ms: metrics.stamping.toFixed(2),
                     browser_ms: metrics.browser.toFixed(2),
+
                     total_ms: metrics.total.toFixed(2)
-                }
+                },
+                output_dir: relativeOutputDir
             }
         };
     }
@@ -207,7 +250,12 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const systemPrompt = `You are an expert Data Visualization Architect.
 Goal: Select template, define style, generate structured content.
 
-Templates: 'hub_radial' (circular hub), 'step_list' (vertical sequence), 'step_stone' (zigzag path), 'bento_grid' (grid), 'versus_split' (comparison).
+CRITICAL: Strict Text Preservation.
+- You must use the EXACT text provided in the user prompt for titles and descriptions.
+- Do NOT summarize, truncate, or rephrase the core content unless explicitly asked.
+- Map the provided "items" directly to the template structure.
+
+Templates: 'hub_radial' (circular hub), 'step_list' (vertical sequence), 'step_stone' (zigzag path), 'bento_grid' (grid), 'versus_split' (comparison), 'steps' (progressive list).
 Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
 
 Task:
@@ -243,9 +291,10 @@ OUTPUT VALID JSON ONLY:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: prompt }
                 ],
-                temperature: 0.7,
+                temperature: 0.2, // Lower temperature for stricter adherence
                 max_tokens: 2000
             });
+            this.observability.emitLog('info', `Blueprint LLM Response received`, 'BlueprintGen');
 
             const content = response.choices[0]?.message?.content || '{}';
             const text = content.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -257,6 +306,7 @@ OUTPUT VALID JSON ONLY:
             return parsed;
         } catch (e) {
             this.logger.error('Blueprint Generation Failed', e);
+            this.observability.emitLog('error', `Blueprint Generation Failed: ${e.message}`, 'BlueprintGen');
             throw e;
         }
     }
@@ -289,6 +339,7 @@ OUTPUT VALID JSON ONLY:
                 },
                 { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
             );
+            this.observability.emitLog('info', `SiliconFlow Image Gen Task Complete`, 'ImageGen');
 
             const imageUrl = response.data?.data?.[0]?.url;
             if (imageUrl) {
@@ -298,6 +349,7 @@ OUTPUT VALID JSON ONLY:
             throw new Error('No image URL returned from SiliconFlow');
         } catch (e) {
             this.logger.error(`Image Gen Failed: ${e.message}`);
+            this.observability.emitLog('error', `Image Gen Failed: ${e.message}`, 'ImageGen');
             // Refinement 3.1: Strict Error Handling - Fail if asset generation fails
             throw new Error(`Critical Asset Generation Failed: ${e.message}`);
         }

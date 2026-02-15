@@ -1,0 +1,87 @@
+import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage } from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
+import { Logger } from '@nestjs/common';
+
+@WebSocketGateway({
+    cors: {
+        origin: '*', // Allow all origins for simplicity in this local tool
+    },
+})
+export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisconnect {
+    @WebSocketServer()
+    server: Server;
+
+    private readonly logger = new Logger(ObservabilityGateway.name);
+
+    handleConnection(client: Socket) {
+        this.logger.log(`Client connected: ${client.id}`);
+        client.emit('connection_ack', { message: 'Connected to Visualization Observability' });
+    }
+
+    handleDisconnect(client: Socket) {
+        this.logger.log(`Client disconnected: ${client.id}`);
+    }
+
+    @SubscribeMessage('ping')
+    handlePing(client: Socket, payload: any): string {
+        return 'pong';
+    }
+
+    /**
+     * Emit a progress update for a specific task
+     */
+    emitProgress(data: {
+        taskId: string;
+        status: 'pending' | 'processing' | 'completed' | 'failed';
+        stage?: string;
+        progress?: number;
+        details?: any;
+        url?: string;
+        metrics?: any;
+        metadata?: {
+            course_id?: string;
+            lesson_id?: string;
+            lesson_title?: string;
+            lesson_index?: number;
+        };
+    }) {
+        this.server.emit('task_progress', data);
+    }
+
+    /**
+     * Emit a generic log message to the dashboard
+     */
+    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string) {
+        this.server.emit('system_log', {
+            level,
+            message,
+            context,
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    /**
+     * Emit a batch summary update
+     */
+    emitBatchProgress(data: { total: number; completed: number; current: string }) {
+        this.server.emit('batch_progress', data);
+    }
+
+    @SubscribeMessage('open_folder')
+    handleOpenFolder(client: Socket, relativePath: string) {
+        if (!relativePath) return;
+        const fs = require('fs');
+        const path = require('path');
+        const cp = require('child_process');
+
+        // Construct absolute path (assuming relative to public/generated-images)
+        const fullPath = path.join(process.cwd(), 'public', 'generated-images', relativePath);
+
+        this.logger.log(`Request to open folder: ${fullPath}`);
+
+        // Windows-specific open command
+        cp.exec(`start "" "${fullPath}"`, (err) => {
+            if (err) this.logger.error(`Failed to open folder: ${err.message}`);
+        });
+    }
+}

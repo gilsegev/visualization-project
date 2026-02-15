@@ -20,7 +20,7 @@ async function runAudit() {
         payload: { format: 'static' }
     };
 
-    const strategy = strategyFactory.getStrategy('infographic');
+    const strategy = strategyFactory.getStrategy({ type: 'infographic' } as any);
 
     try {
         const result = await strategy.generate(task);

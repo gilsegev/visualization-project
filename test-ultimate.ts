@@ -64,7 +64,7 @@ async function runUltimateTest() {
 
     const start = performance.now();
     const results = await Promise.allSettled(allTasks.map(async (task) => {
-        const strategy = strategyFactory.getStrategy(task.type);
+        const strategy = strategyFactory.getStrategy(task as any);
         try {
             const res = await strategy.generate(task);
             logger.log(`[SUCCESS] ${task.id}: ${res.url} ${res.posterUrl ? '+ Poster' : ''}`);

@@ -32,16 +32,9 @@ export class ImageStrategyFactory {
             case 'beautify_slide':
                 return this.beautifySlideStrategy;
             case 'infographic':
-                // Check if it's a hub template for the new strategy
-                const meta = task.metadata || {};
-                const templateId = meta.template_id as string;
-
-                if (templateId && (templateId.startsWith('hub') || templateId === 'hub_radial')) {
-                    return this.templateStampingStrategy;
-                }
-
-                // Fallback to deprecated JSDOM strategy for other templates
-                return this.deprecatedHtmlStrategy;
+                // V2 Architecture: Use TemplateStampingStrategy for ALL infographics
+                // It handles blueprint generation and dispatching to specific templates (Hub, Versus, Steps)
+                return this.templateStampingStrategy;
             default:
                 throw new InternalServerErrorException(`No strategy found for image task type: ${(task as any).type}`);
         }
