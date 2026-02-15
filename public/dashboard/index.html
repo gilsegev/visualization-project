@@ -117,12 +117,15 @@
                     </div>
 
                     <!-- Filter Controls (for BY ASSET) -->
+                    <!-- Filter Controls (for BY ASSET) -->
                     <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 mb-1">Tasks Available: {{ Object.keys(tasks).length }}
+                        </div>
                         <select v-model="selectedAssetFilter"
                             class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
                             <option value="">Select an Asset...</option>
-                            <option v-for="(task, id) in tasks" :key="id" :value="id">
-                                {{ task.details?.title || id }} ({{ getStatusLabel(task) }})
+                            <option v-for="task in tasks" :key="task.taskId" :value="task.taskId">
+                                {{ task.details?.title || task.taskId }} ({{ getStatusLabel(task) }})
                             </option>
                         </select>
                     </div>
@@ -356,6 +359,22 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- 4. Blueprint JSON (New) -->
+                <div v-if="selectedTask.payload?.blueprint" class="mb-2">
+                    <h4 class="text-xs font-mono text-success uppercase mb-1">Blueprint JSON (Plan)</h4>
+                    <div class="bg-black p-2 rounded border border-slate-700 overflow-x-auto">
+                        <pre
+                            class="text-[10px] text-slate-400 font-mono">{{ JSON.stringify(selectedTask.payload.blueprint, null, 2) }}</pre>
+                    </div>
+                </div>
+
+                <!-- 5. Task Metadata (Input) -->
+                <div v-if="selectedTask.metadata" class="mb-2">
+                    <h4 class="text-xs font-mono text-neon uppercase mb-1">Task Metadata (Input)</h4>
+                    <pre
+                        class="text-[10px] text-slate-400 font-mono">{{ JSON.stringify(selectedTask.metadata, null, 2) }}</pre>
+                </div>
             </div>
         </div>
     </div>
@@ -534,7 +553,9 @@
                     });
 
                     socket.on('batch_initialized', (initialTasks) => {
+                        console.log('[Frontend] batch_initialized received:', initialTasks);
                         tasks.value = initialTasks;
+                        console.log('[Frontend] tasks ref updated:', tasks.value);
                         addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System');
                     });
 

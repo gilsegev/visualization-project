@@ -192,9 +192,20 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         this.observability.emitLog('info', `Screenshot taken in ${metrics.browser.toFixed(2)}ms`, 'StampingStrategy', task.id);
 
         // Inject Viewport Constraints matching the actual dimensions
+        // Refinement: Smart Scaling Strategy
+        // Canonical Design Resolution: 1200x1200
+        const CANONICAL_SIZE = 1200;
+        const scale = width / CANONICAL_SIZE; // e.g. 800 / 1200 = 0.666
+
         const fixedHtml = finalHtml.replace('</head>', `
     <style>
-        body { width: ${width}px !important; height: ${height}px !important; overflow: hidden !important; }
+        body {
+            width: ${CANONICAL_SIZE}px !important;
+            height: ${CANONICAL_SIZE}px !important;
+            overflow: hidden !important;
+            transform: scale(${scale});
+            transform-origin: top left;
+        }
     </style>
 </head>`);
 

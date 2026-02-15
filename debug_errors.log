@@ -37,3 +37,27 @@
 [2026-02-15T23:08:48.443Z] [ERROR] [ImageGen] [viz-1771196866180-8ul20e3c7] Image Gen Failed: timeout of 30000ms exceeded
 [2026-02-15T23:08:48.443Z] [FAILED] [Task: viz-1771196866180-8ul20e3c7] {"error":"Critical Asset Generation Failed: Critical Asset Generation Failed: timeout of 30000ms exceeded"}
 [2026-02-15T23:08:48.444Z] [ERROR] [ImageGen] [viz-1771196866180-8ul20e3c7] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:15:54.363Z] [ERROR] [BlueprintGen] [viz-1771197352899-6b2hvjwhm] Model Refusal/Parse Error. Raw: I cannot fulfill this request. The prompt is incomplete, lacking the necessary "items" to populate t...
+[2026-02-15T23:15:54.363Z] [FAILED] [Task: viz-1771197352899-6b2hvjwhm] {"error":"Invalid JSON from LLM: I cannot fulfill this request. The prompt is incom..."}
+[2026-02-15T23:16:33.834Z] [FAILED] [Task: viz-1771197352899-ng2wmf7rq] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-15T23:17:47.473Z] [ERROR] [BlueprintGen] [viz-1771197465844-6fp78u51l] Model Refusal/Parse Error. Raw: I am sorry, I cannot fulfill this request. The prompt is incomplete, lacking the necessary "items" t...
+[2026-02-15T23:17:47.473Z] [FAILED] [Task: viz-1771197465844-6fp78u51l] {"error":"Invalid JSON from LLM: I am sorry, I cannot fulfill this request. The pro..."}
+[2026-02-15T23:18:06.632Z] [ERROR] [BlueprintGen] [viz-1771197465844-at1mmd009] Model Refusal/Parse Error. Raw: I cannot create an annotated triangle without knowing which template to use. Please select one of th...
+[2026-02-15T23:18:06.632Z] [FAILED] [Task: viz-1771197465844-at1mmd009] {"error":"Invalid JSON from LLM: I cannot create an annotated triangle without know..."}
+[2026-02-15T23:18:09.954Z] [FAILED] [Task: viz-1771197465844-kt4h3gyxs] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-15T23:18:42.542Z] [ERROR] [ImageGen] [viz-1771197465844-dkm05zz07] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:42.542Z] [FAILED] [Task: viz-1771197465844-dkm05zz07] {"error":"Critical Asset Generation Failed: Critical Asset Generation Failed: timeout of 30000ms exceeded"}
+[2026-02-15T23:18:46.530Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:46.530Z] [FAILED] [Task: viz-1771197465844-8ast4dd6c] {"error":"Critical Asset Generation Failed: Critical Asset Generation Failed: timeout of 30000ms exceeded"}
+[2026-02-15T23:18:46.532Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:46.531Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:46.532Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:46.531Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:18:46.533Z] [ERROR] [ImageGen] [viz-1771197465844-8ast4dd6c] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-15T23:21:42.595Z] [ERROR] [BlueprintGen] [viz-1771197700622-85i5m31us] Model Refusal/Parse Error. Raw: I am sorry, I cannot fulfill this request. The prompt is incomplete, lacking essential information f...
+[2026-02-15T23:21:42.596Z] [FAILED] [Task: viz-1771197700622-85i5m31us] {"error":"Invalid JSON from LLM: I am sorry, I cannot fulfill this request. The pro..."}
+[2026-02-15T23:22:08.109Z] [ERROR] [BlueprintGen] [viz-1771197700622-2pxyyqxbw] Model Refusal/Parse Error. Raw: I cannot create an annotated triangle without knowing which template to use. Please select one of th...
+[2026-02-15T23:22:08.109Z] [FAILED] [Task: viz-1771197700622-2pxyyqxbw] {"error":"Invalid JSON from LLM: I cannot create an annotated triangle without know..."}
+[2026-02-15T23:22:11.484Z] [FAILED] [Task: viz-1771197700622-yp2ayecge] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-15T23:22:12.957Z] [ERROR] [BlueprintGen] [viz-1771197700622-z9xjpwzea] Model Refusal/Parse Error. Raw: I cannot fulfill this request. The prompt is incomplete, lacking essential information to create the...
+[2026-02-15T23:22:12.958Z] [FAILED] [Task: viz-1771197700622-z9xjpwzea] {"error":"Invalid JSON from LLM: I cannot fulfill this request. The prompt is incom..."}
