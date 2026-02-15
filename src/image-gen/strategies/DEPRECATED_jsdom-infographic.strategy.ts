@@ -26,15 +26,25 @@ export interface HtmlInfographicBlueprint {
         title: string;
         description: string;
     };
+    // Update for Versus Split (Array of subjects)
     versus_subjects?: {
-        left_name: string;
-        right_name: string;
-        left_image_prompt: string;
-        right_image_prompt: string;
+        name: string;
+        description?: string; // e.g. "The Challenger"
+        image_url?: string;   // Populated after generation
+        image_prompt?: string; // Optional prompt override
+    }[];
+    // New Verdict field
+    verdict?: {
+        title: string;
+        text: string;
     };
     items: {
         title: string;
         description: string;
+        // Optional structural fields for Versus
+        icon?: string;
+        left?: { value: string; description: string };
+        right?: { value: string; description: string };
     }[];
 }
 
@@ -109,9 +119,12 @@ export class DEPRECATED_HtmlInfographicStrategy extends BaseImageStrategy {
 
         if (blueprint.template_id === 'versus_split' && blueprint.versus_subjects) {
             this.logger.log(`Generating Versus images for subjects...`);
-            const p1 = this.generateImage(blueprint.versus_subjects.left_image_prompt, theme, false)
+            const subLeft = blueprint.versus_subjects[0] || { name: 'Left', image_prompt: 'Left Subject' };
+            const subRight = blueprint.versus_subjects[1] || { name: 'Right', image_prompt: 'Right Subject' };
+
+            const p1 = this.generateImage(subLeft.image_prompt || subLeft.name, theme, false)
                 .then(b64 => ({ key: 'left', base64: b64 }));
-            const p2 = this.generateImage(blueprint.versus_subjects.right_image_prompt, theme, false)
+            const p2 = this.generateImage(subRight.image_prompt || subRight.name, theme, false)
                 .then(b64 => ({ key: 'right', base64: b64 }));
             const pBg = this.generateImage("Subtle abstract background, split screen contest", theme, true)
                 .then(b64 => ({ key: 'bg', base64: b64 }));
@@ -224,8 +237,11 @@ export class DEPRECATED_HtmlInfographicStrategy extends BaseImageStrategy {
             const leftTitle = document.getElementById('slot_title_left');
             const rightTitle = document.getElementById('slot_title_right');
             if (leftTitle && rightTitle) {
-                const lenL = blueprint.versus_subjects.left_name.length;
-                const lenR = blueprint.versus_subjects.right_name.length;
+                const subLeft = blueprint.versus_subjects[0] || { name: 'Left' };
+                const subRight = blueprint.versus_subjects[1] || { name: 'Right' };
+
+                const lenL = subLeft.name.length;
+                const lenR = subRight.name.length;
                 const maxLen = Math.max(lenL, lenR);
 
                 let unifiedSize = 5.0;
@@ -233,10 +249,10 @@ export class DEPRECATED_HtmlInfographicStrategy extends BaseImageStrategy {
                     unifiedSize = Math.max(3.0, Math.min(5.0, 5.0 * (12 / maxLen)));
                 }
 
-                leftTitle.textContent = blueprint.versus_subjects.left_name;
+                leftTitle.textContent = subLeft.name;
                 leftTitle.style.fontSize = `${unifiedSize}rem`;
 
-                rightTitle.textContent = blueprint.versus_subjects.right_name;
+                rightTitle.textContent = subRight.name;
                 rightTitle.style.fontSize = `${unifiedSize}rem`;
             }
 

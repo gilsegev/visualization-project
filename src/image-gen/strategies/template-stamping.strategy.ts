@@ -65,8 +65,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // Refinement 5: Structured File Organization
         const dateStr = new Date().toISOString().split('T')[0];
-        const courseId = (task.metadata as any)?.course_id || 'uncategorized_course';
-        const lessonId = (task.metadata as any)?.lesson_id || 'uncategorized_lesson';
+        const taskAny = task as any;
+        const courseId = taskAny.metadata?.course_id || 'uncategorized_course';
+        const lessonId = taskAny.metadata?.lesson_id || 'uncategorized_lesson';
         const taskId = task.id || `task-${Date.now()}`;
 
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
@@ -75,12 +76,19 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // Resolve Theme
         let theme: Theme;
-        const taskAny = task as any;
         if (taskAny.metadata?.custom_theme) {
             theme = taskAny.metadata.custom_theme as Theme;
         } else {
             theme = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
         }
+
+        // Dispatch based on Template ID
+        if (blueprint.template_id === 'versus_split') {
+            return this.handleVersusSplit(task, blueprint, relativeOutputDir, theme, metrics);
+        }
+
+        // Default: Hub/Radial Logic
+
 
         // Generate Spoke Images
         const itemImagePromises = blueprint.items.map((item, idx) =>
@@ -204,14 +212,20 @@ Task:
 2. Generate Items (3-9 normal).
 3. FOR STEP_LIST: Use this for vertical "roadmaps" or lists. Use '|' to separate stage name from description.
 4. FOR STEP_STONE: Zigzag path.
-5. FOR VERSUS_SPLIT: Exactly 4-5 items. Description "Val A | Val B".
+5. FOR VERSUS_SPLIT: Comparison between two entities.
+    - "versus_subjects": [ { "name": "Left Entity", "description": "..." }, { "name": "Right Entity", "description": "..." } ]
+    - "items": [ { "icon": "sword", "left": { "value": "100", "description": "High" }, "right": { "value": "50", "description": "Low" } } ]
+    - "verdict": { "title": "Winner", "text": "Conclusion..." }
+    - "center_topic": { "title": "Main Comparison Title", "description": "Subtitle" }
 
 OUTPUT VALID JSON ONLY:
 {
   "template_id": "...",
   "theme_id": "...",
   "center_topic": { "title": "...", "description": "..." },
-  "items": [ { "title": "...", "description": "..." } ]
+  "items": [ { "title": "...", "description": "...", "left": {...}, "right": {...} } ],
+  "versus_subjects": [ ... ],
+  "verdict": { ... }
 }`;
 
         try {
@@ -280,5 +294,111 @@ OUTPUT VALID JSON ONLY:
             // Refinement 3.1: Strict Error Handling - Fail if asset generation fails
             throw new Error(`Critical Asset Generation Failed: ${e.message}`);
         }
+    }
+
+
+    private async handleVersusSplit(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
+        const imagesStart = performance.now();
+        this.logger.log('[StampingStrategy] Handling Versus Split Template...');
+
+        // 1. Generate Subject Images (Left & Right)
+        const subjects = blueprint.versus_subjects || [{ name: 'Left' }, { name: 'Right' }];
+        const imagePromises = subjects.map(async (subj, idx) => {
+            const side = idx === 0 ? 'left' : 'right';
+            const prompt = `Vertical portrait of ${subj.name}, ${subj.description || ''}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text`;
+
+            try {
+                // Use isBackground=false logic for subjects? Or custom? Using false (sticker/character style)
+                const base64 = await this.generateImage(prompt, theme, false);
+                if (!base64) return null;
+
+                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const filename = `vs_${task.id}_${side}.png`;
+                await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
+
+                // Update blueprint URL
+                subj.image_url = `./assets/${filename}`;
+                return subj.image_url;
+            } catch (e) {
+                this.logger.error(`Versus Image ${side} failed: ${e.message}`);
+                return null;
+            }
+        });
+
+        await Promise.all(imagePromises);
+
+        // 1.5 Generate Item Icons (Parallel)
+        this.logger.log('[StampingStrategy] Generating Versus Item Icons...');
+        const iconPromises = blueprint.items.map(async (item, idx) => {
+            // Priority: Explicit Icon Name > Left Value > Generic
+            const iconPrompt = item.icon && item.icon.length > 2
+                ? item.icon
+                : `${item.left?.value || 'concept'} vs ${item.right?.value || 'concept'}`;
+
+            const prompt = `Simple flat vector icon of ${iconPrompt}, black lines on white background, minimalist, bold, isolated --no text`;
+
+            try {
+                // Use a modified theme or specific style for icons? 
+                // We want them to match the "yellow squared" look or just be the content inside?
+                // The template has a yellow background, so we probably want a transparent or matching icon.
+                // The template uses .row-icon yellow background. So we need a transparent PNG or just a simple icon on white/yellow.
+                // Let's try to generate an icon with a solid background or transparent. 
+                // Since our generator usually does white background, we might need mix-blend-mode multiply in CSS if it's white.
+                // Or we generate on yellow #FFD100.
+
+                // Let's rely on the strategy's standard generation but force a specific style.
+                // Actually, `generateImage` uses white background by default.
+                // Let's stick effectively to "isolated on white" and rely on `mix-blend-mode` if needed, OR 
+                // simply generate a square icon that FILLS the container.
+                const base64 = await this.generateImage(prompt, theme, false);
+                if (!base64) return;
+
+                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const filename = `vs_icon_${task.id}_${idx}.png`;
+                await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
+
+                (item as any).icon_url = `./assets/${filename}`;
+            } catch (e) {
+                this.logger.warn(`Versus Icon ${idx} failed: ${e.message}`);
+            }
+        });
+
+        await Promise.all(iconPromises);
+
+        metrics.images = performance.now() - imagesStart;
+
+        // 2. Stamp Template
+        const stampingStart = performance.now();
+        // Versus uses the same stamping service, which replaces /* INSERT_JSON_HERE */
+        // We ensure blueprint matches the schema expected by versus_split.html render()
+        // Schema: { subjects: [...], items: [...], verdict: {...} }
+        const payload = {
+            subjects: blueprint.versus_subjects,
+            items: blueprint.items,
+            center: blueprint.center_topic, // Title/Subtitle often mapped here
+            verdict: blueprint.verdict
+        };
+
+        const finalHtml = this.stampingService.stamp('versus_split', payload);
+        metrics.stamping = performance.now() - stampingStart;
+
+        // 3. Screenshot
+        const browserStart = performance.now();
+        const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
+        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl);
+        metrics.browser = performance.now() - browserStart;
+
+        // 4. Save
+        const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
+        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(finalHtml));
+        await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
+
+        metrics.total = performance.now() - metrics.start;
+
+        return {
+            url: publicUrl,
+            posterUrl: publicUrl,
+            payload: { blueprint, html: finalHtml, metrics }
+        };
     }
 }

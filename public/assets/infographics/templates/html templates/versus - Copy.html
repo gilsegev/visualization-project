@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VersusMate Template</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; padding: 40px; }
+        
+        /* The grid background pattern */
+        .grid-bg {
+            background-image: 
+                linear-gradient(#e5e7eb 1px, transparent 1px),
+                linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+
+        /* Ribbon Clip Paths */
+        .clip-ribbon-left { clip-path: polygon(0% 0%, 100% 0%, 90% 100%, 0% 100%); }
+        .clip-ribbon-right { clip-path: polygon(10% 0%, 100% 0%, 100% 100%, 0% 100%); }
+    </style>
+</head>
+<body class="flex justify-center items-center min-h-screen">
+
+    <!-- Infographic Container -->
+    <div class="relative w-full max-w-4xl bg-white p-12 shadow-2xl rounded-sm overflow-hidden grid-bg min-h-[900px] border border-gray-100">
+        
+        <!-- Header Section -->
+        <div class="relative flex justify-center items-center mb-24">
+            <!-- Left Side Ribbon (Topic A) -->
+            <div class="absolute left-[10%] w-[40%] h-16 bg-[#1e295b] text-white flex items-center justify-center font-extrabold text-2xl tracking-widest z-10 clip-ribbon-left">
+                <span class="mr-8">PROJECT 1</span>
+            </div>
+
+            <!-- Central VS Circle -->
+            <div class="relative z-30 w-24 h-24 bg-white rounded-full flex items-center justify-center border-4 border-[#3b49df] shadow-lg">
+                <span class="text-[#1e295b] font-black text-4xl italic">VS</span>
+            </div>
+
+            <!-- Right Side Ribbon (Topic B) -->
+            <div class="absolute right-[10%] w-[40%] h-16 bg-[#4e5cf3] text-white flex items-center justify-center font-extrabold text-2xl tracking-widest z-10 clip-ribbon-right">
+                <span class="ml-8">PROJECT 2</span>
+            </div>
+        </div>
+
+        <!-- Comparison List Section -->
+        <div class="relative flex flex-col items-center gap-6">
+            <!-- Central Vertical Dashed Line -->
+            <div class="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 border-l-2 border-dashed border-gray-300 z-0"></div>
+
+            <!-- Comparison Row 1 -->
+            <div class="relative flex items-center w-full">
+                <div class="flex-1 flex justify-end">
+                    <div class="w-[340px] h-16 bg-[#1e295b] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
+                        LOREM IPSUM DOLOR
+                    </div>
+                </div>
+                <div class="relative z-20 mx-8 w-16 h-16 bg-white rounded-full border-2 border-gray-200 flex items-center justify-center shadow-sm">
+                    <!-- Icon Placeholder (e.g., Dollar Sign) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 w-8 h-8"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                </div>
+                <div class="flex-1 flex justify-start">
+                    <div class="w-[340px] h-16 bg-[#4e5cf3] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
+                        SIT AMET CONSECT
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison Row 2 -->
+            <div class="relative flex items-center w-full">
+                <div class="flex-1 flex justify-end">
+                    <div class="w-[340px] h-16 bg-[#1e295b] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
+                        ADIPISCING ELITSED
+                    </div>
+                </div>
+                <div class="relative z-20 mx-8 w-16 h-16 bg-white rounded-full border-2 border-gray-200 flex items-center justify-center shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 w-8 h-8"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
+                </div>
+                <div class="flex-1 flex justify-start">
+                    <div class="w-[340px] h-16 bg-[#4e5cf3] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
+                        DIAM ALIA NONUM
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional rows follow the same structure... -->
+        </div>
+
+        <!-- Footer -->
+        <div class="absolute bottom-6 right-6 opacity-20 text-[#1e295b] font-bold text-sm">
+            VERSUSMATE TEMPLATE v1.0
+        </div>
+    </div>
+
+</body>
+</html>

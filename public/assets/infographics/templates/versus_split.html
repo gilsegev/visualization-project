@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=1200, height=1200">
@@ -11,15 +12,15 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        
+
         body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
-        
+
         #main-wrapper {
             width: 1200px;
             height: 1200px;
@@ -27,7 +28,7 @@
             position: relative;
             background: #0f172a;
         }
-        
+
         /* Background Images */
         .bg-image {
             position: absolute;
@@ -38,17 +39,17 @@
             background-position: center;
             opacity: 0.25;
         }
-        
+
         .bg-image-left {
             left: 0;
             background-image: url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&h=1200&fit=crop&q=80');
         }
-        
+
         .bg-image-right {
             right: 0;
             background-image: url('https://images.unsplash.com/photo-1563986768609-322da13575f3?w=600&h=1200&fit=crop&q=80');
         }
-        
+
         /* Gradient Overlays - Stronger for better text contrast */
         .gradient-overlay-left {
             position: absolute;
@@ -59,7 +60,7 @@
             background: linear-gradient(135deg, rgba(239, 68, 68, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%);
             pointer-events: none;
         }
-        
+
         .gradient-overlay-right {
             position: absolute;
             right: 0;
@@ -69,7 +70,7 @@
             background: linear-gradient(225deg, rgba(56, 113, 255, 0.12) 0%, rgba(15, 23, 42, 0.92) 100%);
             pointer-events: none;
         }
-        
+
         /* The Spine - Subtle, non-distracting */
         .spine {
             position: absolute;
@@ -77,16 +78,15 @@
             top: 0;
             bottom: 0;
             width: 1px;
-            background: linear-gradient(180deg, 
-                transparent 0%,
-                rgba(148, 163, 184, 0.2) 20%,
-                rgba(148, 163, 184, 0.4) 50%,
-                rgba(148, 163, 184, 0.2) 80%,
-                transparent 100%
-            );
+            background: linear-gradient(180deg,
+                    transparent 0%,
+                    rgba(148, 163, 184, 0.2) 20%,
+                    rgba(148, 163, 184, 0.4) 50%,
+                    rgba(148, 163, 184, 0.2) 80%,
+                    transparent 100%);
             transform: translateX(-50%);
         }
-        
+
         /* VS Badge - Subtle text-only overlay */
         .vs-badge {
             position: absolute;
@@ -102,7 +102,7 @@
             text-shadow: 0 0 80px rgba(148, 163, 184, 0.25);
             user-select: none;
         }
-        
+
         /* Dynamic Title Scaling - Improved */
         .dynamic-title {
             font-size: clamp(3rem, 7vw, 4.5rem);
@@ -110,7 +110,7 @@
             font-weight: 900;
             letter-spacing: -0.03em;
         }
-        
+
         /* Header subtitle - more visible */
         .header-subtitle {
             font-size: 1.125rem;
@@ -120,7 +120,7 @@
             text-transform: uppercase;
             margin-top: 0.75rem;
         }
-        
+
         /* Glassmorphism Cards - Refined */
         .glass-card {
             background: rgba(30, 41, 59, 0.5);
@@ -130,14 +130,14 @@
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             overflow: hidden;
         }
-        
+
         .glass-card:hover {
             background: rgba(30, 41, 59, 0.65);
             border-color: rgba(148, 163, 184, 0.2);
             transform: translateY(-2px);
             box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
         }
-        
+
         /* Shared Axis Grid - Better spacing */
         .stat-row {
             display: grid;
@@ -149,12 +149,12 @@
             position: relative;
             z-index: 10;
         }
-        
+
         .stat-left {
             text-align: right;
             padding-right: 3rem;
         }
-        
+
         .stat-center {
             text-align: center;
             padding: 0 1.5rem;
@@ -166,7 +166,7 @@
             line-height: 1.3;
             position: relative;
         }
-        
+
         /* Add subtle background to center labels for better visibility */
         .stat-center::before {
             content: '';
@@ -180,12 +180,12 @@
             border-radius: 0.5rem;
             z-index: -1;
         }
-        
+
         .stat-right {
             text-align: left;
             padding-left: 3rem;
         }
-        
+
         /* Improved value styling - larger, more readable */
         .stat-value {
             font-size: 2.75rem;
@@ -194,7 +194,7 @@
             margin-bottom: 0.5rem;
             text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
-        
+
         /* Better label styling - more prominent */
         .stat-label {
             font-size: 1rem;
@@ -202,18 +202,18 @@
             color: #cbd5e1;
             line-height: 1.4;
         }
-        
+
         /* Color Accents - Higher contrast */
         .accent-red {
             color: #f87171;
             text-shadow: 0 0 20px rgba(248, 113, 113, 0.4);
         }
-        
+
         .accent-blue {
             color: #60a5fa;
             text-shadow: 0 0 20px rgba(96, 165, 250, 0.4);
         }
-        
+
         /* Magnet Anchor - Better vertical distribution */
         .content-container {
             position: absolute;
@@ -227,7 +227,7 @@
             align-items: center;
             gap: 3rem;
         }
-        
+
         .header-section {
             width: 100%;
             display: grid;
@@ -236,27 +236,27 @@
             align-items: end;
             margin-bottom: 1rem;
         }
-        
+
         .header-left {
             text-align: right;
             padding-right: 2rem;
         }
-        
+
         .header-right {
             text-align: left;
             padding-left: 2rem;
         }
-        
+
         .header-spacer {
             width: 140px;
         }
-        
+
         /* Add visual separators between sections */
         .stats-wrapper {
             width: 100%;
             position: relative;
         }
-        
+
         /* Improved spacing in stats container */
         #stat_rows_container {
             display: flex;
@@ -265,19 +265,20 @@
         }
     </style>
 </head>
+
 <body>
     <div id="main-wrapper">
         <!-- Background Images -->
         <div id="slot_image_left" class="bg-image bg-image-left"></div>
         <div id="slot_image_right" class="bg-image bg-image-right"></div>
-        
+
         <!-- Gradient Overlays -->
         <div class="gradient-overlay-left"></div>
         <div class="gradient-overlay-right"></div>
-        
+
         <!-- The Spine -->
         <div class="spine"></div>
-        
+
         <!-- Content Container (Magnet Anchor) -->
         <div class="content-container">
             <!-- Header Section -->
@@ -289,10 +290,10 @@
                     </h1>
                     <p class="header-subtitle">Offensive Security</p>
                 </div>
-                
+
                 <!-- Spacer for VS badge -->
                 <div class="header-spacer"></div>
-                
+
                 <!-- Right Header -->
                 <div class="header-right">
                     <h1 id="slot_title_right" class="dynamic-title accent-blue">
@@ -301,14 +302,14 @@
                     <p class="header-subtitle">Defensive Security</p>
                 </div>
             </div>
-            
+
             <!-- Stats Wrapper -->
             <div class="stats-wrapper">
                 <!-- Stats Container (Shared Axis Grid) -->
                 <div id="stat_rows_container" style="position: relative;">
                     <!-- VS Badge anchored to this container -->
                     <div class="vs-badge">VS</div>
-                    
+
                     <!-- Example Row 1 -->
                     <div class="glass-card stat-row">
                         <div class="stat-left">
@@ -323,7 +324,7 @@
                             <div class="stat-label">Blocked Threats</div>
                         </div>
                     </div>
-                    
+
                     <!-- Example Row 2 -->
                     <div class="glass-card stat-row">
                         <div class="stat-left">
@@ -338,7 +339,7 @@
                             <div class="stat-label">Detection Rate</div>
                         </div>
                     </div>
-                    
+
                     <!-- Example Row 3 -->
                     <div class="glass-card stat-row">
                         <div class="stat-left">
@@ -353,7 +354,7 @@
                             <div class="stat-label">Zero-Days Patched</div>
                         </div>
                     </div>
-                    
+
                     <!-- Example Row 4 -->
                     <div class="glass-card stat-row">
                         <div class="stat-left">
@@ -372,8 +373,10 @@
             </div>
         </div>
     </div>
-    
+
     <script>
+        const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
         // Dynamic background image injection
         function setBackgroundImage(side, imageUrl) {
             const element = document.getElementById(`slot_image_${side}`);
@@ -381,7 +384,7 @@
                 element.style.backgroundImage = `url('${imageUrl}')`;
             }
         }
-        
+
         // Title injection
         function setTitle(side, title, subtitle) {
             const titleElement = document.getElementById(`slot_title_${side}`);
@@ -395,16 +398,16 @@
                 }
             }
         }
-        
+
         // Stat row injection - improved structure
         function addStatRow(leftValue, leftLabel, category, rightValue, rightLabel) {
             const container = document.getElementById('stat_rows_container');
             const row = document.createElement('div');
             row.className = 'glass-card stat-row';
-            
+
             // Handle multi-line categories by replacing spaces with line breaks if needed
             const categoryDisplay = category.length > 15 ? category.replace(' ', '<br>') : category;
-            
+
             row.innerHTML = `
                 <div class="stat-left">
                     <div class="stat-value accent-red">${leftValue}</div>
@@ -420,7 +423,7 @@
             `;
             container.appendChild(row);
         }
-        
+
         // Clear rows
         function clearStatRows() {
             const container = document.getElementById('stat_rows_container');
@@ -431,6 +434,53 @@
                 container.appendChild(vsBadge);
             }
         }
+
+        function render(data) {
+            if (!data) return;
+
+            // 1. Set Subjects (Titles & Backgrounds)
+            if (data.subjects && data.subjects.length >= 2) {
+                // Left
+                setTitle('left', data.subjects[0].name, data.subjects[0].description || '');
+                if (data.subjects[0].image_url) {
+                    setBackgroundImage('left', data.subjects[0].image_url);
+                }
+
+                // Right
+                setTitle('right', data.subjects[1].name, data.subjects[1].description || '');
+                if (data.subjects[1].image_url) {
+                    setBackgroundImage('right', data.subjects[1].image_url);
+                }
+            }
+
+            // 2. Clear Existing Stats
+            clearStatRows();
+
+            // 3. Add Items (Stat Rows)
+            if (data.items && Array.isArray(data.items)) {
+                data.items.forEach(item => {
+                    // Schema: item.left = { value, description }, item.right = { ... }, item.icon (used as category?) or item.title?
+                    // The prompt schema says: "icon": "lightning_bolt", "left": {...}, "right": {...}
+                    // Where does the "category" come from? 
+                    // Let's assume 'icon' or 'title' or a new field 'category'. 
+                    // If 'icon' is text like 'lightning_bolt', maybe we use that if no category?
+                    // Let's check the prompt payload again: "icon": "lightning_bolt". 
+                    // But in the example rows, the center text is "Attack Vectors", "Effectiveness".
+                    // I will look for item.category or item.title.
+
+                    const category = item.category || item.title || item.icon || 'Comparison';
+                    const leftVal = item.left?.value || '-';
+                    const leftDesc = item.left?.description || '';
+                    const rightVal = item.right?.value || '-';
+                    const rightDesc = item.right?.description || '';
+
+                    addStatRow(leftVal, leftDesc, category, rightVal, rightDesc);
+                });
+            }
+        }
+
+        if (DATA_PAYLOAD) render(DATA_PAYLOAD);
     </script>
 </body>
+
 </html>
