@@ -106,29 +106,61 @@
 
                 <!-- Live Logs -->
                 <div class="flex-1 flex flex-col min-h-0 bg-black">
-                    <div
-                        class="px-4 py-2 bg-surface text-xs font-mono text-slate-400 border-b border-slate-700 flex justify-between items-center">
-                        <div class="flex items-center gap-2">
-                            <span>SYSTEM LOGS</span>
-                            <label class="flex items-center gap-1 cursor-pointer hover:text-white select-none">
-                                <input type="checkbox" v-model="isVerbose" class="accent-neon rounded-sm w-3 h-3">
-                                <span>VERBOSE</span>
-                            </label>
-                        </div>
-                        <span class="cursor-pointer hover:text-white" @click="logs = []">CLEAR</span>
+                    <!-- Tabs -->
+                    <div class="flex border-b border-slate-700 bg-surface">
+                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET']" :key="mode"
+                            @click="logMode = mode"
+                            class="flex-1 px-2 py-2 text-[10px] font-mono font-bold transition-colors border-b-2"
+                            :class="logMode === mode ? 'border-neon text-neon bg-neon/5' : 'border-transparent text-slate-500 hover:text-slate-300'">
+                            {{ mode }}
+                        </button>
                     </div>
-                    <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-tight matrix-scroll"
+
+                    <!-- Filter Controls (for BY ASSET) -->
+                    <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <select v-model="selectedAssetFilter"
+                            class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
+                            <option value="">Select an Asset...</option>
+                            <option v-for="(task, id) in tasks" :key="id" :value="id">
+                                {{ task.details?.title || id }} ({{ getStatusLabel(task) }})
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Log Stream -->
+                    <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-tight matrix-scroll relative"
                         ref="logContainer">
+
+                        <!-- Clear Button overlay -->
+                        <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition">
+                            <button @click="logs = []"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700">CLEAR</button>
+                        </div>
+
+                        <div v-if="filteredLogs.length === 0" class="text-center text-slate-600 mt-10 italic">
+                            No logs to display...
+                        </div>
+
                         <div v-for="(log, i) in filteredLogs" :key="i"
-                            class="mb-1.5 break-words opacity-90 hover:opacity-100">
+                            class="mb-1.5 break-words opacity-90 hover:opacity-100 border-l-2 pl-2"
+                            :class="log.level === 'error' ? 'border-danger' : 'border-transparent'">
+
                             <span class="text-slate-600">[{{ formatTime(log.timestamp) }}]</span>
+
                             <span :class="{
                                 'text-neon': log.level === 'info',
                                 'text-warning': log.level === 'warn',
                                 'text-danger': log.level === 'error',
                                 'text-success': log.level === 'success'
                             }">{{ (log.context || 'SYSTEM').toUpperCase() }}:</span>
-                            <span class="text-slate-300 ml-2">{{ log.message }}</span>
+
+                            <!-- Task ID Badge if present -->
+                            <span v-if="log.taskId && logMode === 'VERBOSE'"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
+                                {{ log.taskId.split('-').pop() }}
+                            </span>
+
+                            <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
                         </div>
                     </div>
                 </div>
@@ -276,18 +308,53 @@
             <div class="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center">
                 <img :src="selectedTask.url" class="max-w-full max-h-[85vh] rounded shadow-2xl border border-slate-700">
 
-                <div class="mt-4 flex items-center gap-4">
-                    <h3 class="text-xl font-bold text-white">{{ selectedTask.details?.title || 'Visualization' }}</h3>
+                <div class="mt-4 flex flex-col items-center gap-4 w-full max-w-4xl">
+                    <div class="flex items-center gap-4">
+                        <h3 class="text-xl font-bold text-white">{{ selectedTask.details?.title || 'Visualization' }}
+                        </h3>
 
-                    <!-- Open Folder Button -->
-                    <button v-if="selectedTask.details?.output_dir" @click="openFolder(selectedTask.details.output_dir)"
-                        class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white font-medium flex items-center gap-2 transition">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
-                        </svg>
-                        View in Folder
-                    </button>
+                        <!-- Open Folder Button -->
+                        <button v-if="selectedTask.details?.output_dir"
+                            @click="openFolder(selectedTask.details.output_dir)"
+                            class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white font-medium flex items-center gap-2 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z">
+                                </path>
+                            </svg>
+                            View in Folder
+                        </button>
+                    </div>
+
+                    <!-- Prompts Section -->
+                    <div
+                        class="w-full bg-surface/80 rounded-lg p-4 border border-slate-700 overflow-y-auto max-h-[30vh]">
+
+                        <!-- 1. What was asked (Refined Prompt from Lesson Context) -->
+                        <div v-if="selectedTask.details?.refined_prompt" class="mb-4">
+                            <h4 class="text-xs font-mono text-neon uppercase mb-1">Contextual Prompt (What was asked)
+                            </h4>
+                            <p class="text-sm text-slate-300 font-mono whitespace-pre-wrap">{{
+                                selectedTask.details.refined_prompt }}</p>
+                        </div>
+
+                        <!-- 2. What was constructed (Blueprint Prompt) -->
+                        <div v-if="selectedTask.details?.blueprint_prompt" class="mb-4">
+                            <h4 class="text-xs font-mono text-warning uppercase mb-1">Blueprint Instruction</h4>
+                            <p class="text-sm text-slate-300 font-mono whitespace-pre-wrap">{{
+                                selectedTask.details.blueprint_prompt }}</p>
+                        </div>
+
+                        <!-- 3. What was generated (Image Prompts) -->
+                        <div v-if="selectedTask.details?.image_prompts && selectedTask.details.image_prompts.length"
+                            class="mb-2">
+                            <h4 class="text-xs font-mono text-success uppercase mb-1">Asset Generation Prompts</h4>
+                            <div v-for="(prompt, idx) in selectedTask.details.image_prompts" :key="idx"
+                                class="mb-2 pl-2 border-l-2 border-slate-600">
+                                <p class="text-xs text-slate-400 font-mono">{{ prompt }}</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -301,19 +368,42 @@
             setup() {
                 const isConnected = ref(false);
                 const isDragging = ref(false);
-                const isVerbose = ref(true); // Default to ON as requested
+
+                // Log Views State
+                const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
+                const selectedAssetFilter = ref('');
+
                 const logs = ref([]);
                 const tasks = ref({}); // Map: taskId -> task
                 const batch = ref({ total: 0, completed: 0 });
                 const logContainer = ref(null);
 
                 const filteredLogs = computed(() => {
-                    if (isVerbose.value) return logs.value;
+                    if (logMode.value === 'VERBOSE') {
+                        return logs.value;
+                    }
+
+                    if (logMode.value === 'BY ASSET') {
+                        if (!selectedAssetFilter.value) return [];
+                        return logs.value.filter(log => log.taskId === selectedAssetFilter.value);
+                    }
+
+                    // HIGH LEVEL Logic
                     return logs.value.filter(log => {
-                        if (log.level !== 'info') return true; // Show all warnings/errors/success
-                        const context = (log.context || '').toLowerCase();
-                        // Hide these verbose contexts when verbose is off
-                        return !['stampingstrategy', 'blueprintgen', 'imagegen'].includes(context);
+                        // Always show errors and success
+                        if (log.level === 'error' || log.level === 'success') return true;
+
+                        // Show Orchestrator info
+                        if (log.context === 'Orchestrator') return true;
+
+                        // Hide detailed implementation logs (StampingStrategy, ImageGen, BlueprintGen) unless critical
+                        // Show only if message is "Starting generation" or "Completed"
+                        const msg = (log.message || '').toLowerCase();
+                        if (log.context === 'StampingStrategy') {
+                            return msg.includes('starting') || msg.includes('completed');
+                        }
+
+                        return false;
                     });
                 });
 
@@ -443,6 +533,11 @@
                         };
                     });
 
+                    socket.on('batch_initialized', (initialTasks) => {
+                        tasks.value = initialTasks;
+                        addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System');
+                    });
+
                     socket.on('system_log', (data) => addLog(data.level, data.message, data.context));
 
                     socket.on('batch_progress', (data) => batch.value = data);
@@ -454,7 +549,8 @@
 
                 return {
                     isConnected, isDragging, logs, batch, logContainer,
-                    groupedTasks, selectedTask, isVerbose, filteredLogs,
+                    groupedTasks, selectedTask,
+                    logMode, selectedAssetFilter, filteredLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder,

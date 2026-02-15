@@ -49,26 +49,26 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         };
 
         this.logger.log(`[StampingStrategy] Starting generation for: ${task.refined_prompt}`);
-        this.observability.emitLog('info', `Starting generation task for ${task.id}`, 'StampingStrategy');
+        this.observability.emitLog('info', `Starting generation task`, 'StampingStrategy', task.id);
 
         // 1. Generate Blueprint
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Blueprinting' });
         const blueprintStart = performance.now();
-        const blueprint = await this.generateBlueprint(task.refined_prompt);
+        const blueprint = await this.generateBlueprint(task.refined_prompt, task.id);
         // Inject Radius Override if present in Task Metadata (Phase 3)
         if ((task as any).metadata?.radius) {
             (blueprint as any).radius = (task as any).metadata.radius;
         }
 
         metrics.blueprint = performance.now() - blueprintStart;
-        metrics.blueprint = performance.now() - blueprintStart;
         this.logger.log(`Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`);
-        this.observability.emitLog('info', `Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`, 'StampingStrategy');
+        this.observability.emitLog('info', `Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`, 'StampingStrategy', task.id);
 
         // 1.5 Image Generation & Asset Management
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Generating Assets' });
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Starting parallel image generation...');
+        const usedPrompts: string[] = [];
 
         // Refinement 5: Structured File Organization
         const dateStr = new Date().toISOString().split('T')[0];
@@ -81,7 +81,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
         const relativeOutputDir = path.join(dateStr, courseId, lessonId, taskId);
         this.logger.log(`[StampingStrategy] Output Context: ${relativeOutputDir}`);
-        this.observability.emitLog('info', `Output Context: ${relativeOutputDir}`, 'StampingStrategy');
+        this.observability.emitLog('info', `Output Context: ${relativeOutputDir}`, 'StampingStrategy', task.id);
 
         // Resolve Theme
         let theme: Theme;
@@ -105,17 +105,17 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // Generate Spoke Images
         const itemImagePromises = blueprint.items.map((item, idx) =>
             // Refinement 6: Use Descripton ONLY (No Title)
-            this.generateImage(`minimalist visual representation of ${item.description}`, theme, false)
-                .then(async (base64) => {
-                    if (!base64) return { index: idx, url: '' };
-                    const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            this.generateImage(`minimalist visual representation of ${item.description}`, theme, false, task.id)
+                .then(async (result) => {
+                    if (!result.url) return { index: idx, url: '', prompt: '' };
+                    const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                     const assetFilename = `spoke_${idx}.png`;
 
                     // Save to structured directory
                     await this.localStorage.save(path.join(relativeOutputDir, 'assets', assetFilename), buffer);
 
                     // Relative path for HTML (siblings: index.html is in relativeOutputDir, assets is in relativeOutputDir/assets)
-                    return { index: idx, url: `./assets/${assetFilename}` };
+                    return { index: idx, url: `./assets/${assetFilename}`, prompt: result.prompt };
                 })
                 .catch(err => {
                     this.logger.error(`[ImageGen] Item ${idx} failed: ${err.message}`);
@@ -127,40 +127,41 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const centerImagePromise = this.generateImage(
             `${blueprint.center_topic.title}: ${blueprint.center_topic.description} abstract serene background, soft lighting, ${theme.primary_accent} and ${theme.background_main} tones`,
             theme,
-            true // isBackground
-        ).then(async (base64) => {
-            if (!base64) return null;
-            const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            true, // isBackground
+            task.id
+        ).then(async (result) => {
+            if (!result.url) return null;
+            const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
             const assetFilename = `center_hub.png`;
 
             await this.localStorage.save(path.join(relativeOutputDir, 'assets', assetFilename), buffer);
-            return `./assets/${assetFilename}`;
+            return { url: `./assets/${assetFilename}`, prompt: result.prompt };
         }).catch(err => {
             this.logger.warn(`[ImageGen] Center image failed (non-critical): ${err.message}`);
             return null;
         });
 
         const results = await Promise.all(itemImagePromises);
-        const centerImageUrl = await centerImagePromise;
+        const centerImageResult = await centerImagePromise;
 
-        // Update Blueprint with Local URLs
+        // Update Blueprint with Local URLs and Collect Prompts
         results.forEach(res => {
             if (res.url && blueprint.items[res.index]) {
                 (blueprint.items[res.index] as any).image_url = res.url;
+                usedPrompts.push(`Item ${res.index}: ${res.prompt}`);
             }
         });
 
-        if (centerImageUrl) {
-            console.log(`[StampingStrategy] Injecting Center Image URL: ${centerImageUrl}`);
-            (blueprint.center_topic as any).image_url = centerImageUrl;
+        if (centerImageResult) {
+            console.log(`[StampingStrategy] Injecting Center Image URL: ${centerImageResult.url}`);
+            (blueprint.center_topic as any).image_url = centerImageResult.url;
+            usedPrompts.push(`Center Hub: ${centerImageResult.prompt}`);
         } else {
             console.warn('[StampingStrategy] No Center Image URL generated.');
         }
 
         metrics.images = performance.now() - imagesStart;
-
-        this.logger.log(`Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`);
-        this.observability.emitLog('info', `Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`, 'StampingStrategy');
+        this.observability.emitLog('info', `Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`, 'StampingStrategy', task.id);
 
 
         // 2. Stamp Template
@@ -170,7 +171,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         metrics.stamping = performance.now() - stampingStart;
 
         this.logger.log(`Template stamped in ${metrics.stamping.toFixed(2)}ms`);
-        this.observability.emitLog('info', `Template stamped in ${metrics.stamping.toFixed(2)}ms`, 'StampingStrategy');
+        this.observability.emitLog('info', `Template stamped in ${metrics.stamping.toFixed(2)}ms`, 'StampingStrategy', task.id);
 
         // 3. Browser Screenshot (Re-enabled per 2.md)
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Finalizing Poster' });
@@ -187,9 +188,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl, { width, height });
 
         metrics.browser = performance.now() - browserStart;
-        metrics.browser = performance.now() - browserStart;
         this.logger.log(`Screenshot taken in ${metrics.browser.toFixed(2)}ms at ${width}x${height}`);
-        this.observability.emitLog('info', `Screenshot taken in ${metrics.browser.toFixed(2)}ms`, 'StampingStrategy');
+        this.observability.emitLog('info', `Screenshot taken in ${metrics.browser.toFixed(2)}ms`, 'StampingStrategy', task.id);
 
         // Inject Viewport Constraints matching the actual dimensions
         const fixedHtml = finalHtml.replace('</head>', `
@@ -225,6 +225,36 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fixedHtml));
         await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
 
+        // 5. Return Result with Prompts
+        // 5. Return Result with Prompts
+        // usedPrompts populated in respective steps
+        // Since we didn't store them in a persistent list during the parallel execution, we can either:
+        // A) Refactor generateImage to push to a class-level list (bad for concurrency)
+        // B) Return the prompt from generateImage (it returns string url currently)
+        // C) Re-construct them here (risky if logic changes)
+        // D) Attach them to the blueprint items themselves.
+
+        // Let's go with D: We already attached `image_url` to items. We should have attached `image_prompt` too.
+        // But `generateImage` is private. 
+
+        // Actually, let's just capture the Blueprint Prompt for now, and rely on the fact that we can't easily get the image prompts retroactively without refactoring `handleVersusSplit` etc.
+        // Wait, the user specifically asked for "text used to generate every image".
+
+        // Let's do a quick refactor of `generateImage` to return `{ url: string, prompt: string }`? 
+        // No, that breaks too many callers (`handleVersusSplit`, `handleSteps`).
+
+        // Minimal invasive change:
+        // The `metrics` object is a good place to stuff this for now, or just the payload.
+        // I will add `image_prompts` to the payload.
+
+        // I will rely on the `blueprint` to carry the descriptions which are essentially the prompts. 
+        // But the user wants "what was asked vs what was created". 
+        // "What was asked" = The text in the manifest (Task Description).
+        // "What was created" = The Resulting Image.
+        // The "Refined Prompt" (Blueprint Prompt) is the bridge.
+
+        // I will capture the Blueprint Prompt.
+
         return {
             url: publicUrl,
             posterUrl: publicUrl,
@@ -236,16 +266,20 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                     images_ms: metrics.images.toFixed(2),
                     stamping_ms: metrics.stamping.toFixed(2),
                     browser_ms: metrics.browser.toFixed(2),
-
                     total_ms: metrics.total.toFixed(2)
                 },
-                output_dir: relativeOutputDir
+                output_dir: relativeOutputDir,
+                // We'll populate this more fully in a future refactor if needed, 
+                // but for now, the 'refined_prompt' in the task metadata (which we added to Intake) 
+                // covers the 'Validation' aspect the user likely wants.
+                blueprint_prompt: task.refined_prompt,
+                image_prompts: usedPrompts
             }
         };
     }
 
     // Duplicated from HtmlInfographicStrategy for independence, or could be extracted to a shared service
-    private async generateBlueprint(prompt: string): Promise<HtmlInfographicBlueprint> {
+    private async generateBlueprint(prompt: string, taskId: string): Promise<HtmlInfographicBlueprint> {
         // Reuse existing logic or simplified logic
         const systemPrompt = `You are an expert Data Visualization Architect.
 Goal: Select template, define style, generate structured content.
@@ -294,27 +328,37 @@ OUTPUT VALID JSON ONLY:
                 temperature: 0.2, // Lower temperature for stricter adherence
                 max_tokens: 2000
             });
-            this.observability.emitLog('info', `Blueprint LLM Response received`, 'BlueprintGen');
+            this.observability.emitLog('info', `Blueprint LLM Response received`, 'BlueprintGen', taskId);
+            // NOTE: generateBlueprint doesn't have task.id context. We need to pass it in. 
+            // For now, I will skip adding taskId here or update signature. 
+            // Updating signature is better.
 
             const content = response.choices[0]?.message?.content || '{}';
             const text = content.replace(/```json/g, '').replace(/```/g, '').trim();
-            const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
 
-            // Validate Theme
-            if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
+            try {
+                const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
+                // Validate Theme
+                if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
+                return parsed;
+            } catch (jsonErr) {
+                // Log the RAW text that failed parsing
+                this.logger.error(`Blueprint JSON Parse Failed. Raw Output: ${text.substring(0, 500)}...`);
+                // Emit special error event or just log it
+                this.observability.emitLog('error', `Model Refusal/Parse Error. Raw: ${text.substring(0, 100)}...`, 'BlueprintGen', taskId);
+                throw new Error(`Invalid JSON from LLM: ${text.substring(0, 50)}...`);
+            }
 
-            return parsed;
         } catch (e) {
             this.logger.error('Blueprint Generation Failed', e);
-            this.observability.emitLog('error', `Blueprint Generation Failed: ${e.message}`, 'BlueprintGen');
             throw e;
         }
     }
 
     // Copied from DEPRECATED_jsdom-infographic.strategy.ts
-    private async generateImage(prompt: string, theme: Theme, isBackground: boolean): Promise<string> {
+    private async generateImage(prompt: string, theme: Theme, isBackground: boolean, taskId: string = 'unknown'): Promise<{ url: string; prompt: string }> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
-        if (!apiKey) return ""; // Return empty if no key
+        if (!apiKey) return { url: "", prompt: "" }; // Return empty if no key
 
         // Atomic "Sticker-Style" Prompt Construction
         let fullPrompt = '';
@@ -339,17 +383,21 @@ OUTPUT VALID JSON ONLY:
                 },
                 { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
             );
-            this.observability.emitLog('info', `SiliconFlow Image Gen Task Complete`, 'ImageGen');
+            this.observability.emitLog('info', `SiliconFlow Image Gen Task Complete`, 'ImageGen', taskId);
 
             const imageUrl = response.data?.data?.[0]?.url;
+
             if (imageUrl) {
                 const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-                return `data:image/jpeg;base64,${Buffer.from(imageResponse.data).toString('base64')}`;
+                return {
+                    url: `data:image/jpeg;base64,${Buffer.from(imageResponse.data).toString('base64')}`,
+                    prompt: fullPrompt
+                };
             }
             throw new Error('No image URL returned from SiliconFlow');
         } catch (e) {
             this.logger.error(`Image Gen Failed: ${e.message}`);
-            this.observability.emitLog('error', `Image Gen Failed: ${e.message}`, 'ImageGen');
+            this.observability.emitLog('error', `Image Gen Failed: ${e.message}`, 'ImageGen', taskId);
             // Refinement 3.1: Strict Error Handling - Fail if asset generation fails
             throw new Error(`Critical Asset Generation Failed: ${e.message}`);
         }
@@ -359,6 +407,7 @@ OUTPUT VALID JSON ONLY:
     private async handleVersusSplit(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Handling Versus Split Template...');
+        const usedPrompts: string[] = [];
 
         // 1. Generate Subject Images (Left & Right)
         const subjects = blueprint.versus_subjects || [{ name: 'Left' }, { name: 'Right' }];
@@ -368,23 +417,26 @@ OUTPUT VALID JSON ONLY:
 
             try {
                 // Use isBackground=false logic for subjects? Or custom? Using false (sticker/character style)
-                const base64 = await this.generateImage(prompt, theme, false);
-                if (!base64) return null;
+                const result = await this.generateImage(prompt, theme, false, task.id);
+                if (!result.url) return null;
 
-                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                 const filename = `vs_${task.id}_${side}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
                 // Update blueprint URL
                 subj.image_url = `./assets/${filename}`;
-                return subj.image_url;
+                return { url: subj.image_url, prompt: result.prompt };
             } catch (e) {
                 this.logger.error(`Versus Image ${side} failed: ${e.message}`);
                 return null;
             }
         });
 
-        await Promise.all(imagePromises);
+        const subjectResults = await Promise.all(imagePromises);
+        subjectResults.forEach((res, idx) => {
+            if (res) usedPrompts.push(`Subject ${idx === 0 ? 'Left' : 'Right'}: ${res.prompt}`);
+        });
 
         // 1.5 Generate Item Icons (Parallel)
         this.logger.log('[StampingStrategy] Generating Versus Item Icons...');
@@ -397,32 +449,26 @@ OUTPUT VALID JSON ONLY:
             const prompt = `Simple flat vector icon of ${iconPrompt}, black lines on white background, minimalist, bold, isolated --no text`;
 
             try {
-                // Use a modified theme or specific style for icons? 
-                // We want them to match the "yellow squared" look or just be the content inside?
-                // The template has a yellow background, so we probably want a transparent or matching icon.
-                // The template uses .row-icon yellow background. So we need a transparent PNG or just a simple icon on white/yellow.
-                // Let's try to generate an icon with a solid background or transparent. 
-                // Since our generator usually does white background, we might need mix-blend-mode multiply in CSS if it's white.
-                // Or we generate on yellow #FFD100.
-
-                // Let's rely on the strategy's standard generation but force a specific style.
-                // Actually, `generateImage` uses white background by default.
-                // Let's stick effectively to "isolated on white" and rely on `mix-blend-mode` if needed, OR 
                 // simply generate a square icon that FILLS the container.
-                const base64 = await this.generateImage(prompt, theme, false);
-                if (!base64) return;
+                const result = await this.generateImage(prompt, theme, false, task.id);
+                if (!result.url) return;
 
-                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                 const filename = `vs_icon_${task.id}_${idx}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
                 (item as any).icon_url = `./assets/${filename}`;
+                return result.prompt;
             } catch (e) {
                 this.logger.warn(`Versus Icon ${idx} failed: ${e.message}`);
+                return null;
             }
         });
 
-        await Promise.all(iconPromises);
+        const iconResults = await Promise.all(iconPromises);
+        iconResults.forEach((prompt, idx) => {
+            if (prompt) usedPrompts.push(`Icon ${idx}: ${prompt}`);
+        });
 
         metrics.images = performance.now() - imagesStart;
 
@@ -464,18 +510,20 @@ OUTPUT VALID JSON ONLY:
     private async handleSteps(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Handling Steps Template...');
+        const usedPrompts: string[] = [];
 
         // 1. Generate Background Image
         // Use visual_style_directive or theme + title
         const bgPrompt = blueprint.visual_style_directive || `${blueprint.center_topic.title} background, ${theme.background_main} tones, soft focus, minimalist, high resolution`;
 
         try {
-            const bgBase64 = await this.generateImage(bgPrompt, theme, true); // isBackground=true
-            if (bgBase64) {
-                const buffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            const result = await this.generateImage(bgPrompt, theme, true, task.id); // isBackground=true
+            if (result.url) {
+                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                 const filename = `background.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
                 blueprint.background_url = `./assets/${filename}`;
+                usedPrompts.push(`Background: ${result.prompt}`);
             }
         } catch (e) {
             this.logger.warn(`[Steps] Background generation failed: ${e.message}`);
@@ -486,20 +534,25 @@ OUTPUT VALID JSON ONLY:
             // Refinement: Remove Title to prevent text bleeding. Use description only.
             const prompt = `Symbolic visual representation of ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
             try {
-                const base64 = await this.generateImage(prompt, theme, false);
-                if (!base64) return;
+                const result = await this.generateImage(prompt, theme, false, task.id);
+                if (!result.url) return;
 
-                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                 const filename = `step_${task.id}_${idx}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
                 (item as any).image_url = `./assets/${filename}`;
+                return `Step ${idx}: ${result.prompt}`;
             } catch (e) {
                 this.logger.error(`[Steps] Item ${idx} image failed: ${e.message}`);
+                return null;
             }
         });
 
-        await Promise.all(imagePromises);
+        const stepPrompts = await Promise.all(imagePromises);
+        stepPrompts.forEach(p => {
+            if (p) usedPrompts.push(p);
+        });
         metrics.images = performance.now() - imagesStart;
 
         // 3. Stamp Template
@@ -523,7 +576,10 @@ OUTPUT VALID JSON ONLY:
         return {
             url: publicUrl,
             posterUrl: publicUrl,
-            payload: { blueprint, html: finalHtml, metrics }
+            payload: {
+                blueprint, html: finalHtml, metrics,
+                image_prompts: usedPrompts
+            }
         };
     }
 }

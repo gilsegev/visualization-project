@@ -46,18 +46,39 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
         };
     }) {
         this.server.emit('task_progress', data);
+
+        if (data.status === 'failed') {
+            const fs = require('fs');
+            const path = require('path');
+            const logFile = path.join(process.cwd(), 'debug_errors.log');
+            const entry = `[${new Date().toISOString()}] [FAILED] [Task: ${data.taskId}] ${JSON.stringify(data.details || {})}\n`;
+            fs.appendFile(logFile, entry, (err) => {
+                if (err) console.error('Failed to write to debug log:', err);
+            });
+        }
     }
 
     /**
      * Emit a generic log message to the dashboard
      */
-    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string) {
+    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string) {
         this.server.emit('system_log', {
             level,
             message,
             context,
+            taskId,
             timestamp: new Date().toISOString()
         });
+
+        if (level === 'error') {
+            const fs = require('fs');
+            const path = require('path');
+            const logFile = path.join(process.cwd(), 'debug_errors.log');
+            const entry = `[${new Date().toISOString()}] [${level.toUpperCase()}] [${context || 'SYSTEM'}] ${taskId ? `[${taskId}] ` : ''}${message}\n`;
+            fs.appendFile(logFile, entry, (err) => {
+                if (err) console.error('Failed to write to debug log:', err);
+            });
+        }
     }
 
     /**
@@ -65,6 +86,14 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      */
     emitBatchProgress(data: { total: number; completed: number; current: string }) {
         this.server.emit('batch_progress', data);
+    }
+
+    /**
+     * Emit the initial list of tasks when a batch starts
+     * This allows the frontend to populate the UI immediately
+     */
+    emitBatchInitialized(tasks: Record<string, any>) {
+        this.server.emit('batch_initialized', tasks);
     }
 
     @SubscribeMessage('open_folder')
