@@ -1,98 +1,372 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VersusMate Template</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <title>Premium Versus Split</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,1,0" />
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; padding: 40px; }
-        
-        /* The grid background pattern */
-        .grid-bg {
-            background-image: 
-                linear-gradient(#e5e7eb 1px, transparent 1px),
-                linear-gradient(90deg, #e5e7eb 1px, transparent 1px);
-            background-size: 20px 20px;
+        :root {
+            --yellow: #FFD100;
+            --black: #1A1A1A;
+            --white: #FFFFFF;
+            --blue: #0055A4;
+            --red: #E11B22;
+            --gray-bg: #F8F9FA;
         }
 
-        /* Ribbon Clip Paths */
-        .clip-ribbon-left { clip-path: polygon(0% 0%, 100% 0%, 90% 100%, 0% 100%); }
-        .clip-ribbon-right { clip-path: polygon(10% 0%, 100% 0%, 100% 100%, 0% 100%); }
+        body {
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            background: var(--white);
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            border: 8px solid var(--black);
+            box-sizing: border-box;
+        }
+
+        #canvas {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* HEADER SECTION */
+        header {
+            background: var(--yellow);
+            border-bottom: 6px solid var(--black);
+            padding: 40px;
+            text-align: center;
+            position: relative;
+        }
+
+        .prefix {
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: rgba(0, 0, 0, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .main-title {
+            font-size: 48px;
+            font-weight: 900;
+            color: var(--black);
+            margin-bottom: 30px;
+            text-transform: uppercase;
+        }
+
+        .subjects-row {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 60px;
+        }
+
+        .subject {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 350px;
+        }
+
+        .subject-img {
+            width: 140px;
+            height: 140px;
+            border-radius: 20px;
+            border: 4px solid var(--black);
+            background: white;
+            box-shadow: 10px 10px 0 var(--black);
+            overflow: hidden;
+        }
+
+        .subject-img img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .subject-label {
+            font-size: 28px;
+            font-weight: 900;
+            color: var(--black);
+            text-transform: uppercase;
+        }
+
+        .vs-badge {
+            width: 80px;
+            height: 80px;
+            background: var(--black);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 36px;
+            font-weight: 900;
+            border: 4px solid var(--white);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        /* BODY / ROWS SECTION */
+        main {
+            flex: 1;
+            position: relative;
+            background: var(--white);
+        }
+
+        main::before {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            background: var(--black);
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        #rows-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .compare-row {
+            display: grid;
+            grid-template-columns: 1fr 120px 1fr;
+            border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+            flex: 1;
+        }
+
+        .side-cell {
+            padding: 25px 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .left-side {
+            text-align: right;
+            align-items: flex-end;
+            background: #F9FBFF;
+        }
+
+        .right-side {
+            text-align: left;
+            align-items: flex-start;
+            background: #FFF9F9;
+        }
+
+        .col-title {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--blue);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .right-side .col-title {
+            color: var(--red);
+        }
+
+        .col-desc {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #444;
+            max-width: 400px;
+        }
+
+        .center-cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 2;
+        }
+
+        .row-icon {
+            width: 56px;
+            height: 56px;
+            background: var(--yellow);
+            border: 4px solid var(--black);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transform: rotate(3deg);
+        }
+
+        .row-icon .material-symbols-outlined {
+            font-size: 32px;
+            color: var(--black);
+            font-variation-settings: 'FILL' 1;
+        }
+
+        /* FOOTER */
+        footer {
+            background: var(--black);
+            color: var(--yellow);
+            padding: 30px 50px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .verdict-title {
+            font-size: 32px;
+            font-weight: 900;
+            margin-bottom: 5px;
+        }
+
+        .verdict-text {
+            font-size: 14px;
+            opacity: 0.8;
+            max-width: 600px;
+        }
+
+        .cta {
+            background: var(--yellow);
+            color: var(--black);
+            padding: 12px 24px;
+            font-weight: 900;
+            transform: rotate(-2deg);
+        }
     </style>
 </head>
-<body class="flex justify-center items-center min-h-screen">
 
-    <!-- Infographic Container -->
-    <div class="relative w-full max-w-4xl bg-white p-12 shadow-2xl rounded-sm overflow-hidden grid-bg min-h-[900px] border border-gray-100">
-        
-        <!-- Header Section -->
-        <div class="relative flex justify-center items-center mb-24">
-            <!-- Left Side Ribbon (Topic A) -->
-            <div class="absolute left-[10%] w-[40%] h-16 bg-[#1e295b] text-white flex items-center justify-center font-extrabold text-2xl tracking-widest z-10 clip-ribbon-left">
-                <span class="mr-8">PROJECT 1</span>
-            </div>
+<body>
 
-            <!-- Central VS Circle -->
-            <div class="relative z-30 w-24 h-24 bg-white rounded-full flex items-center justify-center border-4 border-[#3b49df] shadow-lg">
-                <span class="text-[#1e295b] font-black text-4xl italic">VS</span>
-            </div>
-
-            <!-- Right Side Ribbon (Topic B) -->
-            <div class="absolute right-[10%] w-[40%] h-16 bg-[#4e5cf3] text-white flex items-center justify-center font-extrabold text-2xl tracking-widest z-10 clip-ribbon-right">
-                <span class="ml-8">PROJECT 2</span>
-            </div>
-        </div>
-
-        <!-- Comparison List Section -->
-        <div class="relative flex flex-col items-center gap-6">
-            <!-- Central Vertical Dashed Line -->
-            <div class="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 border-l-2 border-dashed border-gray-300 z-0"></div>
-
-            <!-- Comparison Row 1 -->
-            <div class="relative flex items-center w-full">
-                <div class="flex-1 flex justify-end">
-                    <div class="w-[340px] h-16 bg-[#1e295b] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
-                        LOREM IPSUM DOLOR
-                    </div>
+    <div id="canvas">
+        <header>
+            <div class="prefix" id="prefix-text">THE MODERN DEBATE</div>
+            <div class="main-title" id="main-title">TITLE</div>
+            <div class="subjects-row">
+                <div class="subject">
+                    <div class="subject-img"><img id="left-img" src=""></div>
+                    <div class="subject-label" id="left-name">SUBJECT A</div>
                 </div>
-                <div class="relative z-20 mx-8 w-16 h-16 bg-white rounded-full border-2 border-gray-200 flex items-center justify-center shadow-sm">
-                    <!-- Icon Placeholder (e.g., Dollar Sign) -->
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 w-8 h-8"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
-                </div>
-                <div class="flex-1 flex justify-start">
-                    <div class="w-[340px] h-16 bg-[#4e5cf3] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
-                        SIT AMET CONSECT
-                    </div>
+                <div class="vs-badge">VS</div>
+                <div class="subject">
+                    <div class="subject-img"><img id="right-img" src=""></div>
+                    <div class="subject-label" id="right-name">SUBJECT B</div>
                 </div>
             </div>
+        </header>
 
-            <!-- Comparison Row 2 -->
-            <div class="relative flex items-center w-full">
-                <div class="flex-1 flex justify-end">
-                    <div class="w-[340px] h-16 bg-[#1e295b] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
-                        ADIPISCING ELITSED
-                    </div>
-                </div>
-                <div class="relative z-20 mx-8 w-16 h-16 bg-white rounded-full border-2 border-gray-200 flex items-center justify-center shadow-sm">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 w-8 h-8"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path></svg>
-                </div>
-                <div class="flex-1 flex justify-start">
-                    <div class="w-[340px] h-16 bg-[#4e5cf3] text-white rounded-2xl flex items-center justify-center px-4 font-bold text-lg text-center shadow-md z-10">
-                        DIAM ALIA NONUM
-                    </div>
-                </div>
+        <main id="rows-container"></main>
+
+        <footer>
+            <div>
+                <div class="verdict-title" id="verdict-title">THE VERDICT</div>
+                <div class="verdict-text" id="verdict-text">Conclusion text goes here.</div>
             </div>
-
-            <!-- Additional rows follow the same structure... -->
-        </div>
-
-        <!-- Footer -->
-        <div class="absolute bottom-6 right-6 opacity-20 text-[#1e295b] font-bold text-sm">
-            VERSUSMATE TEMPLATE v1.0
-        </div>
+            <div class="cta">CHOOSE WISELY</div>
+        </footer>
     </div>
 
+    <script>
+        const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
+        function render(data) {
+            if (!data) return;
+
+            // 1. Render Header
+            document.getElementById('main-title').innerText = data.center.title;
+            document.getElementById('prefix-text').innerText = data.center.subtitle || "THE MODERN DEBATE";
+
+            document.getElementById('left-name').innerText = data.subjects[0].name;
+            document.getElementById('left-img').src = data.subjects[0].image_url;
+
+            document.getElementById('right-name').innerText = data.subjects[1].name;
+            document.getElementById('right-img').src = data.subjects[1].image_url;
+
+            // 2. Render Rows
+            const container = document.getElementById('rows-container');
+            container.innerHTML = '';
+
+            data.items.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'compare-row';
+                row.innerHTML = `
+                    <div class="side-cell left-side">
+                        <div class="col-title">${item.left.value}</div>
+                        <div class="col-desc">${item.left.description}</div>
+                    </div>
+                    <div class="center-cell">
+                        <div class="row-icon">
+                            <span class="material-symbols-outlined">${item.icon || 'star'}</span>
+                        </div>
+                    </div>
+                    <div class="side-cell right-side">
+                        <div class="col-title">${item.right.value}</div>
+                        <div class="col-desc">${item.right.description}</div>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+
+            // 3. Render Footer
+            if (data.verdict) {
+                document.getElementById('verdict-title').innerText = data.verdict.title;
+                document.getElementById('verdict-text').innerText = data.verdict.text;
+            }
+        }
+
+        if (DATA_PAYLOAD) {
+            try {
+                render(DATA_PAYLOAD);
+                // Dynamic Scaling to Fit
+                setTimeout(scaleToFit, 50);
+                window.addEventListener('resize', scaleToFit);
+            } catch (e) {
+                console.error("Versus Render Failed:", e);
+            }
+        }
+
+        function scaleToFit() {
+            const canvas = document.getElementById('canvas');
+            if (!canvas) return;
+
+            // Reset to measure
+            canvas.style.transform = 'none';
+            canvas.style.height = 'auto'; // Allow it to grow to measure
+
+            const actualHeight = canvas.scrollHeight;
+            const availableHeight = 1180; // 1200 - borders/padding safety
+
+            if (actualHeight > availableHeight) {
+                const scale = availableHeight / actualHeight;
+                // Apply scale to a wrapper or the body? 
+                // Transforming the flex container might effectively shrink it.
+                // We need to set transform origin top center
+                canvas.style.transformOrigin = 'top center';
+                canvas.style.transform = `scale(${scale})`;
+
+                // Centering vertically if we scaled down? No, usually it's just to fit.
+                // But wait, if we scale down, we leave empty space at bottom? No, we are fitting TO the container.
+                // If we set height: 100% again it might clip.
+            }
+
+            // Restore 100% height constraint for layout
+            canvas.style.height = '100%';
+
+            // Actually, a better approach for flex scaling:
+            // If we simply zoom the body?
+            // Let's rely on standard "Fit to container":
+            // If Height > 1200, scale = 1200 / Height.
+            // We apply this scale to #canvas. 
+            // And we must ensure #canvas width is also managed.
+        }
+    </script>
 </body>
+
 </html>

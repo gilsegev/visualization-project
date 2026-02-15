@@ -14,11 +14,18 @@ export class TemplateStampingService {
      * @returns The stamped HTML string
      */
     public stamp(templateId: string, data: any): string {
-        const templatesDir = path.join(process.cwd(), 'public', 'assets', 'infographics', 'templates');
+        // Updated directory to point to "html templates"
+        const templatesDir = path.join(process.cwd(), 'public', 'assets', 'infographics', 'templates', 'html templates');
 
         let fileName = `${templateId}.html`;
+
+        // Mappings for specific IDs to filenames if they differ
         if (templateId === 'hub_radial' || templateId === 'hub') {
-            fileName = path.join('html templates', 'Hub.html');
+            fileName = 'Hub.html';
+        } else if (templateId === 'versus_split' || templateId === 'versus') {
+            fileName = 'versus.html';
+        } else if (templateId === 'steps' || templateId === 'step_list') {
+            fileName = 'steps.html';
         }
 
         const filePath = path.join(templatesDir, fileName);

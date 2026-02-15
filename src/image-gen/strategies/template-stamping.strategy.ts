@@ -86,6 +86,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         if (blueprint.template_id === 'versus_split') {
             return this.handleVersusSplit(task, blueprint, relativeOutputDir, theme, metrics);
         }
+        if (blueprint.template_id === 'steps' || blueprint.template_id === 'step_list') {
+            return this.handleSteps(task, blueprint, relativeOutputDir, theme, metrics);
+        }
 
         // Default: Hub/Radial Logic
 
@@ -217,6 +220,10 @@ Task:
     - "items": [ { "icon": "sword", "left": { "value": "100", "description": "High" }, "right": { "value": "50", "description": "Low" } } ]
     - "verdict": { "title": "Winner", "text": "Conclusion..." }
     - "center_topic": { "title": "Main Comparison Title", "description": "Subtitle" }
+6. FOR STEPS (or step_list): Progressive list/journey.
+    - "items": [ { "title": "Step 01", "description": "..." }, ... ] (3-5 items)
+    - "center_topic": { "title": "Journey Title", "description": "Subtitle" }
+    - "visual_style_directive": "Description for background image (e.g. minimalist nature landscape)"
 
 OUTPUT VALID JSON ONLY:
 {
@@ -389,6 +396,71 @@ OUTPUT VALID JSON ONLY:
         metrics.browser = performance.now() - browserStart;
 
         // 4. Save
+        const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
+        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(finalHtml));
+        await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
+
+        metrics.total = performance.now() - metrics.start;
+
+        return {
+            url: publicUrl,
+            posterUrl: publicUrl,
+            payload: { blueprint, html: finalHtml, metrics }
+        };
+    }
+
+    private async handleSteps(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
+        const imagesStart = performance.now();
+        this.logger.log('[StampingStrategy] Handling Steps Template...');
+
+        // 1. Generate Background Image
+        // Use visual_style_directive or theme + title
+        const bgPrompt = blueprint.visual_style_directive || `${blueprint.center_topic.title} background, ${theme.background_main} tones, soft focus, minimalist, high resolution`;
+
+        try {
+            const bgBase64 = await this.generateImage(bgPrompt, theme, true); // isBackground=true
+            if (bgBase64) {
+                const buffer = Buffer.from(bgBase64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const filename = `background.png`;
+                await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
+                blueprint.background_url = `./assets/${filename}`;
+            }
+        } catch (e) {
+            this.logger.warn(`[Steps] Background generation failed: ${e.message}`);
+        }
+
+        // 2. Generate Step Images
+        const imagePromises = blueprint.items.map(async (item, idx) => {
+            const prompt = `Symbolic visual representation of ${item.title}: ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
+            try {
+                const base64 = await this.generateImage(prompt, theme, false);
+                if (!base64) return;
+
+                const buffer = Buffer.from(base64.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const filename = `step_${task.id}_${idx}.png`;
+                await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
+
+                (item as any).image_url = `./assets/${filename}`;
+            } catch (e) {
+                this.logger.error(`[Steps] Item ${idx} image failed: ${e.message}`);
+            }
+        });
+
+        await Promise.all(imagePromises);
+        metrics.images = performance.now() - imagesStart;
+
+        // 3. Stamp Template
+        const stampingStart = performance.now();
+        // Steps template expects: { background_url, center: { title, subtitle }, items: [...] }
+        const finalHtml = this.stampingService.stamp('steps', blueprint);
+        metrics.stamping = performance.now() - stampingStart;
+
+        // 4. Screenshot & Save
+        const browserStart = performance.now();
+        const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
+        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl);
+        metrics.browser = performance.now() - browserStart;
+
         const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
         await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(finalHtml));
         await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
