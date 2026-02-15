@@ -10,12 +10,6 @@ import * as path from 'path';
 
 dotenv.config();
 
-// Mock Services
-const mockBrowserService = {
-    screenshotHtml: async () => Buffer.from('mock-screenshot'),
-    close: async () => { },
-};
-
 // Mock LocalStorage to just write files
 const mockLocalStorage = {
     save: async (filepath: string, buffer: Buffer) => {
@@ -28,17 +22,21 @@ const mockLocalStorage = {
     },
 };
 
-// Real Template Service to test actual HTML injection
+// Real Services
 const realTemplateService = new TemplateStampingService();
+const realBrowserService = new BrowserService();
 
 async function runTest() {
     console.log('\n🧪 Starting Steps Template Test Case...');
+
+    // Initialize Real Browser
+    await realBrowserService.onModuleInit();
 
     const configService = new ConfigService();
     // Manually inject env vars if ConfigService relies on them
     const strategy = new TemplateStampingStrategy(
         realTemplateService,
-        mockBrowserService as any,
+        realBrowserService, // Use Real Browser
         mockLocalStorage as any,
         { get: (key: string) => process.env[key] } as any
     );
@@ -46,7 +44,7 @@ async function runTest() {
     const task: ImageTask = {
         id: `steps-test-${Date.now()}`,
         type: 'infographic',
-        refined_prompt: 'Create a 4-Step Morning Routine: Hydrate, Meditate, Exercise, Planner. Use the steps template.',
+        refined_prompt: 'Create a 5-Step Project Plan: Research, Design, Develop, Test, Deploy. Use the steps template.',
         payload: {},
         metadata: {
             template_id: 'steps',
@@ -95,6 +93,8 @@ async function runTest() {
         console.log(`\nCheck the output in public/generated-images/.../${task.id}/`);
     } catch (e) {
         console.error('❌ Test Failed:', e);
+    } finally {
+        await realBrowserService.onModuleDestroy();
     }
 }
 

@@ -431,7 +431,8 @@ OUTPUT VALID JSON ONLY:
 
         // 2. Generate Step Images
         const imagePromises = blueprint.items.map(async (item, idx) => {
-            const prompt = `Symbolic visual representation of ${item.title}: ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
+            // Refinement: Remove Title to prevent text bleeding. Use description only.
+            const prompt = `Symbolic visual representation of ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
             try {
                 const base64 = await this.generateImage(prompt, theme, false);
                 if (!base64) return;
