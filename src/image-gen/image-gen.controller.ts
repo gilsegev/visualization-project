@@ -21,7 +21,11 @@ export class ImageGenController {
         if (!manifest || (!manifest.visualizations && !manifest.lessons)) {
             return { error: 'Valid manifest with visualizations or lessons is required' };
         }
-        return this.orchestrator.generateFromManifest(manifest);
+        // Fire and forget for the API response, but the service now does the work
+        this.orchestrator.generateFromManifest(manifest).catch(err => {
+            console.error('Batch error:', err);
+        });
+        return { message: 'Batch started', taskCount: (manifest.lessons || manifest.course?.lessons || []).length };
     }
 
     @Post('stop')

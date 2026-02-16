@@ -125,11 +125,15 @@ export class ImageOrchestratorService {
                             id: 'manifest_theme',
                             name: 'Manifest Theme',
                             primary_accent: globalStyle.colorPalette?.mutedTeal || '#5B9A8B',
-                            secondary_accent: globalStyle.colorPalette?.softCoral || '#E8A598',
-                            background_main: globalStyle.colorPalette?.creamWhite || '#FAF9F6',
-                            text_main: globalStyle.colorPalette?.deepNavy || '#1A365D',
-                            font_family: globalStyle.typography?.fontFamily?.[0] || 'Inter',
-                            image_style_suffix: `${designPhilosophy}, flat vector style`
+                            secondary_accent: globalStyle.colorPalette?.softCoral || globalStyle.colorPalette?.deepNavy || '#E8A598',
+                            background_main: globalStyle.colorPalette?.creamWhite || globalStyle.colorPalette?.warmSand || '#FAF9F6',
+                            text_main: globalStyle.colorPalette?.slateGrey || '#1A365D',
+                            text_secondary: globalStyle.colorPalette?.slateGrey || '#4A5568',
+                            font_family: globalStyle.typography?.fontFamily?.[0] || 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap',
+                            font_name: globalStyle.typography?.fontFamily?.[0] || 'Inter',
+                            font_size_heading: globalStyle.typography?.headingSize || '1.8rem',
+                            font_size_body: globalStyle.typography?.bodySize || '1rem',
+                            image_style_suffix: `${designPhilosophy}, flat vector style, geometric organic shapes, simplified silhouettes`
                         } : undefined
                     }
                 });
@@ -138,13 +142,6 @@ export class ImageOrchestratorService {
 
         this.logger.log(`Parsed ${tasks.length} tasks from manifest.`);
         this.observability.emitLog('info', `Parsed ${tasks.length} tasks from manifest`, 'Orchestrator');
-
-        // Return immediately to the controller
-        const responseMetadata = {
-            message: 'Batch started',
-            taskCount: tasks.length,
-            course: courseTitle
-        };
 
         // Emit Initial Batch State
         const initialTasksMap = {};
@@ -163,89 +160,93 @@ export class ImageOrchestratorService {
         });
         this.observability.emitBatchInitialized(initialTasksMap);
 
-
-        // 2. Async Execution (Fire and Forget)
-        (async () => {
-            // Emit INTAKE status
-            tasks.forEach(task => {
-                this.observability.emitProgress({
-                    taskId: task.id,
-                    status: 'pending',
-                    stage: 'Intake',
-                    details: {
-                        title: task.metadata.title || task.metadata.lesson_title,
-                        refined_prompt: task.refined_prompt,
-                        original_instruction: task.metadata.original_instruction
-                    },
-                    metadata: {
-                        course_id: task.metadata.course_id,
-                        lesson_id: task.metadata.lesson_id,
-                        lesson_title: task.metadata.lesson_title,
-                        lesson_index: task.metadata.lesson_index
-                    }
-                });
-                // Log for "By Asset" view
-                this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id);
+        // Emit INTAKE status
+        tasks.forEach(task => {
+            this.observability.emitProgress({
+                taskId: task.id,
+                status: 'pending',
+                stage: 'Intake',
+                details: {
+                    title: task.metadata.title || task.metadata.lesson_title,
+                    refined_prompt: task.refined_prompt,
+                    original_instruction: task.metadata.original_instruction
+                },
+                metadata: {
+                    course_id: task.metadata.course_id,
+                    lesson_id: task.metadata.lesson_id,
+                    lesson_title: task.metadata.lesson_title,
+                    lesson_index: task.metadata.lesson_index
+                }
             });
-
-            // Execution Loop
-            const limit = pLimit(3);
-            let completedCount = 0;
-
-            const promises = tasks.map((task: any, index: number) => {
-                return limit(async () => {
-                    if (this.stopSignal) {
-                        this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id);
-                        this.observability.emitProgress({ taskId: task.id, status: 'failed', stage: 'Cancelled' });
-                        return;
-                    }
-
-                    try {
-                        // Triage Phase
-                        this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
-                        this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id);
-                        await new Promise(r => setTimeout(r, 500));
-
-                        // Processing Phase
-                        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });
-                        this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id);
-
-                        const strategy = this.strategyFactory.getStrategy(task);
-                        // Cast to any because the interface might not have performGeneration typed yet (it's specific to template strategy)
-                        const result = await (strategy as any).performGeneration(task, index + 1);
-
-                        completedCount++;
-                        this.observability.emitBatchProgress({ total: tasks.length, completed: completedCount, current: task.id });
-
-                        this.observability.emitProgress({
-                            taskId: task.id,
-                            status: 'completed',
-                            url: result.url,
-                            metrics: result.payload.metrics,
-                            details: {
-                                output_dir: result.payload.output_dir,
-                                image_prompts: result.payload.image_prompts, // Pass through image prompts
-                                bluebrint_prompt: result.payload.blueprint_prompt // Pass through blueprint prompt if available
-                            }
-                        });
-
-                    } catch (error) {
-                        this.logger.error(`Manifest Task ${task.id} failed: ${error.message}`);
-                        this.observability.emitProgress({ taskId: task.id, status: 'failed', details: { error: error.message } });
-                    }
-                });
-            });
-
-            await Promise.all(promises);
-            const end = performance.now();
-            const duration = ((end - start) / 1000).toFixed(2);
-            this.logger.log(`Batch Complete. Total Duration: ${duration}s`);
-            this.observability.emitLog('success', `Batch Complete in ${duration}s`, 'Orchestrator');
-
-        })().catch(err => {
-            this.logger.error(`Critical Batch Error: ${err.message}`);
+            // Log for "By Asset" view
+            this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id);
         });
 
-        return responseMetadata;
+        // Execution Loop
+        const limit = pLimit(3);
+        let completedCount = 0;
+        const taskResults = [];
+
+        const promises = tasks.map((task: any, index: number) => {
+            return limit(async () => {
+                if (this.stopSignal) {
+                    this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id);
+                    this.observability.emitProgress({ taskId: task.id, status: 'failed', stage: 'Cancelled' });
+                    return { taskId: task.id, status: 'cancelled' };
+                }
+
+                try {
+                    // Triage Phase
+                    this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
+                    this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id);
+                    await new Promise(r => setTimeout(r, 500));
+
+                    // Processing Phase
+                    this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });
+                    this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id);
+
+                    const strategy = this.strategyFactory.getStrategy(task);
+                    const result = await (strategy as any).performGeneration(task, index + 1);
+
+                    completedCount++;
+                    this.observability.emitBatchProgress({ total: tasks.length, completed: completedCount, current: task.id });
+
+                    const finalResult = {
+                        taskId: task.id,
+                        status: 'completed',
+                        url: result.url,
+                        metrics: result.payload.metrics,
+                        details: {
+                            output_dir: result.payload.output_dir,
+                            image_prompts: result.payload.image_prompts,
+                            blueprint_prompt: result.payload.blueprint_prompt
+                        }
+                    };
+
+                    this.observability.emitProgress(finalResult as any);
+                    return finalResult;
+
+                } catch (error) {
+                    this.logger.error(`Manifest Task ${task.id} failed: ${error.message}`);
+                    const errorResult = { taskId: task.id, status: 'failed', error: error.message };
+                    this.observability.emitProgress({ taskId: task.id, status: 'failed', details: { error: error.message } });
+                    return errorResult;
+                }
+            });
+        });
+
+        const results = await Promise.all(promises);
+        const end = performance.now();
+        const duration = ((end - start) / 1000).toFixed(2);
+        this.logger.log(`Batch Complete. Total Duration: ${duration}s`);
+        this.observability.emitLog('success', `Batch Complete in ${duration}s`, 'Orchestrator');
+
+        return {
+            message: 'Batch completed',
+            taskCount: tasks.length,
+            course: courseTitle,
+            durationSeconds: parseFloat(duration),
+            results: results
+        };
     }
 }

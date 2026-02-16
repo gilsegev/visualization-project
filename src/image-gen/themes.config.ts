@@ -1,9 +1,13 @@
 export interface Theme {
     primary_accent: string;
+    secondary_accent?: string;
     background_main: string;
     text_main: string;
+    text_secondary?: string;
     font_family: string;
     font_name: string;
+    font_size_heading?: string;
+    font_size_body?: string;
     image_style_suffix: string;
     glass_color: string;
 }

@@ -59,16 +59,20 @@ export class TemplateStampingService {
         if (theme) {
             this.logger.log(`Injecting theme: ${theme.font_name}`);
             const themeCss = `
-    <style id="injected-theme">
-        @import url('${theme.font_family}');
-        :root {
-            --bg-primary: ${theme.background_main.startsWith('#') ? `radial-gradient(circle at center, ${theme.background_main} 0%, ${theme.background_main} 100%)` : theme.background_main};
-            --accent-primary: ${theme.primary_accent};
-            --text-primary: ${theme.text_main};
-            --glass-bg: ${theme.glass_color};
-            --font-main: '${theme.font_name}', sans-serif;
-        }
-    </style>
+	<style id="injected-theme">
+		@import url('${theme.font_family}');
+		:root {
+			--bg-primary: ${theme.background_main.startsWith('#') ? `radial-gradient(circle at center, ${theme.background_main} 0%, ${theme.background_main} 100%)` : theme.background_main};
+			--accent-primary: ${theme.primary_accent};
+			--accent-secondary: ${theme.secondary_accent || theme.primary_accent};
+			--text-primary: ${theme.text_main};
+			--text-secondary: ${theme.text_secondary || theme.text_main};
+			--font-main: '${theme.font_name}', sans-serif;
+			--font-size-heading: ${theme.font_size_heading || '2rem'};
+			--font-size-body: ${theme.font_size_body || '1rem'};
+			--glass-bg: ${theme.glass_color};
+		}
+	</style>
 `;
             stampedHtml = stampedHtml.replace('</head>', `${themeCss}</head>`);
         }

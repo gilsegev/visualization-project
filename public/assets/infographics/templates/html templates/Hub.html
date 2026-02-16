@@ -9,9 +9,13 @@
             /* Theme Variables - Overridden by backend injection */
             --bg-primary: radial-gradient(circle at center, #FAF9F6 0%, #F2F0E9 100%);
             --accent-primary: #5B9A8B;
+            --accent-secondary: #E8A598;
             --text-primary: #1A365D;
-            --glass-bg: rgba(255, 255, 255, 0.85);
+            --text-secondary: #4A5568;
             --font-main: 'Inter', system-ui, sans-serif;
+            --font-size-heading: 2.2rem;
+            --font-size-body: 1.1rem;
+            --glass-bg: rgba(255, 255, 255, 0.85);
         }
 
         body {
@@ -21,6 +25,7 @@
             height: 1200px;
             background: var(--bg-primary);
             font-family: var(--font-main);
+            color: var(--text-primary);
             overflow: hidden;
         }
 
@@ -38,7 +43,7 @@
             transform: translate(-50%, -50%);
             width: 800px;
             height: 800px;
-            border: 2px dashed var(--accent-primary);
+            border: 2px dashed var(--accent-secondary);
             opacity: 0.15;
             border-radius: 50%;
             z-index: 5;
@@ -125,15 +130,15 @@
         h2 {
             color: var(--text-primary);
             margin: 0 0 8px 0;
-            font-size: 1.3rem;
+            font-size: var(--font-size-heading);
             font-weight: 700;
         }
 
         p {
-            color: var(--text-primary);
-            opacity: 0.8;
+            color: var(--text-secondary);
+            opacity: 0.9;
             margin: 0;
-            font-size: 1rem;
+            font-size: var(--font-size-body);
             line-height: 1.5;
         }
     </style>
