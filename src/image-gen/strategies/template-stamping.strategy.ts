@@ -55,6 +55,28 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Blueprinting' });
         const blueprintStart = performance.now();
         const blueprint = await this.generateBlueprint(task.refined_prompt, task.id);
+
+        // Fail-Fast: Prompt 10 logic
+        if (blueprint.quality_score && blueprint.quality_score < 75) {
+            this.logger.error(`[VisualArchitect] Quality Score too low: ${blueprint.quality_score}. Halting.`);
+            this.observability.emitLog('error', `Quality Rubric Failed (${blueprint.quality_score}/100). Log: ${blueprint.correction_log?.join(', ') || 'N/A'}`, 'VisualArchitect', task.id);
+            throw new Error(`Generation halted: Quality Score ${blueprint.quality_score} < 75. Refusal: ${blueprint.correction_log?.join('; ')}`);
+        }
+
+        // Text Integrity Check (Prompt 10)
+        const rawContent = task.refined_prompt.toLowerCase();
+        const blueprintText = JSON.stringify(blueprint).toLowerCase();
+        const criticalTerms = (task as any).metadata?.critical_terms || []; // Optional manual list
+
+        // Simple heuristic: if the refined prompt has specific terms like "Hypothalamus", check if they moved over
+        const suspectedNames = (task.refined_prompt.match(/[A-Z][a-z]+/g) || []).filter(n => n.length > 3);
+        const missingTerms = [...criticalTerms, ...suspectedNames].filter(term => !blueprintText.includes(term.toLowerCase()));
+
+        if (missingTerms.length > 0 && blueprint.template_id !== 'bento_grid') { // Bento grid might split text differently
+            this.logger.warn(`[VisualArchitect] Possible low fidelity. Missing terms: ${missingTerms.join(', ')}`);
+            this.observability.emitLog('warn', `Text Integrity Warning: Missing terms [${missingTerms.join(', ')}]`, 'VisualArchitect', task.id);
+        }
+
         // Inject Radius Override if present in Task Metadata (Phase 3)
         if ((task as any).metadata?.radius) {
             (blueprint as any).radius = (task as any).metadata.radius;
@@ -100,14 +122,25 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         if (blueprint.template_id === 'bento_grid') {
             return this.handleBento(task, blueprint, relativeOutputDir, theme, metrics);
         }
-        if (blueprint.template_id === 'steps' || blueprint.template_id === 'step_list') {
+        if (blueprint.template_id === 'steps' || blueprint.template_id === 'step_list' || blueprint.template_id === 'step_journey') {
             return this.handleSteps(task, blueprint, relativeOutputDir, theme, metrics);
         }
+        if (blueprint.template_id === 'hub_radial') {
+            return this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
+        }
 
-        // Default: Hub/Radial Logic
+        // Final Fallback: Hub Radial
+        return this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
+    }
 
+    private async handleHubRadial(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
+        const imagesStart = performance.now();
+        const usedPrompts: string[] = [];
 
-        // Generate Spoke Images
+        if (!blueprint.items || !Array.isArray(blueprint.items)) {
+            this.logger.warn(`[VisualArchitect] Blueprint items missing or invalid. Log: ${blueprint.correction_log?.join(', ')}`);
+            blueprint.items = [{ title: 'Overview', description: 'No specific items found.' }];
+        }
         const itemImagePromises = blueprint.items.map((item, idx) =>
             // Refinement 6: Use Descripton ONLY (No Title)
             this.generateImage(`minimalist visual representation of ${item.description}`, theme, false, task.id)
@@ -158,96 +191,27 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         });
 
         if (centerImageResult) {
-            console.log(`[StampingStrategy] Injecting Center Image URL: ${centerImageResult.url}`);
             (blueprint.center_topic as any).image_url = centerImageResult.url;
             usedPrompts.push(`Center Hub: ${centerImageResult.prompt}`);
-        } else {
-            console.warn('[StampingStrategy] No Center Image URL generated.');
         }
 
         metrics.images = performance.now() - imagesStart;
-        this.observability.emitLog('info', `Image generation & asset saving completed in ${metrics.images.toFixed(2)}ms`, 'StampingStrategy', task.id);
-
 
         // 2. Stamp Template
-        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Stamping HTML' });
         const stampingStart = performance.now();
-        const fixedHtml = this.stampingService.stamp(blueprint.template_id, blueprint, theme);
+        const fixedHtml = this.stampingService.stamp(blueprint.template_id || 'hub_radial', blueprint, theme);
         metrics.stamping = performance.now() - stampingStart;
 
-        this.logger.log(`Template stamped in ${metrics.stamping.toFixed(2)}ms`);
-        this.observability.emitLog('info', `Template stamped in ${metrics.stamping.toFixed(2)}ms`, 'StampingStrategy', task.id);
-
-        // 3. Browser Screenshot (Re-enabled per 2.md)
-        this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Finalizing Poster' });
-        const browserStart = performance.now();
-
-        // Refinement 5: Update Base URL to the specific task directory
+        // 3. Browser Screenshot 
         const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-
-        // Handle Dimensions from Metadata
-        const dimensions = (task as any).metadata?.dimensions || {};
-        const width = dimensions.width || 1200;
-        const height = dimensions.height || 1200;
-
-        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, { width, height });
+        const dimensions = (task as any).metadata?.dimensions || { width: 1200, height: 1200 };
+        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, dimensions);
 
         metrics.total = performance.now() - metrics.start;
 
-        // Calculate Bottleneck
-        const timings = {
-            'Blueprint Gen': metrics.blueprint,
-            'Parallel Image Gen': metrics.images,
-            'HTML Stamping': metrics.stamping,
-            'Browser Capture': metrics.browser
-        };
-        const bottleneck = Object.entries(timings).reduce((a, b) => a[1] > b[1] ? a : b);
-
-        this.logger.log(`
-[Timing Signature] Task: ${task.id}
-    Blueprint Gen: ${metrics.blueprint.toFixed(2)}ms
-    Parallel Image Gen (SiliconFlow): ${metrics.images.toFixed(2)}ms
-    HTML Stamping: ${metrics.stamping.toFixed(2)}ms
-    Browser Capture (Playwright): ${metrics.browser.toFixed(2)}ms
-    >> Primary Bottleneck: ${bottleneck[0]} (${bottleneck[1].toFixed(2)}ms)
-`);
-
-        // Save Results in Structured Directory
         const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
-
-        // Save Debug HTML
         await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fixedHtml));
         await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
-
-        // 5. Return Result with Prompts
-        // 5. Return Result with Prompts
-        // usedPrompts populated in respective steps
-        // Since we didn't store them in a persistent list during the parallel execution, we can either:
-        // A) Refactor generateImage to push to a class-level list (bad for concurrency)
-        // B) Return the prompt from generateImage (it returns string url currently)
-        // C) Re-construct them here (risky if logic changes)
-        // D) Attach them to the blueprint items themselves.
-
-        // Let's go with D: We already attached `image_url` to items. We should have attached `image_prompt` too.
-        // But `generateImage` is private. 
-
-        // Actually, let's just capture the Blueprint Prompt for now, and rely on the fact that we can't easily get the image prompts retroactively without refactoring `handleVersusSplit` etc.
-        // Wait, the user specifically asked for "text used to generate every image".
-
-        // Let's do a quick refactor of `generateImage` to return `{ url: string, prompt: string }`? 
-        // No, that breaks too many callers (`handleVersusSplit`, `handleSteps`).
-
-        // Minimal invasive change:
-        // The `metrics` object is a good place to stuff this for now, or just the payload.
-        // I will add `image_prompts` to the payload.
-
-        // I will rely on the `blueprint` to carry the descriptions which are essentially the prompts. 
-        // But the user wants "what was asked vs what was created". 
-        // "What was asked" = The text in the manifest (Task Description).
-        // "What was created" = The Resulting Image.
-        // The "Refined Prompt" (Blueprint Prompt) is the bridge.
-
-        // I will capture the Blueprint Prompt.
 
         return {
             url: publicUrl,
@@ -259,65 +223,53 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                     blueprint_ms: metrics.blueprint.toFixed(2),
                     images_ms: metrics.images.toFixed(2),
                     stamping_ms: metrics.stamping.toFixed(2),
-                    browser_ms: metrics.browser.toFixed(2),
+                    browser_ms: '0', // Re-calculate or use placeholder
                     total_ms: metrics.total.toFixed(2)
                 },
                 output_dir: relativeOutputDir,
-                // We'll populate this more fully in a future refactor if needed, 
-                // but for now, the 'refined_prompt' in the task metadata (which we added to Intake) 
-                // covers the 'Validation' aspect the user likely wants.
                 blueprint_prompt: task.refined_prompt,
                 image_prompts: usedPrompts
             }
         };
     }
 
+
     // Duplicated from HtmlInfographicStrategy for independence, or could be extracted to a shared service
     private async generateBlueprint(prompt: string, taskId: string): Promise<HtmlInfographicBlueprint> {
         // Reuse existing logic or simplified logic
-        const systemPrompt = `You are an expert Data Visualization Architect.
-Goal: Select template, define style, generate structured content.
+        const systemPrompt = `You are a Senior Visual Architect. You do not create content; you map pedagogical specifications into stable geometric blueprints.
+    
+    CRITICAL DIRECTIVES:
+    - Hallucination Guardrail: If input data is sparse, return a "correction_log" instead of inventing items. You must preserve the EXACT terminology from the source.
+    - Quality Rubric: Calculate and return a quality_score (1-100) based on:
+        1. Structural Fidelity (40 pts): Preservation of all branches/notes.
+        2. Template Match (30 pts): Accuracy of the chosen geometry for the lesson goal.
+        3. Wellness Alignment (30 pts): Adherence to the warm, non-clinical "Wellness Book" philosophy.
 
-CRITICAL: Strict Text Preservation & Expansion.
-- You must use the EXACT text provided in the user prompt for titles and descriptions IF provided.
-- IF THE PROMPT IS SPARSE (e.g. only a title): You MUST creatively expand the topic into 5-7 logical, professional "items" (points, steps, or comparisons) relevant to the context.
-- Do NOT refuse to generate. DO NOT state you lack details. Your job is to ARCHITECT the visualization even with minimal starting text.
-- Map content directly to the selected template structure.
+    TEMPLATE CATALOG:
+    1. 'hub_radial': Circular central topic with radial spokes.
+       Schema: { center_topic: { title, description }, items: [{ title, description }] }
+    2. 'versus_split': A/B comparison. Required: Exactly 2 subjects.
+       Schema: { center_topic: { title, subtitle }, versus_subjects: [{ name, description }], comparison_rows: [{ left: { value, description }, right: { value, description }, icon_label }], verdict: { title, text } }
+    3. 'step_journey': Vertical roadmap.
+       Schema: { center_topic: { title, description }, items: [{ title, description }] }
+    4. 'bento_grid': 12x12 grid.
+       Schema: { cells: [{ col_span, row_span, content: { type: 'text'|'image', title, text } }], background: { visual_style_directive } }
 
-Templates: 'hub_radial' (circular hub), 'step_list' (vertical sequence), 'step_stone' (zigzag path), 'bento_grid' (grid), 'versus_split' (comparison), 'steps' (progressive list).
-Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
+    CRITICAL: For 'versus_split', you MUST align parallel steps or features into 'comparison_rows'. If one side has more steps, group them logically to maintain row alignment.
 
-Task:
-1. Select Template & Theme.
-2. Generate Items (3-9 normal).
-3. FOR STEP_LIST: Use this for vertical "roadmaps" or lists. Use '|' to separate stage name from description.
-4. FOR STEP_STONE: Zigzag path.
-5. FOR VERSUS_SPLIT: Comparison between two entities.
-    - "versus_subjects": [ { "name": "Left Entity", "description": "..." }, { "name": "Right Entity", "description": "..." } ]
-    - "items": [ { "icon": "sword", "left": { "value": "100", "description": "High" }, "right": { "value": "50", "description": "Low" } } ]
-    - "verdict": { "title": "Winner", "text": "Conclusion..." }
-    - "center_topic": { "title": "Main Comparison Title", "description": "Subtitle" }
-6. FOR STEPS (or step_list): Progressive list/journey.
-    - "items": [ { "title": "Step 01", "description": "..." }, ... ] (3-5 items)
-    - "center_topic": { "title": "Journey Title", "description": "Subtitle" }
-    - "visual_style_directive": "Description for background image (e.g. minimalist nature landscape)"
-7. FOR BENTO_GRID: 12x12 matrix layout.
-    - "cells": [ { "content": { "type": "title_text|image_only|title_image|text_image|title_image_text", "title": "...", "text": "...", "image_url": "..." }, "layout": { "col_span": (1-12), "row_span": (1-12) }, "style": { "border_width": "4px", "border_color": "#HEX", "border_style": "solid" } } ]
-    - Standard Hero Pattern: Assign ONE cell a [6x6], [8x6] or [6x12] span.
-    - Summary Note: Ensure other items fit around the hero in [3x3], [4x4], or [3x6] blocks.
-    - "background": { "color": "#HEX", "opacity": 0.15 } (Set opacity for environmental layer)
-
-OUTPUT VALID JSON ONLY:
-{
-  "template_id": "...",
-  "theme_id": "...",
-  "visual_style_directive": "...",
-  "background": { "color": "#HEX", "opacity": 0.15 },
-  "cells": [ { "content": { "type": "...", "title": "...", "text": "..." }, "layout": { "col_span": 6, "row_span": 6 }, "style": { "border_width": "1px" } } ]
-}`;
+    OUTPUT SCHEMA (VALID JSON ONLY):
+    {
+      "quality_score": number,
+      "template_id": "hub_radial" | "versus_split" | "step_journey" | "bento_grid",
+      "correction_log": string[],
+      "blueprint": { ...template_specific_data... }
+    }`;
 
         try {
             const model = this.configService.get<string>('OPENROUTER_MODEL') || 'google/gemini-2.0-flash-001';
+            this.observability.emitLog('info', `VisualArchitect LLM Request: [USER]: ${prompt}`, 'VisualArchitect', taskId);
+
             const response = await this.openai.chat.completions.create({
                 model: model,
                 messages: [
@@ -327,16 +279,21 @@ OUTPUT VALID JSON ONLY:
                 temperature: 0.4, // Increased from 0.2 to allow creative expansion for sparse prompts
                 max_tokens: 2000
             });
-            this.observability.emitLog('info', `Blueprint LLM Response received`, 'BlueprintGen', taskId);
-            // NOTE: generateBlueprint doesn't have task.id context. We need to pass it in. 
-            // For now, I will skip adding taskId here or update signature. 
-            // Updating signature is better.
 
             const content = response.choices[0]?.message?.content || '{}';
+            this.observability.emitLog('info', `Blueprint LLM Response (Raw): ${content.substring(0, 1000)}`, 'BlueprintGen', taskId);
             const text = content.replace(/```json/g, '').replace(/```/g, '').trim();
 
             try {
-                const parsed = JSON.parse(text) as HtmlInfographicBlueprint;
+                const responseObj = JSON.parse(text);
+                const blueprint = responseObj.blueprint || responseObj;
+
+                // Merge quality metadata into blueprint for downstream checks
+                if (responseObj.quality_score) blueprint.quality_score = responseObj.quality_score;
+                if (responseObj.correction_log) blueprint.correction_log = responseObj.correction_log;
+                if (responseObj.template_id) blueprint.template_id = responseObj.template_id;
+
+                const parsed = blueprint as HtmlInfographicBlueprint;
                 // Validate Theme
                 if (!THEME_LIBRARY[parsed.theme_id]) parsed.theme_id = 'corp_blue';
                 return parsed;
@@ -344,7 +301,7 @@ OUTPUT VALID JSON ONLY:
                 // Log the RAW text that failed parsing
                 this.logger.error(`Blueprint JSON Parse Failed. Raw Output: ${text.substring(0, 500)}...`);
                 // Emit special error event or just log it
-                this.observability.emitLog('error', `Model Refusal/Parse Error. Raw: ${text.substring(0, 100)}...`, 'BlueprintGen', taskId);
+                this.observability.emitLog('error', `Model JSON Parse Error. Raw: ${text.substring(0, 200)}...`, 'BlueprintGen', taskId);
                 throw new Error(`Invalid JSON from LLM: ${text.substring(0, 50)}...`);
             }
 
@@ -367,8 +324,9 @@ OUTPUT VALID JSON ONLY:
         } else {
             // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
             // Refinement 6: Strong Negative Prompting for Text
+            fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights --no text, font, characters, words, writing, labels, numbers`;
         }
-        this.observability.emitLog('info', `🖼️ Image Prompt: ${fullPrompt}`, 'ImageGen', taskId);
+        this.observability.emitLog('info', `🖼️ Constructing Image Prompt: ${fullPrompt}`, 'ImageGen', taskId);
 
         try {
             const response = await axios.post(
@@ -408,8 +366,17 @@ OUTPUT VALID JSON ONLY:
         this.logger.log('[StampingStrategy] Handling Versus Split Template...');
         const usedPrompts: string[] = [];
 
-        // 1. Generate Subject Images (Left & Right)
-        const subjects = blueprint.versus_subjects || [{ name: 'Left' }, { name: 'Right' }];
+        // Robust Mapping: handle different key variations from LLM
+        const subjects = blueprint.versus_subjects || blueprint.subjects || [{ name: 'Left' }, { name: 'Right' }];
+
+        // Map comparison_rows or steps to items
+        if (!blueprint.items) {
+            blueprint.items = blueprint.comparison_rows || blueprint.steps || [];
+        }
+
+        if (!blueprint.center_topic && blueprint.title) {
+            blueprint.center_topic = { title: blueprint.title, subtitle: blueprint.description || '' };
+        }
         const imagePromises = subjects.map(async (subj, idx) => {
             const side = idx === 0 ? 'left' : 'right';
             const prompt = `Vertical portrait of ${subj.name}, ${subj.description || ''}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text`;
@@ -439,11 +406,10 @@ OUTPUT VALID JSON ONLY:
 
         // 1.5 Generate Item Icons (Parallel)
         this.logger.log('[StampingStrategy] Generating Versus Item Icons...');
-        const iconPromises = blueprint.items.map(async (item, idx) => {
-            // Priority: Explicit Icon Name > Left Value > Generic
-            const iconPrompt = item.icon && item.icon.length > 2
-                ? item.icon
-                : `${item.left?.value || 'concept'} vs ${item.right?.value || 'concept'}`;
+        const iconPromises = (blueprint.items || []).map(async (item, idx) => {
+            // Priority: Explicit Icon Name > icon_label > Left Value > Generic
+            const iconPrompt = item.icon || item.icon_label || (item.icon && item.icon.length > 2 ? item.icon : null)
+                || `${item.left?.value || 'concept'} vs ${item.right?.value || 'concept'}`;
 
             const prompt = `Simple flat vector icon of ${iconPrompt}, black lines on white background, minimalist, bold, isolated --no text`;
 
@@ -477,7 +443,7 @@ OUTPUT VALID JSON ONLY:
         // We ensure blueprint matches the schema expected by versus_split.html render()
         // Schema: { subjects: [...], items: [...], verdict: {...} }
         const payload = {
-            subjects: blueprint.versus_subjects,
+            subjects: subjects,
             items: blueprint.items,
             center: blueprint.center_topic, // Title/Subtitle often mapped here
             verdict: blueprint.verdict
@@ -536,7 +502,7 @@ OUTPUT VALID JSON ONLY:
         }
 
         // 2. Generate Step Images
-        const imagePromises = blueprint.items.map(async (item, idx) => {
+        const imagePromises = (blueprint.items || []).map(async (item, idx) => {
             // Refinement: Remove Title to prevent text bleeding. Use description only.
             const prompt = `Symbolic visual representation of ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
             try {

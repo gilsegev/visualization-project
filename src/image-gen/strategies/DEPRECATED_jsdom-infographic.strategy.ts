@@ -19,9 +19,11 @@ import { THEME_LIBRARY, Theme, ThemeId } from '../themes.config';
 
 
 export interface HtmlInfographicBlueprint {
-    template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split' | 'steps';
+    template_id: 'hub_radial' | 'step_list' | 'step_stone' | 'bento_grid' | 'versus_split' | 'steps' | 'step_journey';
     theme_id: ThemeId;
     visual_style_directive: string;
+    quality_score?: number;
+    correction_log?: string[];
     background_url?: string; // For templates like "steps" requiring a full bg
     center_topic?: {
         title: string;

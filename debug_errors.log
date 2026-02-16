@@ -129,3 +129,19 @@
 [2026-02-16T03:22:39.335Z] [FAILED] [Task: viz-1771212103246-7jeqgd1cb] {}
 [2026-02-16T03:22:39.335Z] [FAILED] [Task: viz-1771212103246-vjxkmsj38] {}
 [2026-02-16T03:22:53.944Z] [FAILED] [Task: viz-1771212103246-vfe6ndhly] {"error":"Template not found: bento_grid"}
+[2026-02-16T04:17:19.932Z] [FAILED] [Task: viz-1771215418384-ulbv7vx9v] {"error":"browser.newContext: Target page, context or browser has been closed"}
+[2026-02-16T04:17:32.118Z] [FAILED] [Task: viz-1771215418384-tckzruqnv] {"error":"browser.newContext: Target page, context or browser has been closed"}
+[2026-02-16T04:18:31.300Z] [FAILED] [Task: viz-1771215489880-pdkzwxrd1] {"error":"browser.newContext: Target page, context or browser has been closed"}
+[2026-02-16T04:18:43.117Z] [FAILED] [Task: viz-1771215489880-8seijlkrk] {"error":"browser.newContext: Target page, context or browser has been closed"}
+[2026-02-16T06:48:28.698Z] [FAILED] [Task: viz-1771224425148-q0llgv0bb] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-16T06:48:42.443Z] [ERROR] [ImageGen] [viz-1771224425148-0hclnxi3i] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-16T06:48:42.443Z] [FAILED] [Task: viz-1771224425148-0hclnxi3i] {"error":"Critical Asset Generation Failed: Critical Asset Generation Failed: timeout of 30000ms exceeded"}
+[2026-02-16T16:07:17.824Z] [FAILED] [Task: viz-1771258005257-t861bfqpi] {}
+[2026-02-16T16:07:17.824Z] [FAILED] [Task: viz-1771258005257-5zp75j2ol] {}
+[2026-02-16T16:07:17.825Z] [FAILED] [Task: viz-1771258005258-xic6rve49] {}
+[2026-02-16T16:07:17.825Z] [FAILED] [Task: viz-1771258005257-woxt6br6z] {}
+[2026-02-16T16:07:17.825Z] [FAILED] [Task: viz-1771258005258-wibroc11d] {}
+[2026-02-16T16:20:08.547Z] [FAILED] [Task: viz-1771258790277-fptg7aqy3] {"error":"browserContext.close: Target page, context or browser has been closed"}
+[2026-02-16T17:02:46.032Z] [ERROR] [VisualArchitect] [a4f6a534-e613-4b48-8609-68b09161b59c] Quality Rubric Failed (65/100). Log: N/A
+[2026-02-16T17:09:15.572Z] [ERROR] [VisualArchitect] [475474ff-b2b9-4c21-9b8e-2a687225a87e] Quality Rubric Failed (65/100). Log: N/A
+[2026-02-16T17:09:33.055Z] [ERROR] [VisualArchitect] [a6f2c47b-17a0-4099-a033-0984f77c92b5] Quality Rubric Failed (65/100). Log: N/A

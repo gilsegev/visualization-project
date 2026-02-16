@@ -1,280 +1,122 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1200, initial-scale=1.0" />
-    <title>Bento Grid Infographic Engine</title>
+    <title>Smart-Fit Bento Engine</title>
     <style>
-        :root {
-            /* Theme Variables - Overridden by backend injection */
-            --bg-primary: #FAF9F6;
-            --accent-primary: #5B9A8B;
-            --accent-secondary: #E8A598;
-            --text-primary: #4A5568;
-            --text-secondary: #4A5568;
-            --font-main: 'Inter', system-ui, sans-serif;
-            --font-size-heading: 1.8rem;
-            --font-size-body: 1rem;
-            --glass-bg: rgba(255, 255, 255, 0.55);
-        }
-
-        /* ============================= */
-        /* ROOT CANVAS (DETERMINISTIC)  */
-        /* ============================= */
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 1200px;
-            height: 1200px;
+        /* DETERMINISTIC CANVAS */
+        html, body {
+            margin: 0; padding: 0;
+            width: 1200px; height: 1200px;
             overflow: hidden;
-            font-family: var(--font-main);
-            background: var(--bg-primary);
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-color, #F4EDE4);
         }
 
         #canvas {
-            position: relative;
-            width: 1200px;
-            height: 1200px;
-            background: var(--bg-primary);
+            position: relative; width: 1200px; height: 1200px;
+            background: var(--bg-color, #F4EDE4);
             overflow: hidden;
-            --background-opacity: 0.18;
         }
 
-        /* ENVIRONMENT LAYER: Semi-transparent background image */
         #canvas::before {
-            content: "";
-            position: absolute;
-            inset: 0;
+            content: ""; position: absolute; inset: 0;
             background-image: var(--background-url, none);
-            background-size: cover;
-            background-position: center;
-            opacity: var(--background-opacity);
-            pointer-events: none;
-            z-index: 1;
+            background-size: cover; background-position: center;
+            opacity: 0.18; z-index: 1;
         }
 
-        /* ============================= */
-        /* 12-COLUMN GRID FOUNDATION   */
-        /* ============================= */
         #grid {
-            position: relative;
-            z-index: 10;
-            display: grid;
-            width: 100%;
-            height: 100%;
-            padding: 60px;
-            gap: 40px;
+            position: relative; z-index: 10;
+            display: grid; width: 100%; height: 100%;
+            padding: 60px; gap: 40px;
             grid-template-columns: repeat(12, 1fr);
             grid-auto-rows: minmax(0, 1fr);
-            /* Prevents overflow drift */
             box-sizing: border-box;
         }
 
-        /* ============================= */
-        /* GLASS CELL DESIGN SYSTEM    */
-        /* ============================= */
+        /* SMART CELL SYSTEM */
         .cell {
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 32px;
-            border-radius: 28px;
-            background: var(--glass-bg);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
+            position: relative; display: flex; flex-direction: column;
+            justify-content: center; align-items: center; text-align: center;
+            padding: 32px; border-radius: 28px;
+            background: rgba(255, 255, 255, 0.55);
+            backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+            border: var(--border-width, 1px) var(--border-style, solid) var(--border-color, rgba(0,0,0,0.08));
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             overflow: hidden;
         }
 
-        /* POLYMORPHIC CONTENT STYLES */
+        /* 1. TITLE WRAPPING FIX */
+        .cell h2 {
+            font-size: var(--title-size, 36px);
+            font-weight: 800; margin: 0 0 16px 0;
+            color: #1A365D;
+            inline-size: 100%;
+            overflow-wrap: break-word; /* Fix for long titles */
+            line-height: 1.1;
+        }
+
+        /* 2. ASPECT RATIO IMAGE FIX */
         .cell img {
-            max-width: 100%;
-            max-height: 70%;
-            object-fit: contain;
-            margin-bottom: 16px;
+            width: 100%; height: 100%;
+            object-fit: cover; /* Ensures image fills the span area */
             border-radius: 12px;
         }
 
-        .cell.full-bleed {
-            padding: 0;
-        }
+        .cell.full-bleed { padding: 0; }
+        .cell.full-bleed img { border-radius: 0; }
 
-        .cell.full-bleed img {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            margin: 0;
-            border-radius: 0;
-        }
+        .cell p { font-size: 20px; line-height: 1.4; color: #4A5568; opacity: 0.9; }
 
-        .cell h2 {
-            font-size: var(--font-size-heading);
-            font-weight: 800;
-            margin: 0 0 16px 0;
-            color: var(--text-primary);
-            text-transform: uppercase;
-        }
-
-        .cell p {
-            font-size: var(--font-size-body);
-            line-height: 1.5;
-            margin: 0;
-            color: var(--text-secondary);
-            opacity: 0.9;
-        }
-
-        /* GRID SPAN UTILITIES */
-        .col-span-1 {
-            grid-column: span 1;
-        }
-
-        .col-span-2 {
-            grid-column: span 2;
-        }
-
-        .col-span-3 {
-            grid-column: span 3;
-        }
-
-        .col-span-4 {
-            grid-column: span 4;
-        }
-
-        .col-span-6 {
-            grid-column: span 6;
-        }
-
-        .col-span-8 {
-            grid-column: span 8;
-        }
-
-        .col-span-12 {
-            grid-column: span 12;
-        }
-
-        .row-span-1 {
-            grid-row: span 1;
-        }
-
-        .row-span-2 {
-            grid-row: span 2;
-        }
-
-        .row-span-3 {
-            grid-row: span 3;
-        }
-
-        .row-span-4 {
-            grid-row: span 4;
-        }
-
-        .row-span-6 {
-            grid-row: span 6;
-        }
-
-        .row-span-12 {
-            grid-row: span 12;
-        }
+        /* GRID UTILITIES */
+        .col-span-3 { grid-column: span 3; } .col-span-6 { grid-column: span 6; }
+        .row-span-6 { grid-row: span 6; } .row-span-12 { grid-row: span 12; }
     </style>
 </head>
-
 <body>
-
-    <div id="canvas">
-        <div id="grid">
-        </div>
-    </div>
+    <div id="canvas"><div id="grid"></div></div>
 
     <script>
-        /**
-         * TOUCH POINT 1: DATA INJECTION
-         * This placeholder is replaced by the TemplateStampingService during task execution.
-         */
         const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
 
-        /**
-         * TOUCH POINT 2: THE RENDER ENGINE
-         * Converts the JSON blueprint into a modular grid of polymorphic components.
-         */
         function render(data) {
             if (!data) return;
-
-            // 1. Setup Environmental Layers
             const canvas = document.getElementById('canvas');
             if (data.background) {
                 canvas.style.setProperty('--bg-color', data.background.color || '#F4EDE4');
-                if (data.background.image_url) {
-                    canvas.style.setProperty('--background-url', `url('${data.background.image_url}')`);
-                }
-                if (data.background.opacity !== undefined) {
-                    canvas.style.setProperty('--background-opacity', data.background.opacity);
-                }
+                if (data.background.image_url) canvas.style.setProperty('--background-url', `url('${data.background.image_url}')`);
             }
 
             const grid = document.getElementById('grid');
-            grid.innerHTML = ''; // Clear existing DOM
+            grid.innerHTML = '';
 
-            // 2. The Polymorphic Factory
             data.cells.forEach(cellData => {
                 const cell = document.createElement('div');
-
-                // Assign layout spans
                 cell.className = `cell col-span-${cellData.layout.col_span} row-span-${cellData.layout.row_span}`;
+                if (cellData.content.type === 'image_only') cell.classList.add('full-bleed');
 
-                // Assign visual signaling (Borders)
-                if (cellData.style) {
-                    cell.style.setProperty('--border-width', cellData.style.border_width || '1px');
-                    cell.style.setProperty('--border-style', cellData.style.border_style || 'solid');
-                    cell.style.setProperty('--border-color', cellData.style.border_color || 'rgba(0,0,0,0.08)');
-                }
+                // DYNAMIC FONT SCALING LOGIC
+                const title = cellData.content.title || "";
+                let fontSize = "36px";
+                if (title.length > 25) fontSize = "24px";
+                if (title.length > 40) fontSize = "18px";
+                cell.style.setProperty('--title-size', fontSize);
 
-                // Render specific content types
-                const content = cellData.content;
                 let html = '';
-
-                switch (content.type) {
-                    case 'image_only':
-                        cell.classList.add('full-bleed');
-                        html = `<img src="${content.image_url}">`;
-                        break;
-                    case 'title_text':
-                        html = `<h2>${content.title}</h2><p>${content.text}</p>`;
-                        break;
-                    case 'title_image':
-                        html = `<h2>${content.title}</h2><img src="${content.image_url}">`;
-                        break;
-                    case 'text_image':
-                        html = `<p>${content.text}</p><img src="${content.image_url}" style="margin-top: 16px; max-height: 50%;">`;
-                        break;
-                    case 'title_image_text':
-                        html = `<h2>${content.title}</h2><img src="${content.image_url}"><p>${content.text}</p>`;
-                        break;
-                    default: // 'text_only'
-                        html = `<p style="font-size: 26px; font-weight: 500;">${content.text}</p>`;
+                switch (cellData.content.type) {
+                    case 'image_only': html = `<img src="${cellData.content.image_url}">`; break;
+                    case 'title_text': html = `<h2>${title}</h2><p>${cellData.content.text}</p>`; break;
+                    case 'title_image': html = `<h2>${title}</h2><img src="${cellData.content.image_url}">`; break;
+                    case 'title_image_text': html = `<h2>${title}</h2><img src="${cellData.content.image_url}"><p>${cellData.content.text}</p>`; break;
+                    default: html = `<p style="font-size: 26px;">${cellData.content.text}</p>`;
                 }
-
                 cell.innerHTML = html;
                 grid.appendChild(cell);
             });
         }
-
-        // Initialize the rendering sequence
-        if (DATA_PAYLOAD) {
-            try {
-                render(DATA_PAYLOAD);
-            } catch (error) {
-                console.error("Bento Render Engine Failed:", error);
-            }
-        }
+        if (DATA_PAYLOAD) render(DATA_PAYLOAD);
     </script>
 </body>
-
 </html>

@@ -101,7 +101,9 @@ export class ImageOrchestratorService {
                 // Clean up visualization ID/content for prompt
                 const { visualizationId, ...vizContent } = viz;
 
-                const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${viz.description}. Context: ${viz.context || ''}`;
+                const vizDescription = viz.description || viz.title || 'a visual representation';
+                const vizContext = viz.context || '';
+                const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}. Context: ${vizContext}`;
 
                 // Support for specific theme overrides
                 const themeId = viz.metadata?.theme_id || viz.theme_id;
@@ -118,7 +120,7 @@ export class ImageOrchestratorService {
                         lesson_index: lessonIdx + 1, // 1-based index
                         dimensions: viz.dimensions,
                         theme_id: themeId, // Pass through for strategy
-                        original_instruction: `Description: ${viz.description}${viz.context ? ` | Context: ${viz.context}` : ''}`,
+                        original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
                         // Only inject custom_theme if a global guide is provided AND no specific themeId is set
                         custom_theme: (manifest.course?.globalStyleGuide && !themeId) ? {
