@@ -54,7 +54,10 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // 1. Generate Blueprint
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Blueprinting' });
         const blueprintStart = performance.now();
-        const blueprint = await this.generateBlueprint(task.refined_prompt, task.id);
+
+        // Incorporate payload into the prompt for "Visual Architect"
+        const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR ITEMS AND STRUCTURE):\n${JSON.stringify(task.payload, null, 2)}`;
+        const blueprint = await this.generateBlueprint(fullPrompt, task.id);
 
         // Fail-Fast: Prompt 10 logic
         if (blueprint.quality_score && blueprint.quality_score < 75) {

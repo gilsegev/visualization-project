@@ -112,7 +112,7 @@ export class ImageOrchestratorService {
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     type: 'infographic',
                     refined_prompt: refinedPrompt.trim(),
-                    payload: {},
+                    payload: vizContent,
                     metadata: {
                         course_id: courseSlug,
                         lesson_id: lesson.lessonId,
