@@ -476,10 +476,22 @@
                 });
 
                 const addLog = (level, message, context, taskId = null) => {
+                    // Check if already at bottom before adding new log
+                    let autoScroll = true;
+                    if (logContainer.value) {
+                        const el = logContainer.value;
+                        const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
+                        // Only auto-scroll if within 10px of bottom
+                        autoScroll = scrollPos < 10;
+                    }
+
                     logs.value.push({ timestamp: Date.now(), level, message, context, taskId });
                     if (logs.value.length > 500) logs.value.shift();
+
                     nextTick(() => {
-                        if (logContainer.value) logContainer.value.scrollTop = logContainer.value.scrollHeight
+                        if (autoScroll && logContainer.value) {
+                            logContainer.value.scrollTop = logContainer.value.scrollHeight;
+                        }
                     });
                 };
 
