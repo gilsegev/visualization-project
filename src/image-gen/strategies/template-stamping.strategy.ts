@@ -97,6 +97,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         if (blueprint.template_id === 'versus_split') {
             return this.handleVersusSplit(task, blueprint, relativeOutputDir, theme, metrics);
         }
+        if (blueprint.template_id === 'bento_grid') {
+            return this.handleBento(task, blueprint, relativeOutputDir, theme, metrics);
+        }
         if (blueprint.template_id === 'steps' || blueprint.template_id === 'step_list') {
             return this.handleSteps(task, blueprint, relativeOutputDir, theme, metrics);
         }
@@ -298,13 +301,18 @@ Task:
     - "items": [ { "title": "Step 01", "description": "..." }, ... ] (3-5 items)
     - "center_topic": { "title": "Journey Title", "description": "Subtitle" }
     - "visual_style_directive": "Description for background image (e.g. minimalist nature landscape)"
+7. FOR BENTO_GRID: 12x12 matrix layout.
+    - "cells": [ { "content": { "type": "title_text|image_only|title_image|text_image|title_image_text", "title": "...", "text": "...", "image_url": "..." }, "layout": { "col_span": (1-12), "row_span": (1-12) } } ]
+    - Standard Hero Pattern: Assign ONE cell a [6x6] or [8x6] span.
+    - Summary Note: Ensure other items fit around the hero in [3x3] or [4x4] blocks.
 
 OUTPUT VALID JSON ONLY:
 {
   "template_id": "...",
   "theme_id": "...",
   "center_topic": { "title": "...", "description": "..." },
-  "items": [ { "title": "...", "description": "...", "left": {...}, "right": {...} } ],
+  "items": [ { "title": "...", "description": "..." } ],
+  "cells": [ { "content": { "type": "...", "title": "...", "text": "..." }, "layout": { "col_span": 6, "row_span": 6 } } ],
   "versus_subjects": [ ... ],
   "verdict": { ... }
 }`;
@@ -585,6 +593,94 @@ OUTPUT VALID JSON ONLY:
                 blueprint,
                 html: fixedHtml,
                 metrics,
+                image_prompts: usedPrompts
+            }
+        };
+    }
+    private async handleBento(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
+        const imagesStart = performance.now();
+        this.logger.log('[StampingStrategy] Handling Bento Grid Template...');
+        const usedPrompts: string[] = [];
+
+        // 1. Parallel Task: Background Image
+        const bgPromise = blueprint.visual_style_directive
+            ? this.generateImage(blueprint.visual_style_directive, theme, true, task.id)
+            : Promise.resolve(null);
+
+        // 2. Parallel Tasks: Cell Images
+        const cellImagePromises = (blueprint.cells || []).map(async (cell: any, idx: number) => {
+            const type = cell.content?.type || '';
+            if (type.includes('image')) {
+                const imgPrompt = cell.content.title
+                    ? `${cell.content.title}: ${cell.content.text || ''}`
+                    : cell.content.text || 'abstract conceptual visual';
+
+                try {
+                    const result = await this.generateImage(imgPrompt, theme, false, task.id);
+                    if (result.url) {
+                        const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                        const filename = `bento_cell_${idx}.png`;
+                        await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
+                        cell.content.image_url = `./assets/${filename}`;
+                        return { index: idx, prompt: result.prompt };
+                    }
+                } catch (e) {
+                    this.logger.warn(`Bento Image Cell ${idx} failed: ${e.message}`);
+                }
+            }
+            return null;
+        });
+
+        const [bgResult, ...cellResults] = await Promise.all([bgPromise, ...cellImagePromises]);
+
+        if (bgResult?.url) {
+            const buffer = Buffer.from(bgResult.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+            await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'background.png'), buffer);
+            blueprint.background = { image_url: './assets/background.png' };
+            usedPrompts.push(`Background: ${bgResult.prompt}`);
+        }
+
+        cellResults.forEach((res) => {
+            if (res) usedPrompts.push(`Cell ${res.index}: ${res.prompt}`);
+        });
+
+        metrics.images = performance.now() - imagesStart;
+
+        // 3. Stamp Template
+        const stampingStart = performance.now();
+        const fixedHtml = this.stampingService.stamp('bento', blueprint, theme);
+        metrics.stamping = performance.now() - stampingStart;
+
+        // 4. Screenshot
+        const browserStart = performance.now();
+        const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
+        const dimensions = (task as any).metadata?.dimensions || { width: 1200, height: 1200 };
+
+        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, dimensions);
+        metrics.browser = performance.now() - browserStart;
+
+        // 5. Save Artifacts
+        const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
+        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fixedHtml));
+        await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
+
+        metrics.total = performance.now() - metrics.start;
+
+        return {
+            url: publicUrl,
+            posterUrl: publicUrl,
+            payload: {
+                blueprint,
+                html: fixedHtml,
+                metrics: {
+                    blueprint_ms: metrics.blueprint.toFixed(2),
+                    images_ms: metrics.images.toFixed(2),
+                    stamping_ms: metrics.stamping.toFixed(2),
+                    browser_ms: metrics.browser.toFixed(2),
+                    total_ms: metrics.total.toFixed(2)
+                },
+                output_dir: relativeOutputDir,
+                blueprint_prompt: task.refined_prompt,
                 image_prompts: usedPrompts
             }
         };
