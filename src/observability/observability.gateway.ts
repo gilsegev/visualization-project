@@ -93,6 +93,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      * This allows the frontend to populate the UI immediately
      */
     emitBatchInitialized(tasks: Record<string, any>) {
+        this.logger.log(`Emitting batch_initialized with ${Object.keys(tasks).length} tasks`);
         this.server.emit('batch_initialized', tasks);
     }
 

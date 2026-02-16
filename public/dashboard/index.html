@@ -145,6 +145,8 @@
                     <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-tight matrix-scroll relative"
                         ref="logContainer">
 
+
+
                         <!-- Clear Button overlay -->
                         <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition">
                             <button @click="logs = []"
@@ -473,8 +475,8 @@
                     hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
                 });
 
-                const addLog = (level, message, context) => {
-                    logs.value.push({ timestamp: Date.now(), level, message, context });
+                const addLog = (level, message, context, taskId = null) => {
+                    logs.value.push({ timestamp: Date.now(), level, message, context, taskId });
                     if (logs.value.length > 500) logs.value.shift();
                     nextTick(() => {
                         if (logContainer.value) logContainer.value.scrollTop = logContainer.value.scrollHeight
@@ -585,12 +587,20 @@
 
                     socket.on('batch_initialized', (initialTasks) => {
                         console.log('[Frontend] batch_initialized received:', initialTasks);
-                        tasks.value = initialTasks;
-                        console.log('[Frontend] tasks ref updated:', tasks.value);
+                        // Force reactivity by creating a new object
+                        tasks.value = { ...initialTasks };
+                        console.log('[Frontend] tasks ref updated to new object. Keys:', Object.keys(tasks.value));
                         addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System');
+
+                        // Debug: Select first asset automatically to prove list exists
+                        const firstId = Object.keys(tasks.value)[0];
+                        if (firstId) {
+                            console.log('[Frontend] Auto-selecting first asset:', firstId);
+                            // Optional: selectedAssetFilter.value = firstId; 
+                        }
                     });
 
-                    socket.on('system_log', (data) => addLog(data.level, data.message, data.context));
+                    socket.on('system_log', (data) => addLog(data.level, data.message, data.context, data.taskId));
 
                     socket.on('batch_progress', (data) => batch.value = data);
 
@@ -600,7 +610,7 @@
                 });
 
                 return {
-                    isConnected, isDragging, logs, batch, logContainer,
+                    isConnected, isDragging, logs, tasks, batch, logContainer,
                     groupedTasks, selectedTask,
                     logMode, selectedAssetFilter, filteredLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
