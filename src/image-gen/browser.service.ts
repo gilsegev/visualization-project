@@ -1,5 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/common';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import * as sharp from 'sharp';
 
 @Injectable()
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
@@ -146,14 +147,35 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             // Safety Buffer
             await page.waitForTimeout(500);
 
-            // Hard-Clipped Screenshot
+            // Hard-Clipped Screenshot at Canonical Resolution (1200px wide)
+            // If target dimensions are provided, we render at 1200 width and proportional height,
+            // Then resize with sharp.
+            const CANONICAL_WIDTH = 1200;
+            const renderWidth = CANONICAL_WIDTH;
+            const scale = (options.width || CANONICAL_WIDTH) / CANONICAL_WIDTH;
+            const renderHeight = (options.height || CANONICAL_WIDTH) / scale;
+
+            console.log(`[RENDER] Setting Viewport for Canonical Render: ${renderWidth}x${renderHeight}`);
+            await page.setViewportSize({ width: Math.round(renderWidth), height: Math.round(renderHeight) });
+
             const screenshotBuffer = await page.screenshot({
                 type: 'png',
-                clip: { x: 0, y: 0, width, height },
-                omitBackground: true,
-                scale: 'css'
+                clip: { x: 0, y: 0, width: Math.round(renderWidth), height: Math.round(renderHeight) },
+                omitBackground: true
             });
-            console.log(`[FORENSIC] Screenshot captured at ${width}x${height}.`);
+
+            // If resizing is needed
+            if (options.width && options.height && (options.width !== renderWidth || options.height !== renderHeight)) {
+                console.log(`[SHARP] Resizing from ${renderWidth} to ${options.width}x${options.height}`);
+                return await sharp(screenshotBuffer)
+                    .resize(options.width, options.height, {
+                        fit: 'fill', // Force exact dimensions per user request
+                    })
+                    .png()
+                    .toBuffer();
+            }
+
+            console.log(`[FORENSIC] Screenshot captured at ${renderWidth}x${renderHeight} (Full Fidelity).`);
             return screenshotBuffer;
         } finally {
             await context.close();

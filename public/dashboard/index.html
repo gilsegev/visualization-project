@@ -293,11 +293,17 @@
                                     </div>
 
                                     <!-- Footer (Title) -->
-                                    <div class="p-2 bg-surface text-center">
-                                        <h4 class="text-[10px] text-slate-300 font-medium truncate"
+                                    <div class="p-2 bg-surface">
+                                        <h4 class="text-[10px] text-slate-300 font-medium truncate mb-1"
                                             :title="task.details?.title">
                                             {{ task.details?.title || 'Untitled Visualization' }}
                                         </h4>
+                                        <!-- Prompt Snippet -->
+                                        <p v-if="task.details?.refined_prompt"
+                                            class="text-[9px] text-slate-500 italic line-clamp-2 leading-tight"
+                                            :title="task.details.refined_prompt">
+                                            {{ task.details.refined_prompt }}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
@@ -346,9 +352,17 @@
                     <div
                         class="w-full bg-surface/80 rounded-lg p-4 border border-slate-700 overflow-y-auto max-h-[30vh]">
 
+                        <!-- 0. What was the original request (Raw from Manifest) -->
+                        <div v-if="selectedTask.details?.original_instruction" class="mb-4">
+                            <h4 class="text-xs font-mono text-slate-500 uppercase mb-1">Original Request (Raw)
+                            </h4>
+                            <p class="text-sm text-slate-400 font-mono italic">{{
+                                selectedTask.details.original_instruction }}</p>
+                        </div>
+
                         <!-- 1. What was asked (Refined Prompt from Lesson Context) -->
                         <div v-if="selectedTask.details?.refined_prompt" class="mb-4">
-                            <h4 class="text-xs font-mono text-neon uppercase mb-1">Contextual Prompt (What was asked)
+                            <h4 class="text-xs font-mono text-neon uppercase mb-1">Contextual Prompt (Refined)
                             </h4>
                             <p class="text-sm text-slate-300 font-mono whitespace-pre-wrap">{{
                                 selectedTask.details.refined_prompt }}</p>
@@ -591,9 +605,14 @@
                     socket.on('disconnect', () => { isConnected.value = false; addLog('warn', 'WebSocket Disconnected', 'System'); });
 
                     socket.on('task_progress', (data) => {
+                        const existing = tasks.value[data.taskId] || {};
                         tasks.value[data.taskId] = {
-                            ...tasks.value[data.taskId],
-                            ...data
+                            ...existing,
+                            ...data,
+                            details: {
+                                ...(existing.details || {}),
+                                ...(data.details || {})
+                            }
                         };
                     });
 

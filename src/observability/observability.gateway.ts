@@ -45,7 +45,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
             lesson_index?: number;
         };
     }) {
-        this.server.emit('task_progress', data);
+        if (this.server) this.server.emit('task_progress', data);
 
         if (data.status === 'failed') {
             const fs = require('fs');
@@ -62,13 +62,15 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      * Emit a generic log message to the dashboard
      */
     emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string) {
-        this.server.emit('system_log', {
-            level,
-            message,
-            context,
-            taskId,
-            timestamp: new Date().toISOString()
-        });
+        if (this.server) {
+            this.server.emit('system_log', {
+                level,
+                message,
+                context,
+                taskId,
+                timestamp: new Date().toISOString()
+            });
+        }
 
         if (level === 'error') {
             const fs = require('fs');
@@ -85,7 +87,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      * Emit a batch summary update
      */
     emitBatchProgress(data: { total: number; completed: number; current: string }) {
-        this.server.emit('batch_progress', data);
+        if (this.server) this.server.emit('batch_progress', data);
     }
 
     /**
@@ -94,7 +96,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      */
     emitBatchInitialized(tasks: Record<string, any>) {
         this.logger.log(`Emitting batch_initialized with ${Object.keys(tasks).length} tasks`);
-        this.server.emit('batch_initialized', tasks);
+        if (this.server) this.server.emit('batch_initialized', tasks);
     }
 
     @SubscribeMessage('open_folder')

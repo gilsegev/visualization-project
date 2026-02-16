@@ -167,7 +167,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // 2. Stamp Template
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Stamping HTML' });
         const stampingStart = performance.now();
-        const finalHtml = this.stampingService.stamp(blueprint.template_id, blueprint);
+        const fixedHtml = this.stampingService.stamp(blueprint.template_id, blueprint);
         metrics.stamping = performance.now() - stampingStart;
 
         this.logger.log(`Template stamped in ${metrics.stamping.toFixed(2)}ms`);
@@ -185,29 +185,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const width = dimensions.width || 1200;
         const height = dimensions.height || 1200;
 
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl, { width, height });
-
-        metrics.browser = performance.now() - browserStart;
-        this.logger.log(`Screenshot taken in ${metrics.browser.toFixed(2)}ms at ${width}x${height}`);
-        this.observability.emitLog('info', `Screenshot taken in ${metrics.browser.toFixed(2)}ms`, 'StampingStrategy', task.id);
-
-        // Inject Viewport Constraints matching the actual dimensions
-        // Refinement: Smart Scaling Strategy
-        // Canonical Design Resolution: 1200x1200
-        const CANONICAL_SIZE = 1200;
-        const scale = width / CANONICAL_SIZE; // e.g. 800 / 1200 = 0.666
-
-        const fixedHtml = finalHtml.replace('</head>', `
-    <style>
-        body {
-            width: ${CANONICAL_SIZE}px !important;
-            height: ${CANONICAL_SIZE}px !important;
-            overflow: hidden !important;
-            transform: scale(${scale});
-            transform-origin: top left;
-        }
-    </style>
-</head>`);
+        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, { width, height });
 
         metrics.total = performance.now() - metrics.start;
 
@@ -295,10 +273,11 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const systemPrompt = `You are an expert Data Visualization Architect.
 Goal: Select template, define style, generate structured content.
 
-CRITICAL: Strict Text Preservation.
-- You must use the EXACT text provided in the user prompt for titles and descriptions.
-- Do NOT summarize, truncate, or rephrase the core content unless explicitly asked.
-- Map the provided "items" directly to the template structure.
+CRITICAL: Strict Text Preservation & Expansion.
+- You must use the EXACT text provided in the user prompt for titles and descriptions IF provided.
+- IF THE PROMPT IS SPARSE (e.g. only a title): You MUST creatively expand the topic into 5-7 logical, professional "items" (points, steps, or comparisons) relevant to the context.
+- Do NOT refuse to generate. DO NOT state you lack details. Your job is to ARCHITECT the visualization even with minimal starting text.
+- Map content directly to the selected template structure.
 
 Templates: 'hub_radial' (circular hub), 'step_list' (vertical sequence), 'step_stone' (zigzag path), 'bento_grid' (grid), 'versus_split' (comparison), 'steps' (progressive list).
 Themes: 'cyber_neon', 'corp_blue', 'nature_fresh', 'warm_creative'.
@@ -336,7 +315,7 @@ OUTPUT VALID JSON ONLY:
                     { role: 'system', content: systemPrompt },
                     { role: 'user', content: prompt }
                 ],
-                temperature: 0.2, // Lower temperature for stricter adherence
+                temperature: 0.4, // Increased from 0.2 to allow creative expansion for sparse prompts
                 max_tokens: 2000
             });
             this.observability.emitLog('info', `Blueprint LLM Response received`, 'BlueprintGen', taskId);
@@ -379,8 +358,8 @@ OUTPUT VALID JSON ONLY:
         } else {
             // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
             // Refinement 6: Strong Negative Prompting for Text
-            fullPrompt = `${prompt}, ${theme.image_style_suffix}, flat vector icon style, isolated on white background, matching ${theme.primary_accent} color --no text, letters, numbers, typography, writing, shadows, blurry, complex background, 3d, realistic, photo`;
         }
+        this.observability.emitLog('info', `🖼️ Image Prompt: ${fullPrompt}`, 'ImageGen', taskId);
 
         try {
             const response = await axios.post(
@@ -495,18 +474,25 @@ OUTPUT VALID JSON ONLY:
             verdict: blueprint.verdict
         };
 
-        const finalHtml = this.stampingService.stamp('versus_split', payload);
+        const fixedHtml = this.stampingService.stamp('versus_split', payload);
         metrics.stamping = performance.now() - stampingStart;
 
         // 3. Screenshot
         const browserStart = performance.now();
         const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl);
+
+        // Extract Dimensions
+        const dimensions = (task as any).metadata?.dimensions || {};
+        const width = dimensions.width || 1200;
+        const height = dimensions.height || 1200;
+
+        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, { width, height });
         metrics.browser = performance.now() - browserStart;
 
         // 4. Save
         const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
-        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(finalHtml));
+        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fixedHtml));
+
         await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
 
         metrics.total = performance.now() - metrics.start;
@@ -514,7 +500,7 @@ OUTPUT VALID JSON ONLY:
         return {
             url: publicUrl,
             posterUrl: publicUrl,
-            payload: { blueprint, html: finalHtml, metrics }
+            payload: { blueprint, html: fixedHtml, metrics }
         };
     }
 
@@ -569,17 +555,23 @@ OUTPUT VALID JSON ONLY:
         // 3. Stamp Template
         const stampingStart = performance.now();
         // Steps template expects: { background_url, center: { title, subtitle }, items: [...] }
-        const finalHtml = this.stampingService.stamp('steps', blueprint);
+        const fixedHtml = this.stampingService.stamp('steps', blueprint);
         metrics.stamping = performance.now() - stampingStart;
 
         // 4. Screenshot & Save
         const browserStart = performance.now();
         const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-        const screenshotBuffer = await this.browserService.screenshotHtml(finalHtml, taskBaseUrl);
+
+        // Extract Dimensions
+        const dimensions = (task as any).metadata?.dimensions || {};
+        const width = dimensions.width || 1200;
+        const height = dimensions.height || 1200;
+
+        const screenshotBuffer = await this.browserService.screenshotHtml(fixedHtml, taskBaseUrl, { width, height });
         metrics.browser = performance.now() - browserStart;
 
         const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
-        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(finalHtml));
+        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fixedHtml));
         await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify(blueprint, null, 2)));
 
         metrics.total = performance.now() - metrics.start;
@@ -588,9 +580,27 @@ OUTPUT VALID JSON ONLY:
             url: publicUrl,
             posterUrl: publicUrl,
             payload: {
-                blueprint, html: finalHtml, metrics,
+                blueprint,
+                html: fixedHtml,
+                metrics,
                 image_prompts: usedPrompts
             }
         };
+    }
+    private applyScaling(html: string, width: number, height: number): string {
+        const CANONICAL_SIZE = 1200;
+        const scale = width / CANONICAL_SIZE;
+
+        return html.replace('</head>', `
+    <style>
+        body {
+            width: ${CANONICAL_SIZE}px !important;
+            height: ${CANONICAL_SIZE}px !important;
+            overflow: hidden !important;
+            transform: scale(${scale});
+            transform-origin: top left;
+        }
+    </style>
+</head>`);
     }
 }

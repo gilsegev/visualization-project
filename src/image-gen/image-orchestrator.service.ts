@@ -114,6 +114,7 @@ export class ImageOrchestratorService {
                         lesson_title: lesson.title,
                         lesson_index: lessonIdx + 1, // 1-based index
                         dimensions: viz.dimensions,
+                        original_instruction: `Description: ${viz.description}${viz.context ? ` | Context: ${viz.context}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
                         custom_theme: {
                             id: 'manifest_theme',
@@ -149,7 +150,8 @@ export class ImageOrchestratorService {
                 stage: 'Intake',
                 details: {
                     title: t.metadata.title || t.metadata.lesson_title,
-                    refined_prompt: t.refined_prompt
+                    refined_prompt: t.refined_prompt,
+                    original_instruction: t.metadata.original_instruction
                 },
                 metadata: t.metadata
             };
@@ -167,7 +169,8 @@ export class ImageOrchestratorService {
                     stage: 'Intake',
                     details: {
                         title: task.metadata.title || task.metadata.lesson_title,
-                        refined_prompt: task.refined_prompt // Add prompt here
+                        refined_prompt: task.refined_prompt,
+                        original_instruction: task.metadata.original_instruction
                     },
                     metadata: {
                         course_id: task.metadata.course_id,
@@ -177,7 +180,7 @@ export class ImageOrchestratorService {
                     }
                 });
                 // Log for "By Asset" view
-                this.observability.emitLog('info', 'Task Intake: Queued for processing', 'Orchestrator', task.id);
+                this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id);
             });
 
             // Execution Loop
@@ -195,7 +198,7 @@ export class ImageOrchestratorService {
                     try {
                         // Triage Phase
                         this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
-                        this.observability.emitLog('info', 'Task Triage: Preparing strategy', 'Orchestrator', task.id);
+                        this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id);
                         await new Promise(r => setTimeout(r, 500));
 
                         // Processing Phase
