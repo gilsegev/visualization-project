@@ -105,8 +105,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
         const relativeOutputDir = path.join(dateStr, courseId, lessonId, taskId);
-        this.logger.log(`[StampingStrategy] Output Context: ${relativeOutputDir}`);
-        this.observability.emitLog('info', `Output Context: ${relativeOutputDir}`, 'StampingStrategy', task.id);
+        this.logger.log(`[StampingStrategy] Target Directory Initialized: ${relativeOutputDir}`);
+        this.observability.emitLog('info', `Target Directory Initialized: ${relativeOutputDir}`, 'StampingStrategy', task.id);
 
         // Resolve Theme
         let theme: Theme;
