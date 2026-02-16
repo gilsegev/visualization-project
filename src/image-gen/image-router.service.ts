@@ -37,7 +37,7 @@ export class ImageRouterService {
         type: "visual_concept" | "data_viz" | "math_formula" | "beautify_slide" | "infographic",
         id: string (UUID v4),
         refined_prompt: string (optimized prompt for an image generator),
-        payload: object (specific structure for data_viz or math_formula, or empty object for others)
+        payload: object (specific structure for data_viz or math_formula. For 'infographic', if the request includes a JSON specification or detailed data, PRESERVE it here as an object. Otherwise, provide an empty object {})
       }>
 
       Example for "Show sales chart":
@@ -67,6 +67,9 @@ export class ImageRouterService {
       return validated;
     } catch (error) {
       this.logger.error('Failed to classify or parse image tasks', error);
+      if (error instanceof z.ZodError) {
+        this.logger.error('Zod Validation Error:', JSON.stringify(error.errors, null, 2));
+      }
       throw new InternalServerErrorException('Failed to process image tasks');
     }
   }

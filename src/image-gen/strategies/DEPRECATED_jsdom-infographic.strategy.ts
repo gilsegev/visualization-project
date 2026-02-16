@@ -23,6 +23,7 @@ export interface HtmlInfographicBlueprint {
     theme_id: ThemeId;
     visual_style_directive: string;
     quality_score?: number;
+    explanation?: string;
     correction_log?: string[];
     background_url?: string; // For templates like "steps" requiring a full bg
     center_topic?: {

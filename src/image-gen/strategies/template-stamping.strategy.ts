@@ -86,8 +86,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         }
 
         metrics.blueprint = performance.now() - blueprintStart;
-        this.logger.log(`Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`);
-        this.observability.emitLog('info', `Blueprint generated in ${metrics.blueprint.toFixed(2)}ms`, 'StampingStrategy', task.id);
+        this.logger.log(`[VisualArchitect] Blueprint generated (${metrics.blueprint.toFixed(2)}ms). Score: ${blueprint.quality_score}. Explanation: ${blueprint.explanation}`);
+        this.observability.emitLog('info', `Blueprint generated in ${metrics.blueprint.toFixed(2)}ms. Explanation: ${blueprint.explanation}`, 'StampingStrategy', task.id);
 
         // 1.5 Image Generation & Asset Management
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Generating Assets' });
@@ -248,6 +248,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         1. Structural Fidelity (40 pts): Preservation of all branches/notes.
         2. Template Match (30 pts): Accuracy of the chosen geometry for the lesson goal.
         3. Wellness Alignment (30 pts): Adherence to the warm, non-clinical "Wellness Book" philosophy.
+    - Technical Explanation: You MUST provide a 1-2 sentence "explanation" justifying your choice of template and your quality score.
 
     TEMPLATE CATALOG:
     1. 'hub_radial': Circular central topic with radial spokes.
@@ -264,6 +265,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     OUTPUT SCHEMA (VALID JSON ONLY):
     {
       "quality_score": number,
+      "explanation": "string",
       "template_id": "hub_radial" | "versus_split" | "step_journey" | "bento_grid",
       "correction_log": string[],
       "blueprint": { ...template_specific_data... }
@@ -293,6 +295,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
                 // Merge quality metadata into blueprint for downstream checks
                 if (responseObj.quality_score) blueprint.quality_score = responseObj.quality_score;
+                if (responseObj.explanation) blueprint.explanation = responseObj.explanation;
                 if (responseObj.correction_log) blueprint.correction_log = responseObj.correction_log;
                 if (responseObj.template_id) blueprint.template_id = responseObj.template_id;
 
