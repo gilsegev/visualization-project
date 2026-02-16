@@ -39,6 +39,7 @@
             height: 1200px;
             background: var(--bg-primary);
             overflow: hidden;
+            --background-opacity: 0.18;
         }
 
         /* ENVIRONMENT LAYER: Semi-transparent background image */
@@ -49,7 +50,7 @@
             background-image: var(--background-url, none);
             background-size: cover;
             background-position: center;
-            opacity: 0.18;
+            opacity: var(--background-opacity);
             pointer-events: none;
             z-index: 1;
         }
@@ -212,6 +213,9 @@
                 canvas.style.setProperty('--bg-color', data.background.color || '#F4EDE4');
                 if (data.background.image_url) {
                     canvas.style.setProperty('--background-url', `url('${data.background.image_url}')`);
+                }
+                if (data.background.opacity !== undefined) {
+                    canvas.style.setProperty('--background-opacity', data.background.opacity);
                 }
             }
 

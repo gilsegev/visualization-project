@@ -302,19 +302,18 @@ Task:
     - "center_topic": { "title": "Journey Title", "description": "Subtitle" }
     - "visual_style_directive": "Description for background image (e.g. minimalist nature landscape)"
 7. FOR BENTO_GRID: 12x12 matrix layout.
-    - "cells": [ { "content": { "type": "title_text|image_only|title_image|text_image|title_image_text", "title": "...", "text": "...", "image_url": "..." }, "layout": { "col_span": (1-12), "row_span": (1-12) } } ]
-    - Standard Hero Pattern: Assign ONE cell a [6x6] or [8x6] span.
-    - Summary Note: Ensure other items fit around the hero in [3x3] or [4x4] blocks.
+    - "cells": [ { "content": { "type": "title_text|image_only|title_image|text_image|title_image_text", "title": "...", "text": "...", "image_url": "..." }, "layout": { "col_span": (1-12), "row_span": (1-12) }, "style": { "border_width": "4px", "border_color": "#HEX", "border_style": "solid" } } ]
+    - Standard Hero Pattern: Assign ONE cell a [6x6], [8x6] or [6x12] span.
+    - Summary Note: Ensure other items fit around the hero in [3x3], [4x4], or [3x6] blocks.
+    - "background": { "color": "#HEX", "opacity": 0.15 } (Set opacity for environmental layer)
 
 OUTPUT VALID JSON ONLY:
 {
   "template_id": "...",
   "theme_id": "...",
-  "center_topic": { "title": "...", "description": "..." },
-  "items": [ { "title": "...", "description": "..." } ],
-  "cells": [ { "content": { "type": "...", "title": "...", "text": "..." }, "layout": { "col_span": 6, "row_span": 6 } } ],
-  "versus_subjects": [ ... ],
-  "verdict": { ... }
+  "visual_style_directive": "...",
+  "background": { "color": "#HEX", "opacity": 0.15 },
+  "cells": [ { "content": { "type": "...", "title": "...", "text": "..." }, "layout": { "col_span": 6, "row_span": 6 }, "style": { "border_width": "1px" } } ]
 }`;
 
         try {
@@ -636,7 +635,7 @@ OUTPUT VALID JSON ONLY:
         if (bgResult?.url) {
             const buffer = Buffer.from(bgResult.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
             await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'background.png'), buffer);
-            blueprint.background = { image_url: './assets/background.png' };
+            blueprint.background = { ...(blueprint.background || {}), image_url: './assets/background.png' };
             usedPrompts.push(`Background: ${bgResult.prompt}`);
         }
 
