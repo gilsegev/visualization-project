@@ -8,9 +8,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-accent: #f8fafc;
-            --text-main: #1e293b;
-            --text-dim: #64748b;
+            /* Theme Variables - Overridden by backend injection */
+            --bg-primary: #f8fafc;
+            --accent-primary: #00abe6;
+            --text-primary: #1e293b;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --font-main: 'Inter', sans-serif;
         }
 
         body {
@@ -18,11 +21,10 @@
             padding: 0;
             width: 1200px;
             height: 1200px;
-            font-family: 'Inter', sans-serif;
+            font-family: var(--font-main);
             overflow: hidden;
-            background-color: var(--bg-accent);
+            background-color: var(--bg-primary);
             position: relative;
-            /* Ensure absolute children are relative to this */
         }
 
         /* FULL PAGE BACKGROUND LAYER */
@@ -54,7 +56,7 @@
 
         /* GLASS CARD THEME */
         .step-card {
-            background: rgba(255, 255, 255, 0.85);
+            background: var(--glass-bg);
             backdrop-filter: blur(12px);
             border-radius: 35px;
             border: 2.5px solid white;
@@ -96,9 +98,11 @@
 
     <div id="canvas">
         <div class="text-center mb-16">
-            <h2 id="main-title" class="text-[32px] font-black text-slate-800 tracking-[0.15em] mb-4 uppercase">JOURNEY
+            <h2 id="main-title" class="text-[32px] font-black tracking-[0.15em] mb-4 uppercase"
+                style="color: var(--text-primary)">JOURNEY
                 TITLE</h2>
-            <div id="subtitle" class="text-slate-500 font-medium uppercase tracking-widest text-sm">SUBTITLE TEXT</div>
+            <div id="subtitle" class="font-medium uppercase tracking-widest text-sm"
+                style="color: var(--text-primary); opacity: 0.6;">SUBTITLE TEXT</div>
         </div>
 
         <div class="relative w-full flex justify-between items-start" id="steps-container">
@@ -156,8 +160,8 @@
                         <div class="text-[10px] font-black mb-3 px-2 py-1 rounded-full text-white uppercase tracking-tighter" style="background-color: ${color}">
                             Step 0${index + 1}
                         </div>
-                        <h3 class="text-md font-bold text-slate-800 mb-2 text-center leading-tight">${item.title}</h3>
-                        <p class="text-slate-500 text-[11px] leading-relaxed text-center font-medium line-clamp-5">${item.description}</p>
+                        <h3 class="text-md font-bold mb-2 text-center leading-tight" style="color: var(--text-primary)">\${item.title}</h3>
+                        <p class="text-[11px] leading-relaxed text-center font-medium line-clamp-5" style="color: var(--text-primary); opacity: 0.7;">\${item.description}</p>
                     </div>
                 `;
                 container.appendChild(stepWrapper);

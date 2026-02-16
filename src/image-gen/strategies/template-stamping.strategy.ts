@@ -85,10 +85,12 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // Resolve Theme
         let theme: Theme;
+        const themeId = taskAny.metadata?.theme_id || blueprint.theme_id;
+
         if (taskAny.metadata?.custom_theme) {
             theme = taskAny.metadata.custom_theme as Theme;
         } else {
-            theme = THEME_LIBRARY[blueprint.theme_id] || THEME_LIBRARY['corp_blue'];
+            theme = THEME_LIBRARY[themeId] || THEME_LIBRARY['corp_blue'];
         }
 
         // Dispatch based on Template ID
@@ -167,7 +169,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         // 2. Stamp Template
         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Stamping HTML' });
         const stampingStart = performance.now();
-        const fixedHtml = this.stampingService.stamp(blueprint.template_id, blueprint);
+        const fixedHtml = this.stampingService.stamp(blueprint.template_id, blueprint, theme);
         metrics.stamping = performance.now() - stampingStart;
 
         this.logger.log(`Template stamped in ${metrics.stamping.toFixed(2)}ms`);
@@ -474,7 +476,7 @@ OUTPUT VALID JSON ONLY:
             verdict: blueprint.verdict
         };
 
-        const fixedHtml = this.stampingService.stamp('versus_split', payload);
+        const fixedHtml = this.stampingService.stamp('versus_split', payload, theme);
         metrics.stamping = performance.now() - stampingStart;
 
         // 3. Screenshot
@@ -555,7 +557,7 @@ OUTPUT VALID JSON ONLY:
         // 3. Stamp Template
         const stampingStart = performance.now();
         // Steps template expects: { background_url, center: { title, subtitle }, items: [...] }
-        const fixedHtml = this.stampingService.stamp('steps', blueprint);
+        const fixedHtml = this.stampingService.stamp('steps', blueprint, theme);
         metrics.stamping = performance.now() - stampingStart;
 
         // 4. Screenshot & Save
@@ -586,21 +588,5 @@ OUTPUT VALID JSON ONLY:
                 image_prompts: usedPrompts
             }
         };
-    }
-    private applyScaling(html: string, width: number, height: number): string {
-        const CANONICAL_SIZE = 1200;
-        const scale = width / CANONICAL_SIZE;
-
-        return html.replace('</head>', `
-    <style>
-        body {
-            width: ${CANONICAL_SIZE}px !important;
-            height: ${CANONICAL_SIZE}px !important;
-            overflow: hidden !important;
-            transform: scale(${scale});
-            transform-origin: top left;
-        }
-    </style>
-</head>`);
     }
 }

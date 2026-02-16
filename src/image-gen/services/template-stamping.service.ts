@@ -1,7 +1,7 @@
-
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { Theme } from '../themes.config';
 
 @Injectable()
 export class TemplateStampingService {
@@ -11,9 +11,10 @@ export class TemplateStampingService {
      * Loads an HTML template and stamps it with the provided data.
      * @param templateId The ID of the template (e.g., 'hub_radial')
      * @param data The data to inject into the template
+     * @param theme Optional theme to apply
      * @returns The stamped HTML string
      */
-    public stamp(templateId: string, data: any): string {
+    public stamp(templateId: string, data: any, theme?: Theme): string {
         // Updated directory to point to "html templates"
         const templatesDir = path.join(process.cwd(), 'public', 'assets', 'infographics', 'templates', 'html templates');
 
@@ -40,6 +41,7 @@ export class TemplateStampingService {
 
         // The placeholder specific to our templates
         const placeholder = '/* INSERT_JSON_HERE */ null';
+
         // Data Mapping: blueprint.center_topic -> template.center
         if (data && data.center_topic) {
             data.center = data.center_topic;
@@ -51,12 +53,32 @@ export class TemplateStampingService {
             this.logger.warn(`Template '${templateId}' does not contain the expected placeholder for data injection.`);
         }
 
-        if (data.radius) {
-            // Inject config override before the end of body
-            const overrideScript = `<script>if(typeof CONFIG !== 'undefined') { CONFIG.radius = ${data.radius}; }</script></body>`;
-            return templateContent.replace(placeholder, () => replacement).replace('</body>', overrideScript);
+        let stampedHtml = templateContent.replace(placeholder, () => replacement);
+
+        // --- THEME INJECTION ---
+        if (theme) {
+            this.logger.log(`Injecting theme: ${theme.font_name}`);
+            const themeCss = `
+    <style id="injected-theme">
+        @import url('${theme.font_family}');
+        :root {
+            --bg-primary: ${theme.background_main.startsWith('#') ? `radial-gradient(circle at center, ${theme.background_main} 0%, ${theme.background_main} 100%)` : theme.background_main};
+            --accent-primary: ${theme.primary_accent};
+            --text-primary: ${theme.text_main};
+            --glass-bg: ${theme.glass_color};
+            --font-main: '${theme.font_name}', sans-serif;
+        }
+    </style>
+`;
+            stampedHtml = stampedHtml.replace('</head>', `${themeCss}</head>`);
         }
 
-        return templateContent.replace(placeholder, () => replacement);
+        if (data.radius) {
+            // Inject config override before the end of body
+            const overrideScript = `<script>if(typeof CONFIG !== 'undefined') { CONFIG.radius = ${data.radius}; }</script>`;
+            stampedHtml = stampedHtml.replace('</body>', `${overrideScript}</body>`);
+        }
+
+        return stampedHtml;
     }
 }

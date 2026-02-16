@@ -107,3 +107,25 @@
 [2026-02-16T02:03:12.764Z] [ERROR] [BlueprintGen] [viz-1771207366542-wzwwnvxmq] Model Refusal/Parse Error. Raw: I cannot create an annotated triangle without knowing which template to use. Please select one of th...
 [2026-02-16T02:03:12.764Z] [FAILED] [Task: viz-1771207366542-wzwwnvxmq] {"error":"Invalid JSON from LLM: I cannot create an annotated triangle without know..."}
 [2026-02-16T02:03:15.838Z] [FAILED] [Task: viz-1771207366542-mjbt4qk5g] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-16T02:12:40.225Z] [ERROR] [BlueprintGen] [viz-1771207958570-si6am6lbq] Model Refusal/Parse Error. Raw: I cannot fulfill this request. The prompt is incomplete, lacking the necessary "items" or content to...
+[2026-02-16T02:12:40.226Z] [FAILED] [Task: viz-1771207958570-si6am6lbq] {"error":"Invalid JSON from LLM: I cannot fulfill this request. The prompt is incom..."}
+[2026-02-16T02:12:53.696Z] [ERROR] [BlueprintGen] [viz-1771207958570-x49q31g7j] Model Refusal/Parse Error. Raw: I cannot create an annotated triangle because that template is not supported. Please select from the...
+[2026-02-16T02:12:53.697Z] [FAILED] [Task: viz-1771207958570-x49q31g7j] {"error":"Invalid JSON from LLM: I cannot create an annotated triangle because that..."}
+[2026-02-16T02:12:56.410Z] [FAILED] [Task: viz-1771207958570-jxhvjsv99] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-16T02:13:26.056Z] [FAILED] [Task: viz-1771207958570-bjxdta8my] {"error":"Template not found: step_stone"}
+[2026-02-16T02:14:55.868Z] [ERROR] [BlueprintGen] [viz-1771208094028-d282awnok] Model Refusal/Parse Error. Raw: I am sorry, I cannot fulfill this request. The prompt is incomplete, lacking essential details such ...
+[2026-02-16T02:14:55.869Z] [FAILED] [Task: viz-1771208094028-d282awnok] {"error":"Invalid JSON from LLM: I am sorry, I cannot fulfill this request. The pro..."}
+[2026-02-16T02:15:18.922Z] [ERROR] [BlueprintGen] [viz-1771208094028-1iqrdtvl5] Model Refusal/Parse Error. Raw: I cannot create an annotated triangle without knowing which template to use. Please select one of th...
+[2026-02-16T02:15:18.922Z] [FAILED] [Task: viz-1771208094028-1iqrdtvl5] {"error":"Invalid JSON from LLM: I cannot create an annotated triangle without know..."}
+[2026-02-16T02:15:22.348Z] [FAILED] [Task: viz-1771208094028-d8pdhy5gm] {"error":"Cannot read properties of undefined (reading 'title')"}
+[2026-02-16T02:15:23.682Z] [ERROR] [BlueprintGen] [viz-1771208094028-fto24mzyz] Model Refusal/Parse Error. Raw: I cannot fulfill this request. The prompt is incomplete. The "diverging_trajectory" template is not ...
+[2026-02-16T02:15:23.682Z] [FAILED] [Task: viz-1771208094028-fto24mzyz] {"error":"Invalid JSON from LLM: I cannot fulfill this request. The prompt is incom..."}
+[2026-02-16T03:14:33.481Z] [FAILED] [Task: viz-1771211606492-w07pbe332] {"error":"Template not found: bento_grid"}
+[2026-02-16T03:14:54.206Z] [ERROR] [ImageGen] [viz-1771211606492-fj3w386nb] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-16T03:14:54.207Z] [FAILED] [Task: viz-1771211606492-fj3w386nb] {"error":"Template not found: step_stone"}
+[2026-02-16T03:15:07.570Z] [ERROR] [ImageGen] [viz-1771211606492-o9p6xrlo8] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-16T03:15:07.570Z] [FAILED] [Task: viz-1771211606492-o9p6xrlo8] {"error":"Critical Asset Generation Failed: Critical Asset Generation Failed: timeout of 30000ms exceeded"}
+[2026-02-16T03:15:07.571Z] [ERROR] [ImageGen] [viz-1771211606492-o9p6xrlo8] Image Gen Failed: timeout of 30000ms exceeded
+[2026-02-16T03:22:39.335Z] [FAILED] [Task: viz-1771212103246-7jeqgd1cb] {}
+[2026-02-16T03:22:39.335Z] [FAILED] [Task: viz-1771212103246-vjxkmsj38] {}
+[2026-02-16T03:22:53.944Z] [FAILED] [Task: viz-1771212103246-vfe6ndhly] {"error":"Template not found: bento_grid"}

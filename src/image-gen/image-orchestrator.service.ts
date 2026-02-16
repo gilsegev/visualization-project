@@ -103,6 +103,9 @@ export class ImageOrchestratorService {
 
                 const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${viz.description}. Context: ${viz.context || ''}`;
 
+                // Support for specific theme overrides
+                const themeId = viz.metadata?.theme_id || viz.theme_id;
+
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     type: 'infographic',
@@ -114,9 +117,11 @@ export class ImageOrchestratorService {
                         lesson_title: lesson.title,
                         lesson_index: lessonIdx + 1, // 1-based index
                         dimensions: viz.dimensions,
+                        theme_id: themeId, // Pass through for strategy
                         original_instruction: `Description: ${viz.description}${viz.context ? ` | Context: ${viz.context}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
-                        custom_theme: {
+                        // Only inject custom_theme if a global guide is provided AND no specific themeId is set
+                        custom_theme: (manifest.course?.globalStyleGuide && !themeId) ? {
                             id: 'manifest_theme',
                             name: 'Manifest Theme',
                             primary_accent: globalStyle.colorPalette?.mutedTeal || '#5B9A8B',
@@ -125,7 +130,7 @@ export class ImageOrchestratorService {
                             text_main: globalStyle.colorPalette?.deepNavy || '#1A365D',
                             font_family: globalStyle.typography?.fontFamily?.[0] || 'Inter',
                             image_style_suffix: `${designPhilosophy}, flat vector style`
-                        }
+                        } : undefined
                     }
                 });
             });

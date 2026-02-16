@@ -6,11 +6,12 @@
     <title>Premium Radiant Hub</title>
     <style>
         :root {
-            --bg-top: #FAF9F6;
-            --bg-bottom: #F2F0E9;
-            --accent-teal: #5B9A8B;
-            --text-navy: #1A365D;
-            --glass-white: rgba(255, 255, 255, 0.85);
+            /* Theme Variables - Overridden by backend injection */
+            --bg-primary: radial-gradient(circle at center, #FAF9F6 0%, #F2F0E9 100%);
+            --accent-primary: #5B9A8B;
+            --text-primary: #1A365D;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --font-main: 'Inter', system-ui, sans-serif;
         }
 
         body {
@@ -18,9 +19,8 @@
             padding: 0;
             width: 1200px;
             height: 1200px;
-            /* UX: Soft radial vignette for depth */
-            background: radial-gradient(circle at center, var(--bg-top) 0%, var(--bg-bottom) 100%);
-            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-primary);
+            font-family: var(--font-main);
             overflow: hidden;
         }
 
@@ -38,7 +38,8 @@
             transform: translate(-50%, -50%);
             width: 800px;
             height: 800px;
-            border: 2px dashed rgba(91, 154, 139, 0.15);
+            border: 2px dashed var(--accent-primary);
+            opacity: 0.15;
             border-radius: 50%;
             z-index: 5;
         }
@@ -60,9 +61,8 @@
             justify-content: center;
             text-align: center;
             z-index: 100;
-            box-shadow: 0 25px 60px rgba(26, 54, 93, 0.12);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.1);
             overflow: hidden;
-            /* For the image-overlay */
         }
 
         .hub-image-overlay {
@@ -71,7 +71,6 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
-            /* UX: Slightly darken to pop white text, but keep image visible */
             background-color: rgba(26, 54, 93, 0.1);
             opacity: 1.0;
             z-index: 1;
@@ -80,7 +79,7 @@
 
         #hub-center .content {
             z-index: 2;
-            color: var(--text-navy);
+            color: var(--text-primary);
             padding: 30px;
         }
 
@@ -114,24 +113,25 @@
         }
 
         .content-card {
-            background: var(--glass-white);
+            background: var(--glass-bg);
             backdrop-filter: blur(12px);
             padding: 30px 20px 20px 20px;
             border-radius: 24px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             width: 100%;
         }
 
         h2 {
-            color: var(--text-navy);
+            color: var(--text-primary);
             margin: 0 0 8px 0;
             font-size: 1.3rem;
             font-weight: 700;
         }
 
         p {
-            color: #50586D;
+            color: var(--text-primary);
+            opacity: 0.8;
             margin: 0;
             font-size: 1rem;
             line-height: 1.5;
