@@ -23,4 +23,10 @@ export class ImageGenController {
         }
         return this.orchestrator.generateFromManifest(manifest);
     }
+
+    @Post('stop')
+    async stopBatch() {
+        this.orchestrator.stopBatch();
+        return { message: 'Batch stop signal sent' };
+    }
 }

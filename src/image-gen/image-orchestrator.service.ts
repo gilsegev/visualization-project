@@ -15,6 +15,14 @@ export class ImageOrchestratorService {
         private readonly observability: ObservabilityGateway,
     ) { }
 
+    private stopSignal = false;
+
+    stopBatch() {
+        this.stopSignal = true;
+        this.logger.log('Stop signal received. Halting new task execution.');
+        this.observability.emitLog('warn', 'Batch Stop Requested. Halting new tasks...', 'Orchestrator');
+    }
+
     async generateCourse(content: string) {
         const start = performance.now();
         this.logger.log(`Starting course generation for content length: ${content.length}`);
@@ -70,6 +78,7 @@ export class ImageOrchestratorService {
     }
 
     async generateFromManifest(manifest: any) {
+        this.stopSignal = false; // Reset signal
         const start = performance.now();
         const courseTitle = manifest.course?.title || 'Untitled Course';
         this.logger.log(`Starting Batch Generation from Hierarchical Manifest: ${courseTitle}`);
@@ -167,6 +176,8 @@ export class ImageOrchestratorService {
                         lesson_index: task.metadata.lesson_index
                     }
                 });
+                // Log for "By Asset" view
+                this.observability.emitLog('info', 'Task Intake: Queued for processing', 'Orchestrator', task.id);
             });
 
             // Execution Loop
@@ -175,13 +186,21 @@ export class ImageOrchestratorService {
 
             const promises = tasks.map((task: any, index: number) => {
                 return limit(async () => {
+                    if (this.stopSignal) {
+                        this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id);
+                        this.observability.emitProgress({ taskId: task.id, status: 'failed', stage: 'Cancelled' });
+                        return;
+                    }
+
                     try {
                         // Triage Phase
                         this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
+                        this.observability.emitLog('info', 'Task Triage: Preparing strategy', 'Orchestrator', task.id);
                         await new Promise(r => setTimeout(r, 500));
 
                         // Processing Phase
                         this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });
+                        this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id);
 
                         const strategy = this.strategyFactory.getStrategy(task);
                         // Cast to any because the interface might not have performGeneration typed yet (it's specific to template strategy)
