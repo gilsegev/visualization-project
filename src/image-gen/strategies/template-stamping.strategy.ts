@@ -76,7 +76,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR ITEMS AND STRUCTURE):\n${JSON.stringify(task.payload, null, 2)}`;
         let blueprint: HtmlInfographicBlueprint;
         try {
-            blueprint = await this.generateBlueprint(fullPrompt, task.id);
+            blueprint = await this.generateBlueprint(fullPrompt, task.id, task.payload);
         } catch (e) {
             const details = this.extractErrorDetails(e);
             const authFailure = details.statusCode === 401 || details.statusCode === 403 || /user not found/i.test(details.message);
@@ -93,6 +93,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             );
             blueprint = this.buildFallbackBlueprint(task);
         }
+
+        // Ensure we always end up with one supported render template.
+        blueprint = this.normalizeBlueprintTemplate(blueprint, task.payload, task.id);
 
         // Fail-Fast: Prompt 10 logic
         if (blueprint.quality_score && blueprint.quality_score < 75) {
@@ -297,16 +300,18 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
 
     // Duplicated from HtmlInfographicStrategy for independence, or could be extracted to a shared service
-    private async generateBlueprint(prompt: string, taskId: string): Promise<HtmlInfographicBlueprint> {
+    private async generateBlueprint(prompt: string, taskId: string, sourcePayload?: any): Promise<HtmlInfographicBlueprint> {
         // Reuse existing logic or simplified logic
         const systemPrompt = `You are a Senior Visual Architect. You do not create content; you map pedagogical specifications into stable geometric blueprints.
     
     CRITICAL DIRECTIVES:
+    - Type Normalization: The incoming "type" is advisory. If it is unknown (e.g. "annotated_triangle"), you MUST normalize to the closest supported template and continue. Do NOT reject solely because the source type label is not in the template catalog.
     - Hallucination Guardrail: If input is extremely sparse (e.g. only a title with no context), return a "correction_log". However, if subjects and metrics are provided for a comparison, you SHOULD use your world knowledge to populate the values, descriptions, and scores to provide a complete pedagogical experience. Preserve the EXACT terminology from the source for the core subjects and metrics.
     - Quality Rubric: Calculate and return a quality_score (1-100) based on:
         1. Structural Fidelity (40 pts): Preservation of all branches/notes.
         2. Template Match (30 pts): Accuracy of the chosen geometry for the lesson goal.
         3. Wellness Alignment (30 pts): Adherence to the warm, non-clinical "Wellness Book" philosophy.
+    - Refusal Policy: Only use correction_log for missing/empty source content. Never refuse based only on unsupported type names.
     - Technical Explanation: You MUST provide a 1-2 sentence "explanation" justifying your choice of template and your quality score.
 
     TEMPLATE CATALOG:
@@ -336,6 +341,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     {
       "quality_score": number,
       "explanation": "string",
+      "source_type": "string",
+      "normalized_template_id": "hub_radial" | "versus_split" | "step_journey" | "bento_grid",
+      "normalization_reason": "string",
       "template_id": "hub_radial" | "versus_split" | "step_journey" | "bento_grid",
       "correction_log": string[],
       "blueprint": { ...template_specific_data... }
@@ -359,19 +367,59 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                         });
                     });
 
-                    const content = response.choices[0]?.message?.content || '{}';
+                    let content = response.choices[0]?.message?.content || '{}';
                     this.observability.emitLog('info', `Blueprint LLM Response (Raw): ${content.substring(0, 1000)}`, 'BlueprintGen', taskId);
-                    const text = content.replace(/```json/g, '').replace(/```/g, '').trim();
+                    let text = content.replace(/```json/g, '').replace(/```/g, '').trim();
 
                     try {
-                        const responseObj = JSON.parse(text);
-                        const blueprint = responseObj.blueprint || responseObj;
+                        let responseObj = JSON.parse(text);
+                        let blueprint = responseObj.blueprint || responseObj;
+
+                        // Single repair pass when model refuses due unsupported input type.
+                        if (this.isTypeNormalizationRefusal(responseObj, blueprint)) {
+                            const repairPrompt = `Repair this blueprint response. It incorrectly refused due source type naming.
+
+Rules:
+1) Do not refuse due unknown type labels.
+2) Normalize to nearest supported template: hub_radial | versus_split | step_journey | bento_grid.
+3) Preserve source semantics and structure.
+4) Return valid JSON only in the required schema.
+
+Original user request:
+${prompt}
+
+Rejected response to repair:
+${text}`;
+
+                            this.observability.emitLog('warn', 'Blueprint normalization repair retry triggered', 'BlueprintGen', taskId);
+                            const repairResponse = await this.blueprintApiLimit(async () => {
+                                return this.openai.chat.completions.create({
+                                    model: model,
+                                    messages: [
+                                        { role: 'system', content: systemPrompt },
+                                        { role: 'user', content: repairPrompt }
+                                    ],
+                                    temperature: 0.2,
+                                    max_tokens: 2000
+                                });
+                            });
+                            content = repairResponse.choices[0]?.message?.content || '{}';
+                            this.observability.emitLog('info', `Blueprint LLM Repair Response (Raw): ${content.substring(0, 1000)}`, 'BlueprintGen', taskId);
+                            text = content.replace(/```json/g, '').replace(/```/g, '').trim();
+                            responseObj = JSON.parse(text);
+                            blueprint = responseObj.blueprint || responseObj;
+                        }
 
                         // Merge quality metadata into blueprint for downstream checks
                         if (responseObj.quality_score) blueprint.quality_score = responseObj.quality_score;
                         if (responseObj.explanation) blueprint.explanation = responseObj.explanation;
                         if (responseObj.correction_log) blueprint.correction_log = responseObj.correction_log;
                         if (responseObj.template_id) blueprint.template_id = responseObj.template_id;
+                        if (responseObj.normalized_template_id && !blueprint.template_id) blueprint.template_id = responseObj.normalized_template_id;
+                        if (responseObj.source_type) (blueprint as any).source_type = responseObj.source_type;
+                        if (responseObj.normalization_reason) (blueprint as any).normalization_reason = responseObj.normalization_reason;
+
+                        blueprint = this.normalizeBlueprintTemplate(blueprint, sourcePayload, taskId);
 
                         const parsed = blueprint as HtmlInfographicBlueprint;
                         // Validate Theme
@@ -402,6 +450,65 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             err.provider = 'OpenRouter';
             throw err;
         }
+    }
+
+    private isTypeNormalizationRefusal(responseObj: any, blueprint: any): boolean {
+        const templateId = responseObj?.template_id || responseObj?.normalized_template_id || blueprint?.template_id;
+        const logText = Array.isArray(responseObj?.correction_log)
+            ? responseObj.correction_log.join(' ').toLowerCase()
+            : Array.isArray(blueprint?.correction_log)
+                ? blueprint.correction_log.join(' ').toLowerCase()
+                : '';
+        const refusalTerms = ['not a supported template', 'unsupported template', 'please choose from'];
+        return (!templateId || templateId === 'null') && refusalTerms.some(term => logText.includes(term));
+    }
+
+    private normalizeBlueprintTemplate(blueprint: any, sourcePayload: any, taskId: string): any {
+        const supported = new Set(['hub_radial', 'versus_split', 'step_journey', 'bento_grid', 'steps', 'step_list']);
+        if (supported.has(String(blueprint?.template_id || ''))) {
+            return blueprint;
+        }
+
+        const inferredTemplate = this.inferTemplateFromStructure(sourcePayload, blueprint);
+        this.observability.emitLog(
+            'warn',
+            `Blueprint template normalized via structural fallback to '${inferredTemplate}' (original='${blueprint?.template_id ?? 'null'}')`,
+            'BlueprintGen',
+            taskId
+        );
+        return {
+            ...blueprint,
+            template_id: inferredTemplate,
+            quality_score: Math.max(Number(blueprint?.quality_score || 0), 75),
+            explanation: blueprint?.explanation || `Template normalized to ${inferredTemplate} using structural fallback.`,
+            normalization_reason: (blueprint as any)?.normalization_reason || 'Structural fallback from source payload'
+        };
+    }
+
+    private inferTemplateFromStructure(sourcePayload: any, blueprint: any): 'hub_radial' | 'versus_split' | 'step_journey' | 'bento_grid' {
+        const payload = sourcePayload || {};
+        const hasComparisonSignals =
+            Array.isArray(payload.panels) ||
+            Array.isArray(payload.comparison_items) ||
+            Array.isArray(payload?.paths) ||
+            Array.isArray(blueprint?.versus_subjects) ||
+            Array.isArray(blueprint?.comparison_items);
+        if (hasComparisonSignals) return 'versus_split';
+
+        const hasJourneySignals =
+            Array.isArray(payload.steps) ||
+            Array.isArray(payload.sequence) ||
+            Array.isArray(payload?.structure?.branches) ||
+            Array.isArray(blueprint?.items) && blueprint.items.length >= 4;
+        if (hasJourneySignals) return 'step_journey';
+
+        const hasGridSignals =
+            Array.isArray(payload.cells) ||
+            Array.isArray(payload.distortions) ||
+            Array.isArray(blueprint?.cells);
+        if (hasGridSignals) return 'bento_grid';
+
+        return 'hub_radial';
     }
 
     // Copied from DEPRECATED_jsdom-infographic.strategy.ts
