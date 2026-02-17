@@ -48,10 +48,15 @@ async function run() {
   fs.mkdirSync(outDir, { recursive: true });
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
   const results = [];
 
   for (const count of COUNTS) {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 1200 } });
+    const pageErrors = [];
+    page.on('pageerror', (err) => {
+      pageErrors.push(String(err && err.message ? err.message : err));
+    });
+
     const payload = buildPayload(count);
     const html = stampHubHtml(template, payload);
     const htmlPath = path.join(outDir, `hub-${count}.html`);
@@ -65,6 +70,7 @@ async function run() {
     const metrics = await page.evaluate(() => {
       const cards = Array.from(document.querySelectorAll('.spoke-anchor .content-card'));
       const hub = document.getElementById('hub-center').getBoundingClientRect();
+      const titleText = document.getElementById('hub-title')?.innerText || '';
       const intersects = (a, b, pad = 0) =>
         !(
           a.right - pad < b.left + pad ||
@@ -92,16 +98,26 @@ async function run() {
         cardCount: cards.length,
         cardOverlapPairs,
         cardHubOverlaps,
+        titleText,
       };
     });
+
+    const rendered = metrics.cardCount === count && !metrics.titleText.includes('TITLE');
+    const hasScriptErrors = pageErrors.length > 0;
 
     results.push({
       count,
       ...metrics,
+      scriptErrors: pageErrors,
       html: htmlPath,
       png: pngPath,
-      pass: metrics.cardOverlapPairs === 0 && metrics.cardHubOverlaps === 0,
+      pass:
+        rendered &&
+        !hasScriptErrors &&
+        metrics.cardOverlapPairs === 0 &&
+        metrics.cardHubOverlaps === 0,
     });
+    await page.close();
   }
 
   await browser.close();
@@ -112,8 +128,10 @@ async function run() {
   console.table(
     results.map((r) => ({
       spokes: r.count,
+      cards: r.cardCount,
       card_overlaps: r.cardOverlapPairs,
       hub_overlaps: r.cardHubOverlaps,
+      script_errors: r.scriptErrors.length,
       pass: r.pass,
     }))
   );
