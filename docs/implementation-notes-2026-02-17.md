@@ -35,3 +35,17 @@ File:
 
 - Production launch currently requires `node dist/src/main.js`.
 - `npm run start:prod` points to `dist/main` and should be corrected in `package.json`.
+
+## Follow-up Fixes (Render + E2E Validation)
+
+- Fixed a JavaScript syntax issue in `Hub.html` that could stop rendering after compact-mode adjustments.
+- Improved compact hub collision handling for high spoke counts (10-12) using stronger radial + angular separation.
+- Hardened hub density E2E validation so a run cannot pass when rendering fails:
+  - fail on browser `pageerror`
+  - fail when rendered card count does not match requested spoke count
+  - fail when center title remains default placeholder text
+  - isolate each case in a fresh Playwright page to avoid script redeclaration artifacts
+
+Files:
+- `public/assets/infographics/templates/html templates/Hub.html`
+- `scripts/e2e-hub-density.js`
