@@ -8,12 +8,18 @@ import { ObservabilityGateway } from '../observability/observability.gateway';
 @Injectable()
 export class ImageOrchestratorService {
     private readonly logger = new Logger(ImageOrchestratorService.name);
+    private readonly manifestTaskConcurrency: number;
 
     constructor(
         private readonly imageRouter: ImageRouterService,
         private readonly strategyFactory: ImageStrategyFactory,
         private readonly observability: ObservabilityGateway,
-    ) { }
+    ) {
+        const configuredConcurrency = Number(process.env.MANIFEST_TASK_CONCURRENCY || 8);
+        this.manifestTaskConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
+            ? configuredConcurrency
+            : 8;
+    }
 
     private stopSignal = false;
 
@@ -184,8 +190,17 @@ export class ImageOrchestratorService {
             this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id);
         });
 
+        // Move tasks out of Intake immediately so observability reflects queued work.
+        tasks.forEach(task => {
+            this.observability.emitProgress({
+                taskId: task.id,
+                status: 'pending',
+                stage: 'Queued for Generation'
+            });
+        });
+
         // Execution Loop
-        const limit = pLimit(3);
+        const limit = pLimit(this.manifestTaskConcurrency);
         let completedCount = 0;
         const taskResults = [];
 
@@ -201,7 +216,6 @@ export class ImageOrchestratorService {
                     // Triage Phase
                     this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
                     this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id);
-                    await new Promise(r => setTimeout(r, 500));
 
                     // Processing Phase
                     this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });

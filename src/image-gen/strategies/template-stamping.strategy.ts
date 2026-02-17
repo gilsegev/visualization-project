@@ -14,10 +14,12 @@ import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import { ObservabilityGateway } from '../../observability/observability.gateway'; // Import Gateway
+import * as pLimit from 'p-limit';
 
 @Injectable()
 export class TemplateStampingStrategy extends BaseImageStrategy {
     private openai: OpenAI;
+    private readonly imageApiLimit: ReturnType<typeof pLimit>;
 
     constructor(
         private readonly stampingService: TemplateStampingService,
@@ -28,6 +30,11 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     ) {
         super();
         const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
+        const configuredImageConcurrency = Number(this.configService.get<string>('IMAGE_API_CONCURRENCY') || 6);
+        const imageConcurrency = Number.isFinite(configuredImageConcurrency) && configuredImageConcurrency > 0
+            ? configuredImageConcurrency
+            : 6;
+        this.imageApiLimit = pLimit(imageConcurrency);
         this.openai = new OpenAI({
             apiKey: apiKey,
             baseURL: 'https://openrouter.ai/api/v1',
@@ -138,14 +145,38 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     private async handleHubRadial(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
         const imagesStart = performance.now();
         const usedPrompts: string[] = [];
+        const promptUsage = new Map<string, number>();
 
         if (!blueprint.items || !Array.isArray(blueprint.items)) {
             this.logger.warn(`[VisualArchitect] Blueprint items missing or invalid. Log: ${blueprint.correction_log?.join(', ')}`);
             blueprint.items = [{ title: 'Overview', description: 'No specific items found.' }];
         }
+
+        const totalItems = blueprint.items.length || 1;
+        const centerTitle = blueprint.center_topic?.title || 'core topic';
+
+        const buildSpokePrompt = (item: any, idx: number): string => {
+            const title = (item?.title || `Spoke ${idx + 1}`).trim();
+            const desc = (item?.description || '').trim();
+
+            // Clock position hint gives each spoke unique spatial identity for better diversity.
+            const hour = Math.round(((idx / totalItems) * 12)) || 12;
+            const clockPosition = `${hour} o'clock position`;
+
+            const base = `minimalist visual representation of ${title}. Context: ${desc}. Symbol for ${centerTitle}. ${clockPosition}`;
+            const normalized = base.toLowerCase().replace(/\s+/g, ' ').trim();
+            const seen = promptUsage.get(normalized) || 0;
+            promptUsage.set(normalized, seen + 1);
+
+            // Deterministic anti-duplication token for repeated semantic prompts.
+            if (seen > 0) {
+                return `${base}. Variation seed ${idx + 1}`;
+            }
+            return base;
+        };
+
         const itemImagePromises = blueprint.items.map((item, idx) =>
-            // Refinement 6: Use Descripton ONLY (No Title)
-            this.generateImage(`minimalist visual representation of ${item.description}`, theme, false, task.id)
+            this.generateImage(buildSpokePrompt(item, idx), theme, false, task.id)
                 .then(async (result) => {
                     if (!result.url) return { index: idx, url: '', prompt: '' };
                     const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -345,29 +376,31 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         this.observability.emitLog('info', `🖼️ Constructing Image Prompt: ${fullPrompt}`, 'ImageGen', taskId);
 
         try {
-            const response = await axios.post(
-                'https://api.siliconflow.com/v1/images/generations',
-                {
-                    model: 'black-forest-labs/FLUX.1-schnell',
-                    prompt: fullPrompt,
-                    image_size: '512x512',
-                    num_inference_steps: 4,
-                    batch_size: 1
-                },
-                { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
-            );
-            this.observability.emitLog('info', `SiliconFlow Image Gen Task Complete`, 'ImageGen', taskId);
+            return await this.imageApiLimit(async () => {
+                const response = await axios.post(
+                    'https://api.siliconflow.com/v1/images/generations',
+                    {
+                        model: 'black-forest-labs/FLUX.1-schnell',
+                        prompt: fullPrompt,
+                        image_size: '512x512',
+                        num_inference_steps: 4,
+                        batch_size: 1
+                    },
+                    { headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, timeout: 30000 }
+                );
+                this.observability.emitLog('info', `SiliconFlow Image Gen Task Complete`, 'ImageGen', taskId);
 
-            const imageUrl = response.data?.data?.[0]?.url;
+                const imageUrl = response.data?.data?.[0]?.url;
+                if (!imageUrl) {
+                    throw new Error('No image URL returned from SiliconFlow');
+                }
 
-            if (imageUrl) {
                 const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
                 return {
                     url: `data:image/jpeg;base64,${Buffer.from(imageResponse.data).toString('base64')}`,
                     prompt: fullPrompt
                 };
-            }
-            throw new Error('No image URL returned from SiliconFlow');
+            });
         } catch (e) {
             this.logger.error(`Image Gen Failed: ${e.message}`);
             this.observability.emitLog('error', `Image Gen Failed: ${e.message}`, 'ImageGen', taskId);
