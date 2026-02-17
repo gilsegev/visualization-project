@@ -167,6 +167,7 @@ export class ImageOrchestratorService {
                             font_name: primaryFont,
                             font_size_heading: headingSize,
                             font_size_body: bodySize,
+                            glass_color: 'rgba(255, 255, 255, 0.72)',
                             image_style_suffix: `${designPhilosophy}, flat vector style, geometric organic shapes, simplified silhouettes`
                         } : undefined
                     }

@@ -14,6 +14,8 @@
             --text-secondary: #4A5568;
             --font-main: 'Inter', system-ui, sans-serif;
             --glass-bg: rgba(255, 255, 255, 0.55);
+            --font-size-heading: 34px;
+            --font-size-body: 19px;
         }
 
         /* DETERMINISTIC CANVAS */
@@ -27,7 +29,11 @@
 
         #canvas {
             position: relative; width: 1200px; height: 1200px;
-            background: var(--bg-color, var(--bg-primary));
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--bg-color, var(--bg-primary)) 92%, var(--accent-primary) 8%) 0%,
+                color-mix(in srgb, var(--bg-color, var(--bg-primary)) 96%, #000 4%) 100%
+            );
             overflow: hidden;
         }
 
@@ -41,7 +47,7 @@
         #grid {
             position: relative; z-index: 10;
             display: grid; width: 100%; height: 100%;
-            padding: 60px; gap: 40px;
+            padding: 48px; gap: 22px;
             grid-template-columns: repeat(12, 1fr);
             grid-auto-rows: minmax(0, 1fr);
             box-sizing: border-box;
@@ -50,23 +56,38 @@
         /* SMART CELL SYSTEM */
         .cell {
             position: relative; display: flex; flex-direction: column;
-            justify-content: center; align-items: center; text-align: center;
-            padding: 32px; border-radius: 28px;
-            background: var(--glass-bg);
+            justify-content: flex-start; align-items: flex-start; text-align: left;
+            padding: 20px 20px 18px; border-radius: 22px;
+            background: color-mix(in srgb, var(--glass-bg) 78%, white 22%);
             backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
             border: var(--border-width, 1px) var(--border-style, solid) var(--border-color, rgba(0,0,0,0.08));
             box-shadow: 0 10px 30px rgba(0,0,0,0.08);
             overflow: hidden;
         }
 
+        .cell::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0.65;
+        }
+
         /* 1. TITLE WRAPPING FIX */
         .cell h2 {
-            font-size: var(--title-size, 36px);
-            font-weight: 800; margin: 0 0 16px 0;
+            font-size: var(--title-size, var(--font-size-heading));
+            font-weight: 800; margin: 0 0 10px 0;
             color: var(--text-primary);
             inline-size: 100%;
             overflow-wrap: break-word; /* Fix for long titles */
-            line-height: 1.1;
+            line-height: 1.14;
+            letter-spacing: 0.01em;
+            display: -webkit-box;
+            -webkit-line-clamp: var(--title-lines, 2);
+            -webkit-box-orient: vertical;
+            overflow: hidden;
         }
 
         /* 2. ASPECT RATIO IMAGE FIX */
@@ -79,7 +100,47 @@
         .cell.full-bleed { padding: 0; }
         .cell.full-bleed img { border-radius: 0; }
 
-        .cell p { font-size: 20px; line-height: 1.4; color: var(--text-secondary); opacity: 0.9; }
+        .cell p {
+            margin: 0;
+            width: 100%;
+            font-size: var(--body-size, var(--font-size-body));
+            line-height: 1.35;
+            color: var(--text-secondary);
+            opacity: 0.94;
+            white-space: pre-line;
+            display: -webkit-box;
+            -webkit-line-clamp: var(--body-lines, 7);
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .cell.summary {
+            justify-content: center;
+            text-align: center;
+            align-items: center;
+            background: color-mix(in srgb, var(--glass-bg) 88%, var(--accent-primary));
+            padding: 28px 34px 24px;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .cell.summary h2 {
+            margin: 0;
+            -webkit-line-clamp: 1;
+            font-size: clamp(24px, 3vw, 42px);
+            line-height: 1.1;
+        }
+
+        .cell.summary p {
+            max-width: 90%;
+            margin: 0;
+            -webkit-line-clamp: 4;
+            line-height: 1.4;
+        }
+
+        .cell.summary::before {
+            display: none;
+        }
 
         /* GRID UTILITIES (legacy support) */
         .col-span-3 { grid-column: span 3; } .col-span-6 { grid-column: span 6; }
@@ -118,12 +179,43 @@
                 const contentType = cellData?.content?.type || 'text';
                 if (contentType === 'image_only') cell.classList.add('full-bleed');
 
-                // DYNAMIC FONT SCALING LOGIC
+                // DYNAMIC DENSITY LOGIC: fit typography to each cell area and text volume.
+                const area = Math.max(1, colSpan * rowSpan);
                 const title = cellData?.content?.title || "";
-                let fontSize = "36px";
-                if (title.length > 25) fontSize = "24px";
-                if (title.length > 40) fontSize = "18px";
-                cell.style.setProperty('--title-size', fontSize);
+                const bodyText = cellData?.content?.text || '';
+                const textLoad = title.length + bodyText.length;
+
+                let titleSize = "32px";
+                let bodySize = "18px";
+                let bodyLines = "7";
+                let titleLines = "2";
+
+                if (area <= 8) {
+                    titleSize = "22px";
+                    bodySize = "13px";
+                    bodyLines = "6";
+                    titleLines = "2";
+                } else if (area <= 12) {
+                    titleSize = "26px";
+                    bodySize = "15px";
+                    bodyLines = "7";
+                    titleLines = "2";
+                }
+                if (textLoad > 220) {
+                    bodySize = `${Math.max(12, parseInt(bodySize, 10) - 1)}px`;
+                    bodyLines = `${Math.max(5, parseInt(bodyLines, 10) - 1)}`;
+                }
+
+                cell.style.setProperty('--title-size', titleSize);
+                cell.style.setProperty('--body-size', bodySize);
+                cell.style.setProperty('--body-lines', bodyLines);
+                cell.style.setProperty('--title-lines', titleLines);
+
+                if (/summary/i.test(title) || (colSpan >= 10 && rowSpan >= 2)) {
+                    cell.classList.add('summary');
+                    // Keep summary/callout anchored as a full-width bottom block.
+                    cell.style.gridColumn = '1 / -1';
+                }
 
                 let html = '';
                 switch (contentType) {
