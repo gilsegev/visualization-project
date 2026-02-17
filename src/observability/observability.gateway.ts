@@ -72,7 +72,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
             });
         }
 
-        if (level === 'error') {
+        if (level === 'error' || level === 'warn') {
             const fs = require('fs');
             const path = require('path');
             const logFile = path.join(process.cwd(), 'debug_errors.log');

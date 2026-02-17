@@ -243,9 +243,31 @@ export class ImageOrchestratorService {
                     return finalResult;
 
                 } catch (error) {
-                    this.logger.error(`Manifest Task ${task.id} failed: ${error.message}`);
-                    const errorResult = { taskId: task.id, status: 'failed', error: error.message };
-                    this.observability.emitProgress({ taskId: task.id, status: 'failed', details: { error: error.message } });
+                    const message = error?.message || 'Unknown task failure';
+                    const stack = error?.stack ? String(error.stack).split('\n').slice(0, 4).join(' | ') : undefined;
+                    const providerStatus = error?.status || error?.response?.status;
+                    const providerCode = error?.code || error?.response?.data?.error?.code;
+
+                    this.logger.error(`Manifest Task ${task.id} failed: ${message}`);
+                    this.observability.emitLog(
+                        'error',
+                        `Task failed | stage=${task?.stage || 'generation'} status=${providerStatus ?? 'n/a'} code=${providerCode ?? 'n/a'} message=${message}${stack ? ` stack=${stack}` : ''}`,
+                        'Orchestrator',
+                        task.id
+                    );
+
+                    const errorResult = { taskId: task.id, status: 'failed', error: message };
+                    this.observability.emitProgress({
+                        taskId: task.id,
+                        status: 'failed',
+                        stage: 'Failed',
+                        details: {
+                            error: message,
+                            status: providerStatus,
+                            code: providerCode,
+                            stack
+                        }
+                    });
                     return errorResult;
                 }
             });
