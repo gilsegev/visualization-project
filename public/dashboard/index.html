@@ -422,6 +422,7 @@
                 const logs = ref([]);
                 const tasks = ref({}); // Map: taskId -> task
                 const batch = ref({ total: 0, completed: 0 });
+                const currentBatchId = ref(null);
                 const logContainer = ref(null);
 
                 const filteredLogs = computed(() => {
@@ -489,7 +490,7 @@
                     hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
                 });
 
-                const addLog = (level, message, context, taskId = null) => {
+                const addLog = (level, message, context, taskId = null, batchId = null) => {
                     // Check if already at bottom before adding new log
                     let autoScroll = true;
                     if (logContainer.value) {
@@ -499,7 +500,7 @@
                         autoScroll = scrollPos < 10;
                     }
 
-                    logs.value.push({ timestamp: Date.now(), level, message, context, taskId });
+                    logs.value.push({ timestamp: Date.now(), level, message, context, taskId, batchId });
                     if (logs.value.length > 500) logs.value.shift();
 
                     nextTick(() => {
@@ -510,6 +511,11 @@
                 };
 
                 const selectedTask = ref(null);
+
+                const isActiveBatchEvent = (payload) => {
+                    if (!payload || !payload.batchId || !currentBatchId.value) return true;
+                    return payload.batchId === currentBatchId.value;
+                };
 
                 const deriveOutputDirFromUrl = (url) => {
                     if (!url || typeof url !== 'string') return null;
@@ -553,6 +559,7 @@
                     logs.value = [];
                     tasks.value = {};
                     batch.value = { total: 0, completed: 0 };
+                    currentBatchId.value = null;
                     selectedTask.value = null;
                     selectedAssetFilter.value = '';
                     logMode.value = 'HIGH LEVEL';
@@ -610,6 +617,7 @@
                             // Reset
                             tasks.value = {};
                             batch.value = { total: 0, completed: 0 };
+                            currentBatchId.value = null;
                             const res = await fetch('/generate/manifest', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
@@ -632,6 +640,7 @@
                     socket.on('disconnect', () => { isConnected.value = false; addLog('warn', 'WebSocket Disconnected', 'System'); });
 
                     socket.on('task_progress', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
                         const existing = tasks.value[data.taskId] || {};
                         tasks.value[data.taskId] = normalizeTask({
                             ...existing,
@@ -650,9 +659,12 @@
                         Object.keys(initialTasks || {}).forEach((taskId) => {
                             normalized[taskId] = normalizeTask(initialTasks[taskId]);
                         });
+                        const firstTask = Object.values(normalized || {})[0];
+                        const nextBatchId = firstTask?.metadata?.batch_id || firstTask?.batchId || null;
+                        if (nextBatchId) currentBatchId.value = nextBatchId;
                         tasks.value = normalized;
                         console.log('[Frontend] tasks ref updated to new object. Keys:', Object.keys(tasks.value));
-                        addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System');
+                        addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System', null, currentBatchId.value);
 
                         // Debug: Select first asset automatically to prove list exists
                         const firstId = Object.keys(tasks.value)[0];
@@ -662,9 +674,27 @@
                         }
                     });
 
-                    socket.on('system_log', (data) => addLog(data.level, data.message, data.context, data.taskId));
+                    socket.on('system_log', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        addLog(data.level, data.message, data.context, data.taskId, data.batchId || null);
+                    });
 
-                    socket.on('batch_progress', (data) => batch.value = data);
+                    socket.on('batch_progress', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        batch.value = { total: data.total, completed: data.completed };
+                    });
+
+                    socket.on('batch_finalized', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        batch.value = { total: data.total, completed: data.completed };
+                        addLog(
+                            'success',
+                            `Batch finalized: ${data.completed}/${data.total} completed, ${data.failed} failed in ${Number(data.durationSeconds).toFixed(2)}s`,
+                            'Orchestrator',
+                            null,
+                            data.batchId || null
+                        );
+                    });
 
                     window.addEventListener('keydown', (e) => {
                         if (e.key === 'Escape') closeModal();

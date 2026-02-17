@@ -33,6 +33,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     emitProgress(data: {
         taskId: string;
         status: 'pending' | 'processing' | 'completed' | 'failed';
+        batchId?: string;
         stage?: string;
         progress?: number;
         details?: any;
@@ -43,6 +44,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
             lesson_id?: string;
             lesson_title?: string;
             lesson_index?: number;
+            batch_id?: string;
         };
     }) {
         if (this.server) this.server.emit('task_progress', data);
@@ -61,13 +63,14 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     /**
      * Emit a generic log message to the dashboard
      */
-    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string) {
+    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string, batchId?: string) {
         if (this.server) {
             this.server.emit('system_log', {
                 level,
                 message,
                 context,
                 taskId,
+                batchId,
                 timestamp: new Date().toISOString()
             });
         }
@@ -76,7 +79,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
             const fs = require('fs');
             const path = require('path');
             const logFile = path.join(process.cwd(), 'debug_errors.log');
-            const entry = `[${new Date().toISOString()}] [${level.toUpperCase()}] [${context || 'SYSTEM'}] ${taskId ? `[${taskId}] ` : ''}${message}\n`;
+            const entry = `[${new Date().toISOString()}] [${level.toUpperCase()}] [${context || 'SYSTEM'}] ${batchId ? `[${batchId}] ` : ''}${taskId ? `[${taskId}] ` : ''}${message}\n`;
             fs.appendFile(logFile, entry, (err) => {
                 if (err) console.error('Failed to write to debug log:', err);
             });
@@ -86,7 +89,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     /**
      * Emit a batch summary update
      */
-    emitBatchProgress(data: { total: number; completed: number; current: string }) {
+    emitBatchProgress(data: { total: number; completed: number; current: string; batchId?: string }) {
         if (this.server) this.server.emit('batch_progress', data);
     }
 
@@ -97,6 +100,18 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     emitBatchInitialized(tasks: Record<string, any>) {
         this.logger.log(`Emitting batch_initialized with ${Object.keys(tasks).length} tasks`);
         if (this.server) this.server.emit('batch_initialized', tasks);
+    }
+
+    emitBatchFinalized(data: {
+        batchId: string;
+        total: number;
+        completed: number;
+        failed: number;
+        durationSeconds: number;
+        startedAt: string;
+        endedAt: string;
+    }) {
+        if (this.server) this.server.emit('batch_finalized', data);
     }
 
     @SubscribeMessage('open_folder')

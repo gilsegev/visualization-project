@@ -86,10 +86,12 @@ export class ImageOrchestratorService {
     async generateFromManifest(manifest: any) {
         this.stopSignal = false; // Reset signal
         const start = performance.now();
+        const batchStartedAt = new Date();
+        const batchId = `batch-${batchStartedAt.getTime()}-${Math.random().toString(36).slice(2, 8)}`;
         const courseTitle = manifest.course?.title || 'Untitled Course';
         this.logger.log(`Starting Batch Generation from Hierarchical Manifest: ${courseTitle}`);
-        this.observability.emitLog('info', `Starting Batch Generation: ${courseTitle}`, 'Orchestrator');
-        this.observability.emitBatchProgress({ total: 0, completed: 0, current: 'Initializing...' });
+        this.observability.emitLog('info', `Starting Batch Generation: ${courseTitle}`, 'Orchestrator', undefined, batchId);
+        this.observability.emitBatchProgress({ total: 0, completed: 0, current: 'Initializing...', batchId });
 
         const globalStyle = manifest.course?.globalStyleGuide || {};
         const designPhilosophy = manifest.course?.designPhilosophy || 'Professional';
@@ -124,6 +126,7 @@ export class ImageOrchestratorService {
                         lesson_id: lesson.lessonId,
                         lesson_title: lesson.title,
                         lesson_index: lessonIdx + 1, // 1-based index
+                        batch_id: batchId,
                         dimensions: viz.dimensions,
                         theme_id: themeId, // Pass through for strategy
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
@@ -149,13 +152,14 @@ export class ImageOrchestratorService {
         });
 
         this.logger.log(`Parsed ${tasks.length} tasks from manifest.`);
-        this.observability.emitLog('info', `Parsed ${tasks.length} tasks from manifest`, 'Orchestrator');
+        this.observability.emitLog('info', `Parsed ${tasks.length} tasks from manifest`, 'Orchestrator', undefined, batchId);
 
         // Emit Initial Batch State
         const initialTasksMap = {};
         tasks.forEach(t => {
             initialTasksMap[t.id] = {
                 taskId: t.id,
+                batchId,
                 status: 'pending',
                 stage: 'Intake',
                 details: {
@@ -183,17 +187,19 @@ export class ImageOrchestratorService {
                     course_id: task.metadata.course_id,
                     lesson_id: task.metadata.lesson_id,
                     lesson_title: task.metadata.lesson_title,
-                    lesson_index: task.metadata.lesson_index
+                    lesson_index: task.metadata.lesson_index,
+                    batch_id: batchId
                 }
             });
             // Log for "By Asset" view
-            this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id);
+            this.observability.emitLog('info', `Task Intake: Queued. Original: "${task.metadata.original_instruction}"`, 'Orchestrator', task.id, batchId);
         });
 
         // Move tasks out of Intake immediately so observability reflects queued work.
         tasks.forEach(task => {
             this.observability.emitProgress({
                 taskId: task.id,
+                batchId,
                 status: 'pending',
                 stage: 'Queued for Generation'
             });
@@ -202,37 +208,45 @@ export class ImageOrchestratorService {
         // Execution Loop
         const limit = pLimit(this.manifestTaskConcurrency);
         let completedCount = 0;
-        const taskResults = [];
+        let failedCount = 0;
 
         const promises = tasks.map((task: any, index: number) => {
             return limit(async () => {
                 if (this.stopSignal) {
-                    this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id);
-                    this.observability.emitProgress({ taskId: task.id, status: 'failed', stage: 'Cancelled' });
+                    this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id, batchId);
+                    this.observability.emitProgress({ taskId: task.id, batchId, status: 'failed', stage: 'Cancelled' });
                     return { taskId: task.id, status: 'cancelled' };
                 }
 
                 try {
+                    const taskStartedAt = new Date();
+                    const taskStartPerf = performance.now();
                     // Triage Phase
-                    this.observability.emitProgress({ taskId: task.id, status: 'pending', stage: 'Triage' });
-                    this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id);
+                    this.observability.emitProgress({ taskId: task.id, batchId, status: 'pending', stage: 'Triage' });
+                    this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id, batchId);
 
                     // Processing Phase
-                    this.observability.emitProgress({ taskId: task.id, status: 'processing', stage: 'Starting Generation...' });
-                    this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id);
+                    this.observability.emitProgress({ taskId: task.id, batchId, status: 'processing', stage: 'Starting Generation...' });
+                    this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id, batchId);
 
                     const strategy = this.strategyFactory.getStrategy(task);
                     const result = await (strategy as any).performGeneration(task, index + 1);
+                    const taskEndedAt = new Date();
+                    const taskDurationMs = performance.now() - taskStartPerf;
 
                     completedCount++;
-                    this.observability.emitBatchProgress({ total: tasks.length, completed: completedCount, current: task.id });
+                    this.observability.emitBatchProgress({ total: tasks.length, completed: completedCount, current: task.id, batchId });
 
                     const finalResult = {
                         taskId: task.id,
+                        batchId,
                         status: 'completed',
                         url: result.url,
                         metrics: result.payload.metrics,
                         details: {
+                            started_at: taskStartedAt.toISOString(),
+                            ended_at: taskEndedAt.toISOString(),
+                            duration_ms: taskDurationMs.toFixed(2),
                             output_dir: result.payload.output_dir,
                             image_prompts: result.payload.image_prompts,
                             blueprint_prompt: result.payload.blueprint_prompt
@@ -253,12 +267,15 @@ export class ImageOrchestratorService {
                         'error',
                         `Task failed | stage=${task?.stage || 'generation'} status=${providerStatus ?? 'n/a'} code=${providerCode ?? 'n/a'} message=${message}${stack ? ` stack=${stack}` : ''}`,
                         'Orchestrator',
-                        task.id
+                        task.id,
+                        batchId
                     );
 
+                    failedCount++;
                     const errorResult = { taskId: task.id, status: 'failed', error: message };
                     this.observability.emitProgress({
                         taskId: task.id,
+                        batchId,
                         status: 'failed',
                         stage: 'Failed',
                         details: {
@@ -277,10 +294,20 @@ export class ImageOrchestratorService {
         const end = performance.now();
         const duration = ((end - start) / 1000).toFixed(2);
         this.logger.log(`Batch Complete. Total Duration: ${duration}s`);
-        this.observability.emitLog('success', `Batch Complete in ${duration}s`, 'Orchestrator');
+        this.observability.emitLog('success', `Batch Complete in ${duration}s`, 'Orchestrator', undefined, batchId);
+        this.observability.emitBatchFinalized({
+            batchId,
+            total: tasks.length,
+            completed: completedCount,
+            failed: failedCount,
+            durationSeconds: parseFloat(duration),
+            startedAt: batchStartedAt.toISOString(),
+            endedAt: new Date().toISOString()
+        });
 
         return {
             message: 'Batch completed',
+            batchId,
             taskCount: tasks.length,
             course: courseTitle,
             durationSeconds: parseFloat(duration),

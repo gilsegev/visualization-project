@@ -204,7 +204,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         };
 
         const itemImagePromises = blueprint.items.map((item, idx) =>
-            this.generateImage(buildSpokePrompt(item, idx), theme, false, task.id)
+            this.generateImage(buildSpokePrompt(item, idx), theme, false, task.id, '256x256')
                 .then(async (result) => {
                     if (!result.url) return { index: idx, url: '', prompt: '' };
                     const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -227,7 +227,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             `${blueprint.center_topic.title}: ${blueprint.center_topic.description} abstract serene background, soft lighting, ${theme.primary_accent} and ${theme.background_main} tones`,
             theme,
             true, // isBackground
-            task.id
+            task.id,
+            '640x640'
         ).then(async (result) => {
             if (!result.url) return null;
             const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -404,7 +405,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     }
 
     // Copied from DEPRECATED_jsdom-infographic.strategy.ts
-    private async generateImage(prompt: string, theme: Theme, isBackground: boolean, taskId: string = 'unknown'): Promise<{ url: string; prompt: string }> {
+    private async generateImage(prompt: string, theme: Theme, isBackground: boolean, taskId: string = 'unknown', imageSize?: string): Promise<{ url: string; prompt: string }> {
         const apiKey = this.configService.get<string>('SILICONFLOW_API_KEY');
         if (!apiKey) return { url: "", prompt: "" }; // Return empty if no key
 
@@ -418,7 +419,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             // Refinement 6: Strong Negative Prompting for Text
             fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights --no text, font, characters, words, writing, labels, numbers`;
         }
-        this.observability.emitLog('info', `🖼️ Constructing Image Prompt: ${fullPrompt}`, 'ImageGen', taskId);
+        const resolvedImageSize = imageSize || (isBackground ? '768x768' : '512x512');
+        this.observability.emitLog('info', `🖼️ Constructing Image Prompt (size=${resolvedImageSize}): ${fullPrompt}`, 'ImageGen', taskId);
 
         try {
             return await this.withRetries<{ url: string; prompt: string }>(
@@ -429,7 +431,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                             {
                                 model: 'black-forest-labs/FLUX.1-schnell',
                                 prompt: fullPrompt,
-                                image_size: '512x512',
+                                image_size: resolvedImageSize,
                                 num_inference_steps: 4,
                                 batch_size: 1
                             },
@@ -547,6 +549,39 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         } as any;
     }
 
+    private estimateBentoCellImageSize(cell: any): string {
+        const colSpan = Math.max(1, Number(cell?.col_span || cell?.layout?.col_span || 3));
+        const rowSpan = Math.max(1, Number(cell?.row_span || cell?.layout?.row_span || 3));
+
+        // bento.html: canvas 1200, padding 60 each side, gap 40 in a 12x12 grid.
+        const canvasInner = 1200 - 120;
+        const gap = 40;
+        const cols = 12;
+        const rows = 12;
+        const colUnit = (canvasInner - (cols - 1) * gap) / cols;
+        const rowUnit = (canvasInner - (rows - 1) * gap) / rows;
+        const width = colUnit * colSpan + gap * (colSpan - 1);
+        const height = rowUnit * rowSpan + gap * (rowSpan - 1);
+
+        return this.quantizeResolution(width, height);
+    }
+
+    private quantizeResolution(targetWidth: number, targetHeight: number): string {
+        const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+        const quantize64 = (n: number) => Math.round(clamp(n, 256, 1024) / 64) * 64;
+
+        const w = quantize64(targetWidth);
+        const h = quantize64(targetHeight);
+        const ratio = w / Math.max(h, 1);
+
+        // Use square outputs for near-square targets to increase cache hit chances.
+        if (ratio > 0.85 && ratio < 1.15) {
+            const s = Math.max(w, h);
+            return `${s}x${s}`;
+        }
+        return `${w}x${h}`;
+    }
+
     private async withRetries<T>(
         fn: () => Promise<T>,
         options: { maxRetries: number; provider: string; operation: string; taskId?: string }
@@ -650,7 +685,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             const prompt = `Vertical portrait of ${subj.name}, ${subj.description || ''}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text`;
 
             try {
-                const result = await this.generateImage(prompt, theme, false, task.id);
+                const result = await this.generateImage(prompt, theme, false, task.id, '256x256');
                 if (!result.url) return null;
 
                 const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -671,32 +706,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             if (res) usedPrompts.push(`Subject ${idx}: ${res.prompt}`);
         });
 
-        // 1.5 Generate Metric Icons (Optional but nice)
-        this.logger.log('[StampingStrategy] Generating Versus Metric Icons...');
-        const iconPromises = (blueprint.comparison_items || []).map(async (item: any, idx: number) => {
-            const iconPrompt = item.metric || 'comparison';
-            const prompt = `Simple flat vector icon of ${iconPrompt}, black lines on white background, minimalist, bold, isolated --no text`;
-
-            try {
-                const result = await this.generateImage(prompt, theme, false, task.id);
-                if (!result.url) return;
-
-                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-                const filename = `vs_metric_${task.id}_${idx}.png`;
-                await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
-
-                item.icon_url = `./assets/${filename}`;
-                return result.prompt;
-            } catch (e) {
-                this.logger.warn(`Versus Metric Icon ${idx} failed: ${e.message}`);
-                return null;
-            }
-        });
-
-        const iconResults = await Promise.all(iconPromises);
-        iconResults.forEach((prompt, idx) => {
-            if (prompt) usedPrompts.push(`Metric Icon ${idx}: ${prompt}`);
-        });
+        // Metric icons intentionally disabled to reduce image API load.
 
         metrics.images = performance.now() - imagesStart;
 
@@ -766,7 +776,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const bgPrompt = blueprint.visual_style_directive || `${blueprint.center_topic.title} background, ${theme.background_main} tones, soft focus, minimalist, high resolution`;
 
         try {
-            const result = await this.generateImage(bgPrompt, theme, true, task.id); // isBackground=true
+            const result = await this.generateImage(bgPrompt, theme, true, task.id, '768x768'); // isBackground=true
             if (result.url) {
                 const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                 const filename = `background.png`;
@@ -783,7 +793,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             // Refinement: Remove Title to prevent text bleeding. Use description only.
             const prompt = `Symbolic visual representation of ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
             try {
-                const result = await this.generateImage(prompt, theme, false, task.id);
+                const result = await this.generateImage(prompt, theme, false, task.id, '256x256');
                 if (!result.url) return;
 
                 const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -854,7 +864,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // 1. Parallel Task: Background Image
         const bgPromise = blueprint.visual_style_directive
-            ? this.generateImage(blueprint.visual_style_directive, theme, true, task.id)
+            ? this.generateImage(blueprint.visual_style_directive, theme, true, task.id, '768x768')
             : Promise.resolve(null);
 
         // 2. Parallel Tasks: Cell Images
@@ -866,7 +876,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                     : cell.content.text || 'abstract conceptual visual';
 
                 try {
-                    const result = await this.generateImage(imgPrompt, theme, false, task.id);
+                    const cellSize = this.estimateBentoCellImageSize(cell);
+                    const result = await this.generateImage(imgPrompt, theme, false, task.id, cellSize);
                     if (result.url) {
                         const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
                         const filename = `bento_cell_${idx}.png`;
