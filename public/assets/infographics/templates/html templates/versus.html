@@ -7,13 +7,22 @@
 
 <style>
 :root {
-    --bg: #F8F5F0;
-    --text: #1A1A1A;
-    --muted: #666;
-    --accent: #FF6B6B;
-    --border: #111;
-    --winner-bg: rgba(255,107,107,0.08);
-    --font: 'Inter', sans-serif;
+    /* Unified theme tokens (overridden by backend injection) */
+    --bg-primary: #F8F5F0;
+    --accent-primary: #FF6B6B;
+    --accent-secondary: #E8A598;
+    --text-primary: #1A1A1A;
+    --text-secondary: #666666;
+    --font-main: 'Inter', sans-serif;
+
+    /* Backward-compatible aliases used in this template */
+    --bg: var(--bg-primary);
+    --text: var(--text-primary);
+    --muted: var(--text-secondary);
+    --accent: var(--accent-primary);
+    --border: var(--text-primary);
+    --winner-bg: color-mix(in srgb, var(--accent) 14%, white);
+    --font: var(--font-main);
 }
 
 * { box-sizing: border-box; }

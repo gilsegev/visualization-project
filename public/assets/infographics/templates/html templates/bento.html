@@ -5,18 +5,29 @@
     <meta name="viewport" content="width=1200, initial-scale=1.0" />
     <title>Smart-Fit Bento Engine</title>
     <style>
+        :root {
+            /* Theme Variables - Overridden by backend injection */
+            --bg-primary: #F4EDE4;
+            --accent-primary: #5B9A8B;
+            --accent-secondary: #E8A598;
+            --text-primary: #1A365D;
+            --text-secondary: #4A5568;
+            --font-main: 'Inter', system-ui, sans-serif;
+            --glass-bg: rgba(255, 255, 255, 0.55);
+        }
+
         /* DETERMINISTIC CANVAS */
         html, body {
             margin: 0; padding: 0;
             width: 1200px; height: 1200px;
             overflow: hidden;
-            font-family: 'Inter', system-ui, sans-serif;
-            background: var(--bg-color, #F4EDE4);
+            font-family: var(--font-main);
+            background: var(--bg-color, var(--bg-primary));
         }
 
         #canvas {
             position: relative; width: 1200px; height: 1200px;
-            background: var(--bg-color, #F4EDE4);
+            background: var(--bg-color, var(--bg-primary));
             overflow: hidden;
         }
 
@@ -41,7 +52,7 @@
             position: relative; display: flex; flex-direction: column;
             justify-content: center; align-items: center; text-align: center;
             padding: 32px; border-radius: 28px;
-            background: rgba(255, 255, 255, 0.55);
+            background: var(--glass-bg);
             backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
             border: var(--border-width, 1px) var(--border-style, solid) var(--border-color, rgba(0,0,0,0.08));
             box-shadow: 0 10px 30px rgba(0,0,0,0.08);
@@ -52,7 +63,7 @@
         .cell h2 {
             font-size: var(--title-size, 36px);
             font-weight: 800; margin: 0 0 16px 0;
-            color: #1A365D;
+            color: var(--text-primary);
             inline-size: 100%;
             overflow-wrap: break-word; /* Fix for long titles */
             line-height: 1.1;
@@ -68,7 +79,7 @@
         .cell.full-bleed { padding: 0; }
         .cell.full-bleed img { border-radius: 0; }
 
-        .cell p { font-size: 20px; line-height: 1.4; color: #4A5568; opacity: 0.9; }
+        .cell p { font-size: 20px; line-height: 1.4; color: var(--text-secondary); opacity: 0.9; }
 
         /* GRID UTILITIES (legacy support) */
         .col-span-3 { grid-column: span 3; } .col-span-6 { grid-column: span 6; }
@@ -85,7 +96,7 @@
             if (!data) return;
             const canvas = document.getElementById('canvas');
             if (data.background) {
-                canvas.style.setProperty('--bg-color', data.background.color || '#F4EDE4');
+                canvas.style.setProperty('--bg-color', data.background.color || getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim());
                 if (data.background.image_url) canvas.style.setProperty('--background-url', `url('${data.background.image_url}')`);
             }
 

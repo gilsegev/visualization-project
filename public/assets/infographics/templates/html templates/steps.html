@@ -11,7 +11,9 @@
             /* Theme Variables - Overridden by backend injection */
             --bg-primary: #f8fafc;
             --accent-primary: #00abe6;
+            --accent-secondary: #f8a41b;
             --text-primary: #1e293b;
+            --text-secondary: #475569;
             --glass-bg: rgba(255, 255, 255, 0.85);
             --font-main: 'Inter', sans-serif;
         }
@@ -144,7 +146,11 @@
             // container.appendChild(line); 
 
             const items = data.items;
-            const colors = ['#004b6b', '#00abe6', '#f8a41b', '#00a585', '#99cc33'];
+            const rootStyles = getComputedStyle(document.documentElement);
+            const accent = rootStyles.getPropertyValue('--accent-primary').trim() || '#00abe6';
+            const secondary = rootStyles.getPropertyValue('--accent-secondary').trim() || '#f8a41b';
+            const textColor = rootStyles.getPropertyValue('--text-primary').trim() || '#1e293b';
+            const colors = [accent, secondary, textColor, accent, secondary];
 
             items.forEach((item, index) => {
                 const color = colors[index % colors.length];

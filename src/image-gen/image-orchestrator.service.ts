@@ -29,6 +29,22 @@ export class ImageOrchestratorService {
         this.observability.emitLog('warn', 'Batch Stop Requested. Halting new tasks...', 'Orchestrator');
     }
 
+    private toGoogleFontUrl(fontName: string): string {
+        const clean = String(fontName || '').trim();
+        if (!clean) return 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap';
+        const family = clean.replace(/\s+/g, '+');
+        return `https://fonts.googleapis.com/css2?family=${family}:wght@400;700;800;900&display=swap`;
+    }
+
+    private parsePtRangeToCss(value: string | undefined, fallback: string): string {
+        const raw = String(value || '').toLowerCase();
+        const nums = raw.match(/(\d+(\.\d+)?)/g)?.map(Number).filter(n => Number.isFinite(n)) || [];
+        if (!nums.length) return fallback;
+        const avgPt = nums.reduce((a, b) => a + b, 0) / nums.length;
+        const px = avgPt * (96 / 72); // 1pt = 1.333px
+        return `${Math.round(px)}px`;
+    }
+
     async generateCourse(content: string) {
         const start = performance.now();
         this.logger.log(`Starting course generation for content length: ${content.length}`);
@@ -116,6 +132,13 @@ export class ImageOrchestratorService {
                 // Support for specific theme overrides
                 const themeId = viz.metadata?.theme_id || viz.theme_id;
 
+                const primaryFont = globalStyle.typography?.fontFamily?.[0] || 'Inter';
+                const headingSize = this.parsePtRangeToCss(globalStyle.typography?.heading, '1.8rem');
+                const bodySize = this.parsePtRangeToCss(globalStyle.typography?.body, '1rem');
+                const fontImport = /^https?:\/\//i.test(primaryFont)
+                    ? primaryFont
+                    : this.toGoogleFontUrl(primaryFont);
+
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     type: 'infographic',
@@ -140,10 +163,10 @@ export class ImageOrchestratorService {
                             background_main: globalStyle.colorPalette?.creamWhite || globalStyle.colorPalette?.warmSand || '#FAF9F6',
                             text_main: globalStyle.colorPalette?.slateGrey || '#1A365D',
                             text_secondary: globalStyle.colorPalette?.slateGrey || '#4A5568',
-                            font_family: globalStyle.typography?.fontFamily?.[0] || 'https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap',
-                            font_name: globalStyle.typography?.fontFamily?.[0] || 'Inter',
-                            font_size_heading: globalStyle.typography?.headingSize || '1.8rem',
-                            font_size_body: globalStyle.typography?.bodySize || '1rem',
+                            font_family: fontImport,
+                            font_name: primaryFont,
+                            font_size_heading: headingSize,
+                            font_size_body: bodySize,
                             image_style_suffix: `${designPhilosophy}, flat vector style, geometric organic shapes, simplified silhouettes`
                         } : undefined
                     }
