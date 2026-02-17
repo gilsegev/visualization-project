@@ -102,7 +102,7 @@
         .spoke-anchor {
             position: absolute;
             transform: translate(-50%, -50%);
-            width: 280px;
+            width: var(--spoke-card-width, 280px);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -111,8 +111,8 @@
         }
 
         .icon-circle {
-            width: 120px;
-            height: 120px;
+            width: var(--spoke-icon-size, 120px);
+            height: var(--spoke-icon-size, 120px);
             border-radius: 50%;
             border: 5px solid white;
             overflow: hidden;
@@ -130,11 +130,21 @@
         .content-card {
             background: var(--glass-bg);
             backdrop-filter: blur(12px);
-            padding: 30px 20px 20px 20px;
+            padding: var(--spoke-card-padding-top, 30px) 20px 20px 20px;
             border-radius: 24px;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
             border: 1px solid rgba(255, 255, 255, 0.3);
             width: 100%;
+        }
+
+        .spoke-anchor h2 {
+            font-size: var(--spoke-title-size, 2.2rem);
+            line-height: var(--spoke-title-line-height, 1.05);
+        }
+
+        .spoke-anchor p {
+            font-size: var(--spoke-body-size, 1.1rem);
+            line-height: var(--spoke-body-line-height, 1.35);
         }
 
         h2 {
@@ -172,6 +182,79 @@
         const CONFIG = { centerX: 600, centerY: 600, radius: 400 };
         const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
 
+        function getLayout(total) {
+            if (total <= 5) {
+                return {
+                    radius: CONFIG.radius,
+                    cardWidth: 280,
+                    iconSize: 120,
+                    titleSize: '2.1rem',
+                    bodySize: '1.05rem',
+                    bodyLineHeight: '1.4',
+                    titleLineHeight: '1.08',
+                    paddingTop: '30px',
+                    compactMode: false
+                };
+            }
+            if (total <= 8) {
+                return {
+                    radius: 410,
+                    cardWidth: 250,
+                    iconSize: 106,
+                    titleSize: '1.95rem',
+                    bodySize: '1rem',
+                    bodyLineHeight: '1.35',
+                    titleLineHeight: '1.06',
+                    paddingTop: '28px',
+                    compactMode: false
+                };
+            }
+            if (total <= 10) {
+                return {
+                    radius: 420,
+                    cardWidth: 226,
+                    iconSize: 94,
+                    titleSize: '1.72rem',
+                    bodySize: '0.9rem',
+                    bodyLineHeight: '1.28',
+                    titleLineHeight: '1.02',
+                    paddingTop: '24px',
+                    compactMode: true
+                };
+            }
+            return {
+                radius: 430,
+                cardWidth: 206,
+                iconSize: 84,
+                titleSize: '1.56rem',
+                bodySize: '0.82rem',
+                bodyLineHeight: '1.22',
+                titleLineHeight: '1.0',
+                paddingTop: '22px',
+                compactMode: true
+            };
+        }
+
+        function applyLayout(layout) {
+            const root = document.documentElement;
+            root.style.setProperty('--spoke-card-width', `${layout.cardWidth}px`);
+            root.style.setProperty('--spoke-icon-size', `${layout.iconSize}px`);
+            root.style.setProperty('--spoke-title-size', layout.titleSize);
+            root.style.setProperty('--spoke-body-size', layout.bodySize);
+            root.style.setProperty('--spoke-body-line-height', layout.bodyLineHeight);
+            root.style.setProperty('--spoke-title-line-height', layout.titleLineHeight);
+            root.style.setProperty('--spoke-card-padding-top', layout.paddingTop);
+        }
+
+        function intersects(a, b, padding = 8) {
+            return !(
+                a.right - padding < b.left + padding ||
+                a.left + padding > b.right - padding ||
+                a.bottom - padding < b.top + padding ||
+                a.top + padding > b.bottom - padding
+            );
+        }
+
         function render(data) {
             if (!data) return;
             document.getElementById('hub-title').innerText = data.center.title;
@@ -187,11 +270,18 @@
 
             const container = document.getElementById('spokes-container');
             const total = data.items.length;
+            const layout = getLayout(total);
+            applyLayout(layout);
+            const spokes = [];
 
             data.items.forEach((item, index) => {
-                const angle = (index / total) * (2 * Math.PI) - (Math.PI / 2);
-                const x = CONFIG.centerX + CONFIG.radius * Math.cos(angle);
-                const y = CONFIG.centerY + CONFIG.radius * Math.sin(angle);
+                const baseAngle = (index / total) * (2 * Math.PI) - (Math.PI / 2);
+                const angleNudge = layout.compactMode ? (index % 2 === 0 ? -0.035 : 0.035) : 0;
+                const angle = baseAngle + angleNudge;
+                const radialOffset = layout.compactMode ? (index % 2 === 0 ? -26 : 20) : 0;
+                const radius = layout.radius + radialOffset;
+                const x = CONFIG.centerX + radius * Math.cos(angle);
+                const y = CONFIG.centerY + radius * Math.sin(angle);
 
                 const anchor = document.createElement('div');
                 anchor.className = 'spoke-anchor';
@@ -212,6 +302,57 @@
                         <p>${item.description}</p>
                     </div>`;
                 container.appendChild(anchor);
+                spokes.push({ anchor, angle, radius });
+            });
+
+            if (layout.compactMode) {
+                const maxIterations = 24;
+                const pushStep = 8;
+                for (let iter = 0; iter < maxIterations; iter++) {
+                    let moved = false;
+                    for (let i = 0; i < spokes.length; i++) {
+                        const aRect = spokes[i].anchor.querySelector('.content-card').getBoundingClientRect();
+                        for (let j = i + 1; j < spokes.length; j++) {
+                            const bRect = spokes[j].anchor.querySelector('.content-card').getBoundingClientRect();
+                            if (!intersects(aRect, bRect, 10)) continue;
+                            moved = true;
+                            // Push the clockwise item further from center first.
+                            const target = spokes[j];
+                            target.radius = Math.min(target.radius + pushStep, 500);
+                            const x = CONFIG.centerX + target.radius * Math.cos(target.angle);
+                            const y = CONFIG.centerY + target.radius * Math.sin(target.angle);
+                            target.anchor.style.left = `${x}px`;
+                            target.anchor.style.top = `${y}px`;
+                        }
+                    }
+                    if (!moved) break;
+                }
+            }
+            if (layout.compactMode && spokes.length > 10) {
+                // Secondary pass for 11+ spokes: mild clockwise angular spread.
+                const spread = 0.012;
+                spokes.forEach((spoke, idx) => {
+                    const shift = (idx - (spokes.length - 1) / 2) * spread;
+                    const angle = spoke.angle + shift;
+                    const x = CONFIG.centerX + spoke.radius * Math.cos(angle);
+                    const y = CONFIG.centerY + spoke.radius * Math.sin(angle);
+                    spoke.anchor.style.left = `${x}px`;
+                    spoke.anchor.style.top = `${y}px`;
+                });
+            }
+            if (layout.compactMode) {
+                // Final safety: push cards that still intersect hub boundary slightly outward.
+                const hubRect = document.getElementById('hub-center').getBoundingClientRect();
+                spokes.forEach((spoke) => {
+                    const card = spoke.anchor.querySelector('.content-card');
+                    const rect = card.getBoundingClientRect();
+                    if (!intersects(rect, hubRect, -6)) return;
+                    spoke.radius = Math.min(spoke.radius + 16, 500);
+                    const x = CONFIG.centerX + spoke.radius * Math.cos(spoke.angle);
+                    const y = CONFIG.centerY + spoke.radius * Math.sin(spoke.angle);
+                    spoke.anchor.style.left = `${x}px`;
+                    spoke.anchor.style.top = `${y}px`;
+                });
             });
         }
         if (DATA_PAYLOAD) render(DATA_PAYLOAD);
