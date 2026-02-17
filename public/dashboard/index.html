@@ -336,8 +336,8 @@
                         </h3>
 
                         <!-- Open Folder Button -->
-                        <button v-if="selectedTask.details?.output_dir"
-                            @click="openFolder(selectedTask.details.output_dir)"
+                        <button v-if="getTaskOutputDir(selectedTask)"
+                            @click="openFolder(getTaskOutputDir(selectedTask))"
                             class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white font-medium flex items-center gap-2 transition">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -511,6 +511,33 @@
 
                 const selectedTask = ref(null);
 
+                const deriveOutputDirFromUrl = (url) => {
+                    if (!url || typeof url !== 'string') return null;
+                    const marker = '/generated-images/';
+                    const markerIndex = url.indexOf(marker);
+                    if (markerIndex === -1) return null;
+                    const relativePath = url.slice(markerIndex + marker.length).split('?')[0];
+                    if (!relativePath) return null;
+                    return relativePath.replace(/\\/g, '/').replace(/\/poster\.(png|jpg|jpeg|webp)$/i, '');
+                };
+
+                const getTaskOutputDir = (task) => {
+                    if (!task) return null;
+                    return task.details?.output_dir || deriveOutputDirFromUrl(task.url) || null;
+                };
+
+                const normalizeTask = (task) => {
+                    if (!task) return task;
+                    const resolvedOutputDir = getTaskOutputDir(task);
+                    return {
+                        ...task,
+                        details: {
+                            ...(task.details || {}),
+                            output_dir: resolvedOutputDir || task.details?.output_dir
+                        }
+                    };
+                };
+
                 const openImage = (url, task) => {
                     // If task is provided, open modal. functionality
                     if (task) {
@@ -606,20 +633,24 @@
 
                     socket.on('task_progress', (data) => {
                         const existing = tasks.value[data.taskId] || {};
-                        tasks.value[data.taskId] = {
+                        tasks.value[data.taskId] = normalizeTask({
                             ...existing,
                             ...data,
                             details: {
                                 ...(existing.details || {}),
                                 ...(data.details || {})
                             }
-                        };
+                        });
                     });
 
                     socket.on('batch_initialized', (initialTasks) => {
                         console.log('[Frontend] batch_initialized received:', initialTasks);
                         // Force reactivity by creating a new object
-                        tasks.value = { ...initialTasks };
+                        const normalized = {};
+                        Object.keys(initialTasks || {}).forEach((taskId) => {
+                            normalized[taskId] = normalizeTask(initialTasks[taskId]);
+                        });
+                        tasks.value = normalized;
                         console.log('[Frontend] tasks ref updated to new object. Keys:', Object.keys(tasks.value));
                         addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System');
 
@@ -647,7 +678,7 @@
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
-                    getStatusClass, getStatusTextClass, getStatusLabel
+                    getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir
                 };
 
             }

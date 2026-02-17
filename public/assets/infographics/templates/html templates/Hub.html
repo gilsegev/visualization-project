@@ -35,6 +35,16 @@
             height: 1200px;
         }
 
+        .canvas-background {
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            z-index: 0;
+            pointer-events: none;
+        }
+
         /* THE HALO: Visual connection orbit */
         .halo-orbit {
             position: absolute;
@@ -146,6 +156,7 @@
 
 <body>
     <div id="canvas">
+        <div id="canvas-bg" class="canvas-background"></div>
         <div class="halo-orbit"></div>
         <div id="hub-center">
             <div id="hub-image" class="hub-image-overlay"></div>
@@ -170,6 +181,9 @@
             if (data.center.image_url) {
                 document.getElementById('hub-image').style.backgroundImage = `url('${data.center.image_url}')`;
             }
+            if (data.background_url) {
+                document.getElementById('canvas-bg').style.backgroundImage = `url('${data.background_url}')`;
+            }
 
             const container = document.getElementById('spokes-container');
             const total = data.items.length;
@@ -182,6 +196,14 @@
                 const anchor = document.createElement('div');
                 anchor.className = 'spoke-anchor';
                 anchor.style.left = `${x}px`; anchor.style.top = `${y}px`;
+                // Layering rule (counter-clockwise precedence):
+                // - Each item is placed behind the item immediately before it when moving counter-clockwise.
+                // - This means clockwise neighbors stack "under" their CCW neighbor.
+                // - Background remains at z-index 0 and never blocks content.
+                // Mapping for N items:
+                // index N-1 is highest, then 0, 1, 2 ... N-2
+                const z = total - ((index + 1) % total);
+                anchor.style.zIndex = `${z}`;
 
                 anchor.innerHTML = `
                     <div class="icon-circle"><img src="${item.image_url}"></div>

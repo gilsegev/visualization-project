@@ -103,7 +103,6 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const taskId = task.id || `task-${Date.now()}`;
 
         // e.g. 2026-02-14/course-1/lesson-2/task-123/
-        // e.g. 2026-02-14/course-1/lesson-2/task-123/
         const relativeOutputDir = path.join(dateStr, courseId, lessonId, taskId);
         this.logger.log(`[StampingStrategy] Target Directory Initialized: ${relativeOutputDir}`);
         this.observability.emitLog('info', `Target Directory Initialized: ${relativeOutputDir}`, 'StampingStrategy', task.id);
@@ -120,20 +119,20 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // Dispatch based on Template ID
         if (blueprint.template_id === 'versus_split') {
-            return this.handleVersusSplit(task, blueprint, relativeOutputDir, theme, metrics);
+            return await this.handleVersusSplit(task, blueprint, relativeOutputDir, theme, metrics);
         }
         if (blueprint.template_id === 'bento_grid') {
-            return this.handleBento(task, blueprint, relativeOutputDir, theme, metrics);
+            return await this.handleBento(task, blueprint, relativeOutputDir, theme, metrics);
         }
         if (blueprint.template_id === 'steps' || blueprint.template_id === 'step_list' || blueprint.template_id === 'step_journey') {
-            return this.handleSteps(task, blueprint, relativeOutputDir, theme, metrics);
+            return await this.handleSteps(task, blueprint, relativeOutputDir, theme, metrics);
         }
         if (blueprint.template_id === 'hub_radial') {
-            return this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
+            return await this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
         }
 
         // Final Fallback: Hub Radial
-        return this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
+        return await this.handleHubRadial(task, blueprint, relativeOutputDir, theme, metrics);
     }
 
     private async handleHubRadial(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
@@ -243,7 +242,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const systemPrompt = `You are a Senior Visual Architect. You do not create content; you map pedagogical specifications into stable geometric blueprints.
     
     CRITICAL DIRECTIVES:
-    - Hallucination Guardrail: If input data is sparse, return a "correction_log" instead of inventing items. You must preserve the EXACT terminology from the source.
+    - Hallucination Guardrail: If input is extremely sparse (e.g. only a title with no context), return a "correction_log". However, if subjects and metrics are provided for a comparison, you SHOULD use your world knowledge to populate the values, descriptions, and scores to provide a complete pedagogical experience. Preserve the EXACT terminology from the source for the core subjects and metrics.
     - Quality Rubric: Calculate and return a quality_score (1-100) based on:
         1. Structural Fidelity (40 pts): Preservation of all branches/notes.
         2. Template Match (30 pts): Accuracy of the chosen geometry for the lesson goal.
@@ -253,14 +252,25 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     TEMPLATE CATALOG:
     1. 'hub_radial': Circular central topic with radial spokes.
        Schema: { center_topic: { title, description }, items: [{ title, description }] }
-    2. 'versus_split': A/B comparison. Required: Exactly 2 subjects.
-       Schema: { center_topic: { title, subtitle }, versus_subjects: [{ name, description }], comparison_rows: [{ left: { value, description }, right: { value, description }, icon_label }], verdict: { title, text } }
+    2. 'versus_split': Comparative analysis of 2-4 entities (Subjects).
+       AXIAL LOGIC: 
+       - Subjects (versus_subjects): The nouns being compared (e.g., "iPhone", "Android"). If the input has "panels", "columns", or "categories", these are typically your subjects.
+       - Metrics (comparison_items): The dimensions of comparison (e.g., "Battery Life"). The "characteristics" or bullet points within panels are your metrics.
+       Schema: { 
+         center_topic: { title, subtitle }, 
+         versus_subjects: [{ name, description }], 
+         comparison_items: [{ 
+           metric: "e.g. Speed", 
+           values: [{ value: "e.g. 100mph", description: "...", score: 1-10 }] 
+         }], 
+         verdict: { title, text } 
+       }
     3. 'step_journey': Vertical roadmap.
        Schema: { center_topic: { title, description }, items: [{ title, description }] }
     4. 'bento_grid': 12x12 grid.
        Schema: { cells: [{ col_span, row_span, content: { type: 'text'|'image', title, text } }], background: { visual_style_directive } }
 
-    CRITICAL: For 'versus_split', you MUST align parallel steps or features into 'comparison_rows'. If one side has more steps, group them logically to maintain row alignment.
+    CRITICAL: For 'versus_split', 'comparison_items[].values' MUST match the length and order of 'versus_subjects'. Each subject gets one value per metric.
 
     OUTPUT SCHEMA (VALID JSON ONLY):
     {
@@ -373,85 +383,99 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const usedPrompts: string[] = [];
 
         // Robust Mapping: handle different key variations from LLM
-        const subjects = blueprint.versus_subjects || blueprint.subjects || [{ name: 'Left' }, { name: 'Right' }];
+        const subjects = blueprint.versus_subjects || blueprint.subjects || [{ name: 'Subject A' }, { name: 'Subject B' }];
 
-        // Map comparison_rows or steps to items
-        if (!blueprint.items) {
-            blueprint.items = blueprint.comparison_rows || blueprint.steps || [];
+        // Map comparison_items or items
+        if (!blueprint.comparison_items) {
+            blueprint.comparison_items = blueprint.items || blueprint.comparison_rows || [];
         }
+
+        // Programmatic Safeguard: Ensure metric values length matches subject length
+        const subCount = subjects.length;
+        blueprint.comparison_items = blueprint.comparison_items.map((item: any) => {
+            if (item.values && item.values.length !== subCount) {
+                this.logger.warn(`[StampingStrategy] Subject/Value mismatch for metric "${item.metric}". Expected ${subCount}, got ${item.values.length}. Padding/Truncating.`);
+                this.observability.emitLog('warn', `Subject/Value mismatch for metric "${item.metric}". Expected ${subCount}, got ${item.values.length}.`, 'StampingStrategy', task.id);
+
+                if (item.values.length < subCount) {
+                    // Pad with empty values
+                    const padding = Array(subCount - item.values.length).fill({ value: 'N/A', description: 'No data provided', score: 0 });
+                    item.values = [...item.values, ...padding];
+                } else {
+                    // Truncate
+                    item.values = item.values.slice(0, subCount);
+                }
+            }
+            return item;
+        });
 
         if (!blueprint.center_topic && blueprint.title) {
             blueprint.center_topic = { title: blueprint.title, subtitle: blueprint.description || '' };
         }
-        const imagePromises = subjects.map(async (subj, idx) => {
-            const side = idx === 0 ? 'left' : 'right';
+        const imagePromises = subjects.map(async (subj: any, idx: number) => {
             const prompt = `Vertical portrait of ${subj.name}, ${subj.description || ''}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text`;
 
             try {
-                // Use isBackground=false logic for subjects? Or custom? Using false (sticker/character style)
                 const result = await this.generateImage(prompt, theme, false, task.id);
                 if (!result.url) return null;
 
                 const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-                const filename = `vs_${task.id}_${side}.png`;
+                const filename = `vs_${task.id}_sub_${idx}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
                 // Update blueprint URL
                 subj.image_url = `./assets/${filename}`;
                 return { url: subj.image_url, prompt: result.prompt };
             } catch (e) {
-                this.logger.error(`Versus Image ${side} failed: ${e.message}`);
+                this.logger.error(`Versus Subject Image ${idx} failed: ${e.message}`);
                 return null;
             }
         });
 
         const subjectResults = await Promise.all(imagePromises);
         subjectResults.forEach((res, idx) => {
-            if (res) usedPrompts.push(`Subject ${idx === 0 ? 'Left' : 'Right'}: ${res.prompt}`);
+            if (res) usedPrompts.push(`Subject ${idx}: ${res.prompt}`);
         });
 
-        // 1.5 Generate Item Icons (Parallel)
-        this.logger.log('[StampingStrategy] Generating Versus Item Icons...');
-        const iconPromises = (blueprint.items || []).map(async (item, idx) => {
-            // Priority: Explicit Icon Name > icon_label > Left Value > Generic
-            const iconPrompt = item.icon || item.icon_label || (item.icon && item.icon.length > 2 ? item.icon : null)
-                || `${item.left?.value || 'concept'} vs ${item.right?.value || 'concept'}`;
-
+        // 1.5 Generate Metric Icons (Optional but nice)
+        this.logger.log('[StampingStrategy] Generating Versus Metric Icons...');
+        const iconPromises = (blueprint.comparison_items || []).map(async (item: any, idx: number) => {
+            const iconPrompt = item.metric || 'comparison';
             const prompt = `Simple flat vector icon of ${iconPrompt}, black lines on white background, minimalist, bold, isolated --no text`;
 
             try {
-                // simply generate a square icon that FILLS the container.
                 const result = await this.generateImage(prompt, theme, false, task.id);
                 if (!result.url) return;
 
                 const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-                const filename = `vs_icon_${task.id}_${idx}.png`;
+                const filename = `vs_metric_${task.id}_${idx}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
-                (item as any).icon_url = `./assets/${filename}`;
+                item.icon_url = `./assets/${filename}`;
                 return result.prompt;
             } catch (e) {
-                this.logger.warn(`Versus Icon ${idx} failed: ${e.message}`);
+                this.logger.warn(`Versus Metric Icon ${idx} failed: ${e.message}`);
                 return null;
             }
         });
 
         const iconResults = await Promise.all(iconPromises);
         iconResults.forEach((prompt, idx) => {
-            if (prompt) usedPrompts.push(`Icon ${idx}: ${prompt}`);
+            if (prompt) usedPrompts.push(`Metric Icon ${idx}: ${prompt}`);
         });
 
         metrics.images = performance.now() - imagesStart;
 
         // 2. Stamp Template
         const stampingStart = performance.now();
-        // Versus uses the same stamping service, which replaces /* INSERT_JSON_HERE */
-        // We ensure blueprint matches the schema expected by versus_split.html render()
-        // Schema: { subjects: [...], items: [...], verdict: {...} }
+        // versus.html expected Data Format: { center: { title, subtitle }, subjects: [], items: [], verdict: {} }
         const payload = {
+            center: {
+                title: blueprint.center_topic?.title || blueprint.title || 'Comparison',
+                subtitle: blueprint.center_topic?.subtitle || blueprint.center_topic?.description || blueprint.description || ''
+            },
             subjects: subjects,
-            items: blueprint.items,
-            center: blueprint.center_topic, // Title/Subtitle often mapped here
+            items: blueprint.comparison_items,
             verdict: blueprint.verdict
         };
 
@@ -481,7 +505,20 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         return {
             url: publicUrl,
             posterUrl: publicUrl,
-            payload: { blueprint, html: fixedHtml, metrics }
+            payload: {
+                blueprint,
+                html: fixedHtml,
+                metrics: {
+                    blueprint_ms: metrics.blueprint.toFixed(2),
+                    images_ms: metrics.images.toFixed(2),
+                    stamping_ms: metrics.stamping.toFixed(2),
+                    browser_ms: metrics.browser.toFixed(2),
+                    total_ms: metrics.total.toFixed(2)
+                },
+                output_dir: relativeOutputDir,
+                blueprint_prompt: task.refined_prompt,
+                image_prompts: usedPrompts
+            }
         };
     }
 
@@ -563,7 +600,15 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             payload: {
                 blueprint,
                 html: fixedHtml,
-                metrics,
+                metrics: {
+                    blueprint_ms: metrics.blueprint.toFixed(2),
+                    images_ms: metrics.images.toFixed(2),
+                    stamping_ms: metrics.stamping.toFixed(2),
+                    browser_ms: metrics.browser.toFixed(2),
+                    total_ms: metrics.total.toFixed(2)
+                },
+                output_dir: relativeOutputDir,
+                blueprint_prompt: task.refined_prompt,
                 image_prompts: usedPrompts
             }
         };
