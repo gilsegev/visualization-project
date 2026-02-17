@@ -70,7 +70,7 @@
 
         .cell p { font-size: 20px; line-height: 1.4; color: #4A5568; opacity: 0.9; }
 
-        /* GRID UTILITIES */
+        /* GRID UTILITIES (legacy support) */
         .col-span-3 { grid-column: span 3; } .col-span-6 { grid-column: span 6; }
         .row-span-6 { grid-row: span 6; } .row-span-12 { grid-row: span 12; }
     </style>
@@ -94,23 +94,34 @@
 
             data.cells.forEach(cellData => {
                 const cell = document.createElement('div');
-                cell.className = `cell col-span-${cellData.layout.col_span} row-span-${cellData.layout.row_span}`;
-                if (cellData.content.type === 'image_only') cell.classList.add('full-bleed');
+                cell.className = 'cell';
+
+                // Support both schemas:
+                // 1) { col_span, row_span, content }
+                // 2) { layout: { col_span, row_span }, content }
+                const colSpan = cellData?.col_span || cellData?.layout?.col_span || 3;
+                const rowSpan = cellData?.row_span || cellData?.layout?.row_span || 3;
+                cell.style.gridColumn = `span ${Math.max(1, colSpan)}`;
+                cell.style.gridRow = `span ${Math.max(1, rowSpan)}`;
+
+                const contentType = cellData?.content?.type || 'text';
+                if (contentType === 'image_only') cell.classList.add('full-bleed');
 
                 // DYNAMIC FONT SCALING LOGIC
-                const title = cellData.content.title || "";
+                const title = cellData?.content?.title || "";
                 let fontSize = "36px";
                 if (title.length > 25) fontSize = "24px";
                 if (title.length > 40) fontSize = "18px";
                 cell.style.setProperty('--title-size', fontSize);
 
                 let html = '';
-                switch (cellData.content.type) {
-                    case 'image_only': html = `<img src="${cellData.content.image_url}">`; break;
-                    case 'title_text': html = `<h2>${title}</h2><p>${cellData.content.text}</p>`; break;
-                    case 'title_image': html = `<h2>${title}</h2><img src="${cellData.content.image_url}">`; break;
-                    case 'title_image_text': html = `<h2>${title}</h2><img src="${cellData.content.image_url}"><p>${cellData.content.text}</p>`; break;
-                    default: html = `<p style="font-size: 26px;">${cellData.content.text}</p>`;
+                switch (contentType) {
+                    case 'image_only': html = `<img src="${cellData?.content?.image_url || ''}">`; break;
+                    case 'title_text':
+                    case 'text': html = `<h2>${title}</h2><p>${cellData?.content?.text || ''}</p>`; break;
+                    case 'title_image': html = `<h2>${title}</h2><img src="${cellData?.content?.image_url || ''}">`; break;
+                    case 'title_image_text': html = `<h2>${title}</h2><img src="${cellData?.content?.image_url || ''}"><p>${cellData?.content?.text || ''}</p>`; break;
+                    default: html = `<p style="font-size: 26px;">${cellData?.content?.text || ''}</p>`;
                 }
                 cell.innerHTML = html;
                 grid.appendChild(cell);

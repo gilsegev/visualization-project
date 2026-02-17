@@ -34,6 +34,14 @@ body {
     display: flex;
     flex-direction: column;
     height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+#stage {
+    width: 100%;
+    transform-origin: top center;
+    will-change: transform;
 }
 
 /* HEADER */
@@ -169,6 +177,7 @@ footer p {
 
 <body>
 <div id="canvas">
+<div id="stage">
 
 <header>
     <h1 id="main-title"></h1>
@@ -184,6 +193,7 @@ footer p {
     <p id="verdict-text"></p>
 </footer>
 
+</div>
 </div>
 
 <script>
@@ -275,7 +285,19 @@ function render(data) {
         document.getElementById('verdict-text').innerText = data.verdict.text;
     }
 
-    balanceRows();
+    const reflow = () => {
+        balanceRows();
+        fitToCanvas();
+    };
+
+    // Initial pass.
+    reflow();
+
+    // Stabilize after late font/image layout shifts.
+    settleLayout().then(() => {
+        reflow();
+        requestAnimationFrame(() => reflow());
+    });
 }
 
 /* AUTOMATIC ROW BALANCING */
@@ -291,6 +313,43 @@ function balanceRows() {
             cell.style.height = maxHeight + 'px';
         });
     });
+}
+
+function fitToCanvas() {
+    const canvas = document.getElementById('canvas');
+    const stage = document.getElementById('stage');
+    if (!canvas || !stage) return;
+
+    // Reset prior scaling to measure true size.
+    stage.style.transform = 'scale(1)';
+    stage.style.marginLeft = '0px';
+
+    const safetyInset = 12;
+    const canvasWidth = Math.max(canvas.clientWidth - safetyInset * 2, 1);
+    const canvasHeight = Math.max(canvas.clientHeight - safetyInset * 2, 1);
+    const requiredWidth = stage.scrollWidth;
+    const requiredHeight = stage.scrollHeight;
+
+    const scale = Math.min(canvasWidth / requiredWidth, canvasHeight / requiredHeight, 1);
+    stage.style.transform = `scale(${scale})`;
+
+    // Re-center horizontally after scaling.
+    const scaledWidth = requiredWidth * scale;
+    const sideOffset = Math.max((canvasWidth - scaledWidth) / 2, 0);
+    stage.style.marginLeft = `${sideOffset + safetyInset}px`;
+}
+
+function settleLayout() {
+    const fontReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const imgPromises = Array.from(document.querySelectorAll('img')).map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+            img.addEventListener('load', () => resolve(null), { once: true });
+            img.addEventListener('error', () => resolve(null), { once: true });
+        });
+    });
+
+    return Promise.all([fontReady, ...imgPromises]).then(() => null);
 }
 
 if (DATA_PAYLOAD) {

@@ -2,6 +2,14 @@ import { Injectable, OnModuleDestroy, OnModuleInit, Logger } from '@nestjs/commo
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import * as sharp from 'sharp';
 
+type ResizeMode = 'contain' | 'fill';
+
+interface ScreenshotHtmlOptions {
+    width?: number;
+    height?: number;
+    resizeMode?: ResizeMode;
+}
+
 @Injectable()
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(BrowserService.name);
@@ -86,10 +94,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
-    async screenshotHtml(htmlContent: string, baseUrl?: string, options: { width?: number; height?: number } = {}): Promise<Buffer> {
+    async screenshotHtml(htmlContent: string, baseUrl?: string, options: ScreenshotHtmlOptions = {}): Promise<Buffer> {
         // Default to 1200x1200 if not specified
         const width = options.width || 1200;
         const height = options.height || 1200;
+        const requestedResizeMode = options.resizeMode || 'contain';
 
         // Re-use standard getNewPage
         // Note: getNewPage currently hardcodes 1200x1200 in newContext, but we override it immediately with setViewportSize.
@@ -147,29 +156,81 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
             // Safety Buffer
             await page.waitForTimeout(500);
 
-            // Hard-Clipped Screenshot at Canonical Resolution (1200px wide)
-            // If target dimensions are provided, we render at 1200 width and proportional height,
-            // Then resize with sharp.
-            const CANONICAL_WIDTH = 1200;
-            const renderWidth = CANONICAL_WIDTH;
-            const scale = (options.width || CANONICAL_WIDTH) / CANONICAL_WIDTH;
-            const renderHeight = (options.height || CANONICAL_WIDTH) / scale;
+            // Capture full canvas bounds first, then downscale.
+            const canvasBounds = await page.evaluate(() => {
+                // Avoid clipping content that overflows fixed canvases/templates.
+                const canvas = document.getElementById('canvas') as HTMLElement | null;
+                if (canvas) canvas.style.overflow = 'visible';
+                if (document.body) document.body.style.overflow = 'visible';
+
+                const baseNode = canvas || document.body || document.documentElement;
+                const baseRect = baseNode.getBoundingClientRect();
+
+                let minX = baseRect.left + window.scrollX;
+                let minY = baseRect.top + window.scrollY;
+                let maxX = baseRect.right + window.scrollX;
+                let maxY = baseRect.bottom + window.scrollY;
+
+                const nodes = Array.from(document.querySelectorAll('body *')) as HTMLElement[];
+                for (const el of nodes) {
+                    const style = window.getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue;
+
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) continue;
+
+                    const left = rect.left + window.scrollX;
+                    const top = rect.top + window.scrollY;
+                    const right = rect.right + window.scrollX;
+                    const bottom = rect.bottom + window.scrollY;
+
+                    minX = Math.min(minX, left);
+                    minY = Math.min(minY, top);
+                    maxX = Math.max(maxX, right);
+                    maxY = Math.max(maxY, bottom);
+                }
+
+                const x = Math.max(0, Math.floor(minX));
+                const y = Math.max(0, Math.floor(minY));
+                const width = Math.max(1, Math.ceil(maxX - minX));
+                const height = Math.max(1, Math.ceil(maxY - minY));
+
+                return { x, y, width, height };
+            });
+
+            const renderWidth = canvasBounds.width;
+            const renderHeight = canvasBounds.height;
 
             console.log(`[RENDER] Setting Viewport for Canonical Render: ${renderWidth}x${renderHeight}`);
-            await page.setViewportSize({ width: Math.round(renderWidth), height: Math.round(renderHeight) });
+            await page.setViewportSize({
+                width: Math.max(Math.ceil(canvasBounds.x + renderWidth), width),
+                height: Math.max(Math.ceil(canvasBounds.y + renderHeight), height)
+            });
 
             const screenshotBuffer = await page.screenshot({
                 type: 'png',
-                clip: { x: 0, y: 0, width: Math.round(renderWidth), height: Math.round(renderHeight) },
+                clip: {
+                    x: canvasBounds.x,
+                    y: canvasBounds.y,
+                    width: Math.round(renderWidth),
+                    height: Math.round(renderHeight)
+                },
                 omitBackground: true
             });
 
             // If resizing is needed
             if (options.width && options.height && (options.width !== renderWidth || options.height !== renderHeight)) {
-                console.log(`[SHARP] Resizing from ${renderWidth} to ${options.width}x${options.height}`);
+                const sourceAspect = renderWidth / renderHeight;
+                const targetAspect = options.width / options.height;
+                const aspectDelta = Math.abs(sourceAspect - targetAspect) / Math.max(targetAspect, 0.0001);
+                const resolvedResizeMode: ResizeMode = aspectDelta > 0.2 ? 'contain' : requestedResizeMode;
+
+                console.log(`[SHARP] Resizing from ${renderWidth}x${renderHeight} to ${options.width}x${options.height} using mode=${resolvedResizeMode}`);
+                const fit = resolvedResizeMode === 'fill' ? 'fill' : 'contain';
                 return await sharp(screenshotBuffer)
                     .resize(options.width, options.height, {
-                        fit: 'fill', // Force exact dimensions per user request
+                        fit,
+                        background: { r: 255, g: 255, b: 255, alpha: 1 }
                     })
                     .png()
                     .toBuffer();

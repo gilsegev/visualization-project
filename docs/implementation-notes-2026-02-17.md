@@ -49,3 +49,22 @@ File:
 Files:
 - `public/assets/infographics/templates/html templates/Hub.html`
 - `scripts/e2e-hub-density.js`
+
+## Bento Debug Fix
+
+- Root cause: `bento.html` expected `cellData.layout.col_span/row_span`, while generated blueprints provided top-level `cellData.col_span/row_span`.
+- Added schema compatibility for both forms and direct inline grid-span assignment.
+- Added explicit support for `content.type = "text"` rendering path.
+
+File:
+- `public/assets/infographics/templates/html templates/bento.html`
+
+## Resolution/Scaling + Versus Truncation Fixes
+
+- Updated screenshot pipeline to capture full visible content bounds instead of relying only on fixed canvas clips.
+- Added safe resizing behavior (contain-first) for aspect mismatches to avoid content loss.
+- Hardened `versus.html` with stage-level fit logic and stabilization reflow after fonts/images load, preventing late overflow clipping.
+
+Files:
+- `src/image-gen/browser.service.ts`
+- `public/assets/infographics/templates/html templates/versus.html`
