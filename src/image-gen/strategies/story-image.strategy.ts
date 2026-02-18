@@ -90,8 +90,23 @@ export class StoryImageStrategy extends BaseImageStrategy {
                 path.join(relativeOutputDir, 'assets', 'story_image.png'),
                 Buffer.from(imageBinary.data)
             );
-            const framePayload = { image_url: './assets/story_image.png' };
-            const frameHtml = this.stampingService.stamp('story_frame', framePayload, (task as any)?.metadata?.custom_theme);
+            const bentoPayload = {
+                story_mode: true,
+                cells: [
+                    {
+                        col_span: 12,
+                        row_span: 12,
+                        content: {
+                            type: 'image_only',
+                            image_url: './assets/story_image.png'
+                        }
+                    }
+                ],
+                background: {
+                    color: (task as any)?.metadata?.custom_theme?.background_main
+                }
+            };
+            const frameHtml = this.stampingService.stamp('bento', bentoPayload, (task as any)?.metadata?.custom_theme);
 
             const dimsForCapture = this.resolveDimensions(task);
             const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
@@ -99,7 +114,9 @@ export class StoryImageStrategy extends BaseImageStrategy {
             const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), posterBuffer);
             await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(frameHtml));
             await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify({
-                template_id: 'story_frame',
+                template_id: 'bento',
+                story_mode: true,
+                cells: bentoPayload.cells,
                 image_url: assetUrl,
                 image_size: imageSize
             }, null, 2)));
@@ -120,7 +137,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
                         palette_locked: paletteLocked,
                     },
                     image_size: imageSize,
-                    stamped_template: 'story_frame',
+                    stamped_template: 'bento',
                     model,
                 }
             };
@@ -180,7 +197,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
         const meta = (task as any).metadata || {};
         const courseId = meta.course_id || 'uncategorized_course';
         const lessonId = meta.lesson_id || 'uncategorized_lesson';
-        return path.join(dateStr, courseId, lessonId, task.id);
+        return path.join(dateStr, courseId, lessonId, 'hero', task.id);
     }
 
     private asStringList(input: any): string[] {
