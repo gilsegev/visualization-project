@@ -45,6 +45,72 @@ export class ImageOrchestratorService {
         return `${Math.round(px)}px`;
     }
 
+    private resolveManifestTaskType(viz: any): 'story_image' | 'data_viz' | 'infographic' {
+        const rawType = String(viz?.type || '').toLowerCase();
+        if (rawType === 'story_image' || !!viz?.imageSpecs) {
+            return 'story_image';
+        }
+
+        const explicitDataVizTypes = new Set([
+            'data_viz',
+            'chart',
+            'bar',
+            'line',
+            'pie',
+            'funnel',
+            'bar_chart',
+            'line_chart',
+            'pie_chart',
+            'funnel_chart',
+        ]);
+        if (explicitDataVizTypes.has(rawType)) {
+            return 'data_viz';
+        }
+
+        const hasExplicitChartPayload = typeof viz?.chartType === 'string' && !!viz?.data;
+        const hasLabelValueData = Array.isArray(viz?.data?.labels) && Array.isArray(viz?.data?.values);
+        if (hasExplicitChartPayload || hasLabelValueData) {
+            return 'data_viz';
+        }
+
+        return 'infographic';
+    }
+
+    private normalizeChartType(viz: any): 'bar' | 'line' | 'pie' | 'funnel' {
+        const raw = String(viz?.chartType || viz?.type || '').toLowerCase();
+        if (raw.includes('line')) return 'line';
+        if (raw.includes('pie') || raw.includes('donut')) return 'pie';
+        if (raw.includes('funnel')) return 'funnel';
+        return 'bar';
+    }
+
+    private buildManifestPayloadForTask(viz: any, taskType: 'story_image' | 'data_viz' | 'infographic'): any {
+        const { visualizationId, ...vizContent } = viz;
+
+        if (taskType !== 'data_viz') {
+            return vizContent;
+        }
+
+        const chartType = this.normalizeChartType(viz);
+        const format = String(viz?.format || viz?.exportType || 'static').toLowerCase() === 'animated'
+            ? 'animated'
+            : 'static';
+
+        const rawData = viz?.data;
+        const data = rawData && typeof rawData === 'object'
+            ? rawData
+            : {
+                labels: Array.isArray(viz?.labels) ? viz.labels : [],
+                values: Array.isArray(viz?.values) ? viz.values : []
+            };
+
+        return {
+            chartType,
+            data,
+            format,
+        };
+    }
+
     async generateCourse(content: string) {
         const start = performance.now();
         this.logger.log(`Starting course generation for content length: ${content.length}`);
@@ -125,9 +191,6 @@ export class ImageOrchestratorService {
         lessons.forEach((lesson: any, lessonIdx: number) => {
             const visualItems = lesson.visualizations || lesson.items || [];
             visualItems.forEach((viz: any) => {
-                // Clean up visualization ID/content for prompt
-                const { visualizationId, ...vizContent } = viz;
-
                 const vizDescription = viz.description || viz.title || 'a visual representation';
                 const vizContext = viz.context || '';
                 const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}. Context: ${vizContext}`;
@@ -142,12 +205,13 @@ export class ImageOrchestratorService {
                     ? primaryFont
                     : this.toGoogleFontUrl(primaryFont);
 
-                const taskType = (viz.type === 'story_image' || !!viz.imageSpecs) ? 'story_image' : 'infographic';
+                const taskType = this.resolveManifestTaskType(viz);
+                const taskPayload = this.buildManifestPayloadForTask(viz, taskType);
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     type: taskType,
                     refined_prompt: refinedPrompt.trim(),
-                    payload: vizContent,
+                    payload: taskPayload,
                     metadata: {
                         course_id: courseSlug,
                         lesson_id: lesson.lessonId,
@@ -272,14 +336,14 @@ export class ImageOrchestratorService {
                         batchId,
                         status: 'completed',
                         url: result.url,
-                        metrics: result.payload.metrics,
+                        metrics: result?.payload?.metrics || {},
                         details: {
                             started_at: taskStartedAt.toISOString(),
                             ended_at: taskEndedAt.toISOString(),
                             duration_ms: taskDurationMs.toFixed(2),
-                            output_dir: result.payload.output_dir,
-                            image_prompts: result.payload.image_prompts,
-                            blueprint_prompt: result.payload.blueprint_prompt
+                            output_dir: result?.payload?.output_dir,
+                            image_prompts: result?.payload?.image_prompts,
+                            blueprint_prompt: result?.payload?.blueprint_prompt
                         }
                     };
 

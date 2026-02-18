@@ -16,6 +16,7 @@ export class DataVizStrategy extends BaseImageStrategy {
   }
 
   protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
+    const startedAt = Date.now();
     const payload = task.payload as any;
     // Implementation of Prompt 9: Use 'format' from payload, or fallback to 'exportType'
     const exportType = 'exportType' in task ? task.exportType : 'static';
@@ -46,14 +47,54 @@ export class DataVizStrategy extends BaseImageStrategy {
       this.logger.log(`[DEBUG] Task ${task.id}: Generating Video (Animated)...`);
       const videoUrl = await this.captureVideo(task, payload, chartData, index);
 
-      return { url: videoUrl, posterUrl };
+      const elapsedMs = Date.now() - startedAt;
+      return {
+        url: videoUrl,
+        posterUrl,
+        payload: {
+          output_dir: this.deriveOutputDirFromUrl(videoUrl),
+          metrics: {
+            generation_ms: elapsedMs.toFixed(2),
+            total_ms: elapsedMs.toFixed(2),
+          },
+          image_prompts: [task.refined_prompt],
+          blueprint_prompt: task.refined_prompt,
+          chart_type: payload.chartType || 'bar',
+          format,
+        }
+      };
 
     } else {
       // Static Only
       // Prompt 9: "Perform a standard screenshot"
       const url = await this.captureStatic(task, payload, chartData, index);
-      return { url };
+      const elapsedMs = Date.now() - startedAt;
+      return {
+        url,
+        payload: {
+          output_dir: this.deriveOutputDirFromUrl(url),
+          metrics: {
+            generation_ms: elapsedMs.toFixed(2),
+            total_ms: elapsedMs.toFixed(2),
+          },
+          image_prompts: [task.refined_prompt],
+          blueprint_prompt: task.refined_prompt,
+          chart_type: payload.chartType || 'bar',
+          format,
+        }
+      };
     }
+  }
+
+  private deriveOutputDirFromUrl(url: string): string | undefined {
+    if (!url || typeof url !== 'string') return undefined;
+    const marker = '/generated-images/';
+    const idx = url.indexOf(marker);
+    if (idx < 0) return undefined;
+    const relative = url.slice(idx + marker.length).replace(/\\/g, '/');
+    const parts = relative.split('/').filter(Boolean);
+    if (parts.length <= 1) return '.';
+    return parts.slice(0, -1).join('/');
   }
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
