@@ -32,9 +32,9 @@ export class StoryImageStrategy extends BaseImageStrategy {
             const generation = imageSpecs?.rendering?.generation || {};
             const promptParts = generation?.promptParts || {};
             const constraints = imageSpecs?.constraints || {};
-            const dims = (task as any)?.metadata?.dimensions || {};
-            const width = Math.max(256, Number(dims.width || 1400));
-            const height = Math.max(256, Number(dims.height || 900));
+            const dims = this.resolveDimensions(task);
+            const width = dims.width;
+            const height = dims.height;
             const imageSize = `${width}x${height}`;
 
             const positiveParts = this.asStringList(promptParts.positive);
@@ -68,13 +68,14 @@ export class StoryImageStrategy extends BaseImageStrategy {
 
             const model = this.configService.get<string>('SILICONFLOW_STORY_MODEL') || 'black-forest-labs/FLUX.1-schnell';
             const started = Date.now();
+            this.observability.emitLog('info', `Story image request queued model=${model} size=${imageSize}`, 'StoryImage', task.id);
             const generationResponse = await this.generateWithBackoff({
                 apiKey: siliconFlowKey,
                 model,
                 prompt: finalPrompt,
                 imageSize,
             });
-            const imageUrl = generationResponse?.data?.[0]?.url;
+            const imageUrl = generationResponse?.data?.data?.[0]?.url;
             if (!imageUrl) {
                 throw new Error('No image URL returned from SiliconFlow for story image.');
             }
@@ -144,6 +145,11 @@ export class StoryImageStrategy extends BaseImageStrategy {
                 const retryable = status === 429 || status === 503;
                 if (!retryable || attempt >= maxAttempts) break;
                 const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s -> 2s -> 4s
+                this.observability.emitLog(
+                    'warn',
+                    `Story image retry scheduled (attempt=${attempt + 1}/${maxAttempts}) status=${status} backoff=${delayMs}ms`,
+                    'StoryImage'
+                );
                 await this.sleep(delayMs);
             }
         }
@@ -167,5 +173,34 @@ export class StoryImageStrategy extends BaseImageStrategy {
     private sleep(ms: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
-}
 
+    private resolveDimensions(task: ImageTask): { width: number; height: number } {
+        const payload = (task as any)?.payload || {};
+        const metadataDims = (task as any)?.metadata?.dimensions || {};
+        const payloadDims = payload?.dimensions || {};
+        const source = { ...payloadDims, ...metadataDims };
+
+        const directWidth = this.parseDimension(source?.width);
+        const directHeight = this.parseDimension(source?.height);
+        if (directWidth && directHeight) {
+            return { width: directWidth, height: directHeight };
+        }
+
+        const pair = String(source?.size || source?.resolution || '').trim();
+        const match = pair.match(/(\d{2,5})\s*[xX×]\s*(\d{2,5})/);
+        if (match) {
+            const width = this.parseDimension(match[1]);
+            const height = this.parseDimension(match[2]);
+            if (width && height) return { width, height };
+        }
+
+        return { width: 1400, height: 900 };
+    }
+
+    private parseDimension(value: any): number | null {
+        if (value === null || value === undefined) return null;
+        const parsed = Number(String(value).replace(/[^\d.]/g, ''));
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        return Math.max(256, Math.round(parsed));
+    }
+}
