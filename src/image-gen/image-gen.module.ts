@@ -12,6 +12,7 @@ import { BeautifySlideStrategy } from './strategies/beautify-slide.strategy';
 import { InfographicStrategy } from './strategies/infographic.strategy';
 import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdom-infographic.strategy';
 import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
+import { StoryImageStrategy } from './strategies/story-image.strategy';
 import { TemplateStampingService } from './services/template-stamping.service';
 import { BrowserService } from './browser.service';
 import { ObservabilityModule } from '../observability/observability.module';
@@ -34,6 +35,7 @@ import { ObservabilityModule } from '../observability/observability.module';
         InfographicStrategy,
         DEPRECATED_HtmlInfographicStrategy,
         TemplateStampingStrategy,
+        StoryImageStrategy,
         TemplateStampingService,
         BrowserService,
     ],

@@ -111,6 +111,9 @@ export class ImageOrchestratorService {
 
         const globalStyle = manifest.course?.globalStyleGuide || {};
         const designPhilosophy = manifest.course?.designPhilosophy || 'Professional';
+        const coursePaletteHexes = Object.values(globalStyle.colorPalette || {})
+            .map(v => String(v).trim())
+            .filter(v => /^#[0-9a-f]{3,8}$/i.test(v));
 
         // 1. Parse Manifest into Tasks
         const tasks: any[] = [];
@@ -139,9 +142,10 @@ export class ImageOrchestratorService {
                     ? primaryFont
                     : this.toGoogleFontUrl(primaryFont);
 
+                const taskType = (viz.type === 'story_image' || !!viz.imageSpecs) ? 'story_image' : 'infographic';
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                    type: 'infographic',
+                    type: taskType,
                     refined_prompt: refinedPrompt.trim(),
                     payload: vizContent,
                     metadata: {
@@ -154,6 +158,7 @@ export class ImageOrchestratorService {
                         theme_id: themeId, // Pass through for strategy
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
+                        course_palette_hexes: coursePaletteHexes,
                         // Only inject custom_theme if a global guide is provided AND no specific themeId is set
                         custom_theme: (manifest.course?.globalStyleGuide && !themeId) ? {
                             id: 'manifest_theme',
