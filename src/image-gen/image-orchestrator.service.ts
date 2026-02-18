@@ -108,6 +108,7 @@ export class ImageOrchestratorService {
             chartType,
             data,
             format,
+            title: viz?.title,
         };
     }
 

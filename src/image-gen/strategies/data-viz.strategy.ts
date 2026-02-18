@@ -98,6 +98,7 @@ export class DataVizStrategy extends BaseImageStrategy {
   }
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
+    const theme = this.buildCourseChartTheme(task);
     const vChartLibPath = path.resolve(process.cwd(), 'public/assets/vchart.js');
     const vChartLib = fs.readFileSync(vChartLibPath, 'utf8');
 
@@ -109,31 +110,30 @@ export class DataVizStrategy extends BaseImageStrategy {
       <head>
         <script>${vChartLib}</script>
         <style>
-          body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #0f172a; }
-          #chart-container { width: 1024px; height: 1024px; font-family: 'Inter', sans-serif; }
+          body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${theme.background}; }
+          #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; }
         </style>
       </head>
       <body>
         <div id="chart-container"></div>
         <script>
+    const THEME = ${JSON.stringify(theme)};
     const isAnimated = ${isAnimated};
     const commonSpec = {
       type: '${payload.chartType || 'bar'}',
       data: {
         values: ${JSON.stringify(chartData)}
       },
-      background: '#0f172a',
-      color: [
-        '#00f5ff', '#b400ff', '#ff0055', '#f5d90a', '#39ff14'
-      ],
+      background: THEME.background,
+      color: THEME.palette,
       title: {
         visible: true,
-        text: '${task.refined_prompt.replace(/'/g, "\\'")}',
+        text: '${String(payload?.title || task.refined_prompt).replace(/'/g, "\\'")}',
         textStyle: { 
-            fontSize: 32, 
+            fontSize: 28, 
             fontWeight: 'bold', 
-            fill: '#e2e8f0', 
-            fontFamily: 'Inter, sans-serif'
+            fill: THEME.textPrimary, 
+            fontFamily: THEME.fontFamily
         },
         padding: { bottom: 20 }
       },
@@ -143,8 +143,8 @@ export class DataVizStrategy extends BaseImageStrategy {
         item: {
             label: {
                 style: {
-                    fill: '#94a3b8', 
-                    fontSize: 14
+                    fill: THEME.textSecondary, 
+                    fontSize: 13
                 }
             }
         }
@@ -207,13 +207,13 @@ export class DataVizStrategy extends BaseImageStrategy {
                     visible: true,
                     style: {
                         lineDash: [4, 4],
-                        stroke: '#334155',
+                        stroke: THEME.gridColor,
                         lineWidth: 1
                     }
                 },
                 label: {
                     style: {
-                        fill: '#94a3b8',
+                        fill: THEME.textSecondary,
                         fontSize: 12
                     }
                 }
@@ -225,7 +225,7 @@ export class DataVizStrategy extends BaseImageStrategy {
                 label: {
                     visible: true,
                     style: {
-                        fill: '#94a3b8',
+                        fill: THEME.textSecondary,
                         fontSize: 12,
                         fontWeight: 'bold'
                     }
@@ -237,30 +237,26 @@ export class DataVizStrategy extends BaseImageStrategy {
        if (type === 'line') {
           spec.point = {
               style: {
-                  fill: '#0f172a',
-                  stroke: '#00f5ff',
+                  fill: THEME.background,
+                  stroke: THEME.accentPrimary,
                   lineWidth: 2,
                   size: 8,
-                  shadowBlur: 10,
-                  shadowColor: '#00f5ff'
+                  shadowBlur: 0
               }
           };
           spec.line = {
               style: {
-                  lineWidth: 4,
-                  shadowBlur: 10,
-                  shadowColor: '#00f5ff'
+                  lineWidth: 3,
+                  shadowBlur: 0
               }
           };
        } else { // Bar
           spec.bar = {
               state: {
-                  hover: { fill: '#00d0ff' }
+                  hover: { fill: THEME.accentSecondary }
               },
               style: {
-                  cornerRadius: [4, 4, 0, 0],
-                  shadowBlur: 15,
-                  shadowColor: '#00f5ff' // Neon Glow on Marks only
+                  cornerRadius: [6, 6, 0, 0]
               }
           };
        }
@@ -273,6 +269,62 @@ export class DataVizStrategy extends BaseImageStrategy {
       </body>
       </html>
     `;
+  }
+
+  private buildCourseChartTheme(task: ImageTask): {
+    background: string;
+    textPrimary: string;
+    textSecondary: string;
+    gridColor: string;
+    accentPrimary: string;
+    accentSecondary: string;
+    palette: string[];
+    fontFamily: string;
+  } {
+    const metadata = (task as any)?.metadata || {};
+    const customTheme = metadata?.custom_theme || {};
+    const coursePalette = Array.isArray(metadata?.course_palette_hexes)
+      ? metadata.course_palette_hexes.filter((v: any) => typeof v === 'string' && /^#[0-9a-f]{3,8}$/i.test(v))
+      : [];
+
+    const fallbackPalette = ['#2B6CB0', '#2F855A', '#D69E2E', '#DD6B20', '#4A5568'];
+    const palette = (coursePalette.length ? coursePalette : fallbackPalette).slice(0, 8);
+
+    const background = customTheme?.background_main || '#F7FAFC';
+    const textPrimary = customTheme?.text_main || palette[4] || '#1A365D';
+    const textSecondary = customTheme?.text_secondary || '#4A5568';
+    const accentPrimary = customTheme?.primary_accent || palette[0] || '#2B6CB0';
+    const accentSecondary = customTheme?.secondary_accent || palette[1] || '#2F855A';
+
+    const fontName = customTheme?.font_name;
+    const fontFamily = fontName ? `'${String(fontName).replace(/'/g, '')}', sans-serif` : `'Inter', sans-serif`;
+
+    return {
+      background,
+      textPrimary,
+      textSecondary,
+      gridColor: this.hexToRgba(textSecondary, 0.25),
+      accentPrimary,
+      accentSecondary,
+      palette,
+      fontFamily,
+    };
+  }
+
+  private hexToRgba(hex: string, alpha: number): string {
+    const normalized = String(hex || '').replace('#', '').trim();
+    if (!/^[0-9a-f]{3,8}$/i.test(normalized)) {
+      return `rgba(74, 85, 104, ${alpha})`;
+    }
+
+    const full = normalized.length === 3
+      ? normalized.split('').map((c) => c + c).join('')
+      : normalized.slice(0, 6);
+
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
 
   private async captureStatic(task: ImageTask, payload: any, chartData: any[], index?: number): Promise<string> {
