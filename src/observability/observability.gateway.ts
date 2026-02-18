@@ -45,6 +45,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
             lesson_title?: string;
             lesson_index?: number;
             batch_id?: string;
+            queued_at?: string;
         };
     }) {
         if (this.server) this.server.emit('task_progress', data);

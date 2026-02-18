@@ -8,6 +8,7 @@ interface ScreenshotHtmlOptions {
     width?: number;
     height?: number;
     resizeMode?: ResizeMode;
+    scale?: number;
 }
 
 @Injectable()
@@ -99,6 +100,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
         const width = options.width || 1200;
         const height = options.height || 1200;
         const requestedResizeMode = options.resizeMode || 'contain';
+        const scale = Number.isFinite(options.scale) && (options.scale as number) > 0
+            ? Math.max(1, Math.round(options.scale as number))
+            : 1;
 
         // Re-use standard getNewPage
         // Note: getNewPage currently hardcodes 1200x1200 in newContext, but we override it immediately with setViewportSize.
@@ -218,17 +222,22 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
                 omitBackground: true
             });
 
-            // If resizing is needed
-            if (options.width && options.height && (options.width !== renderWidth || options.height !== renderHeight)) {
+            const targetWidth = options.width || renderWidth;
+            const targetHeight = options.height || renderHeight;
+            const finalWidth = targetWidth * scale;
+            const finalHeight = targetHeight * scale;
+
+            // Resize when dimensions differ or a high-DPI scale export is requested
+            if ((targetWidth !== renderWidth || targetHeight !== renderHeight) || scale > 1) {
                 const sourceAspect = renderWidth / renderHeight;
-                const targetAspect = options.width / options.height;
+                const targetAspect = targetWidth / targetHeight;
                 const aspectDelta = Math.abs(sourceAspect - targetAspect) / Math.max(targetAspect, 0.0001);
                 const resolvedResizeMode: ResizeMode = aspectDelta > 0.2 ? 'contain' : requestedResizeMode;
 
-                console.log(`[SHARP] Resizing from ${renderWidth}x${renderHeight} to ${options.width}x${options.height} using mode=${resolvedResizeMode}`);
+                console.log(`[SHARP] Resizing from ${renderWidth}x${renderHeight} to ${finalWidth}x${finalHeight} using mode=${resolvedResizeMode} scale=${scale}`);
                 const fit = resolvedResizeMode === 'fill' ? 'fill' : 'contain';
                 return await sharp(screenshotBuffer)
-                    .resize(options.width, options.height, {
+                    .resize(finalWidth, finalHeight, {
                         fit,
                         background: { r: 255, g: 255, b: 255, alpha: 1 }
                     })

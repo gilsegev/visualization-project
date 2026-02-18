@@ -219,6 +219,7 @@ export class ImageOrchestratorService {
                         lesson_title: lesson.title,
                         lesson_index: lessonIdx + 1, // 1-based index
                         batch_id: batchId,
+                        queued_at: new Date().toISOString(),
                         dimensions: viz.dimensions,
                         theme_id: themeId, // Pass through for strategy
                         task_type: taskType,
@@ -283,7 +284,8 @@ export class ImageOrchestratorService {
                     lesson_id: task.metadata.lesson_id,
                     lesson_title: task.metadata.lesson_title,
                     lesson_index: task.metadata.lesson_index,
-                    batch_id: batchId
+                    batch_id: batchId,
+                    queued_at: task.metadata.queued_at
                 }
             });
             // Log for "By Asset" view
@@ -307,6 +309,7 @@ export class ImageOrchestratorService {
 
         const promises = tasks.map((task: any, index: number) => {
             return limit(async () => {
+                const taskStartedAt = new Date();
                 if (this.stopSignal) {
                     this.observability.emitLog('warn', 'Task cancelled due to batch stop', 'Orchestrator', task.id, batchId);
                     this.observability.emitProgress({ taskId: task.id, batchId, status: 'failed', stage: 'Cancelled' });
@@ -314,8 +317,12 @@ export class ImageOrchestratorService {
                 }
 
                 try {
-                    const taskStartedAt = new Date();
                     const taskStartPerf = performance.now();
+                    const queuedAtRaw = task?.metadata?.queued_at;
+                    const queuedAtMs = queuedAtRaw ? new Date(queuedAtRaw).getTime() : NaN;
+                    const waitMs = Number.isFinite(queuedAtMs)
+                        ? Math.max(0, taskStartedAt.getTime() - queuedAtMs)
+                        : 0;
                     // Triage Phase
                     this.observability.emitProgress({ taskId: task.id, batchId, status: 'pending', stage: 'Triage' });
                     this.observability.emitLog('info', `Task Triage: Using refined prompt: "${task.refined_prompt}"`, 'Orchestrator', task.id, batchId);
@@ -337,7 +344,11 @@ export class ImageOrchestratorService {
                         batchId,
                         status: 'completed',
                         url: result.url,
-                        metrics: result?.payload?.metrics || {},
+                        metrics: {
+                            ...(result?.payload?.metrics || {}),
+                            wait_ms: waitMs.toFixed(2),
+                            ...(task?.metadata?.task_type === 'story_image' ? { narrative_wait_ms: waitMs.toFixed(2) } : {})
+                        },
                         details: {
                             started_at: taskStartedAt.toISOString(),
                             ended_at: taskEndedAt.toISOString(),
@@ -356,18 +367,19 @@ export class ImageOrchestratorService {
                     const stack = error?.stack ? String(error.stack).split('\n').slice(0, 4).join(' | ') : undefined;
                     const providerStatus = error?.status || error?.response?.status;
                     const providerCode = error?.code || error?.response?.data?.error?.code;
+                    const correctionLog = Array.isArray(error?.correction_log) ? error.correction_log : undefined;
 
                     this.logger.error(`Manifest Task ${task.id} failed: ${message}`);
                     this.observability.emitLog(
                         'error',
-                        `Task failed | stage=${task?.stage || 'generation'} status=${providerStatus ?? 'n/a'} code=${providerCode ?? 'n/a'} message=${message}${stack ? ` stack=${stack}` : ''}`,
+                        `Task failed | stage=${task?.stage || 'generation'} status=${providerStatus ?? 'n/a'} code=${providerCode ?? 'n/a'} message=${message}${correctionLog?.length ? ` correction_log=${correctionLog.join('; ')}` : ''}${stack ? ` stack=${stack}` : ''}`,
                         'Orchestrator',
                         task.id,
                         batchId
                     );
 
                     failedCount++;
-                    const errorResult = { taskId: task.id, status: 'failed', error: message };
+                    const errorResult = { taskId: task.id, status: 'failed', error: message, correction_log: correctionLog };
                     this.observability.emitProgress({
                         taskId: task.id,
                         batchId,
@@ -375,6 +387,7 @@ export class ImageOrchestratorService {
                         stage: 'Failed',
                         details: {
                             error: message,
+                            correction_log: correctionLog,
                             status: providerStatus,
                             code: providerCode,
                             stack

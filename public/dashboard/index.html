@@ -185,7 +185,7 @@
             <!-- Right Panel: Visualizer (70%) -->
             <section class="flex-1 flex flex-col bg-obsidian relative overflow-y-auto p-8">
                 <div class="max-w-7xl mx-auto w-full space-y-12">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div class="bg-surface border border-slate-700 rounded-lg p-3">
                             <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Hero</div>
                             <div class="text-2xl font-bold text-white mt-1">{{ narrativeMetrics.heroCount }}</div>
@@ -193,6 +193,10 @@
                         <div class="bg-surface border border-slate-700 rounded-lg p-3">
                             <div class="text-[10px] font-mono text-slate-400 uppercase">NarrativeHeroGenTime</div>
                             <div class="text-2xl font-bold text-neon mt-1">{{ narrativeMetrics.avgGenSeconds }}s</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">NarrativeWaitTime</div>
+                            <div class="text-2xl font-bold text-sky-300 mt-1">{{ narrativeMetrics.avgWaitSeconds }}s</div>
                         </div>
                         <div class="bg-surface border border-slate-700 rounded-lg p-3">
                             <div class="text-[10px] font-mono text-slate-400 uppercase">SiliconFlowBackoffEvents</div>
@@ -512,12 +516,24 @@
                     const completedHeroes = heroTasks.filter((t) => t?.status === 'completed');
                     const totalMs = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
                     const avgMs = completedHeroes.length ? totalMs / completedHeroes.length : 0;
+                    const totalWaitMs = completedHeroes.reduce((sum, t) => {
+                        const metricWait = Number(t?.metrics?.narrative_wait_ms || t?.metrics?.wait_ms || 0);
+                        if (Number.isFinite(metricWait) && metricWait > 0) return sum + metricWait;
+                        const queuedAt = Date.parse(t?.metadata?.queued_at || '');
+                        const startedAt = Date.parse(t?.details?.started_at || '');
+                        if (Number.isFinite(queuedAt) && Number.isFinite(startedAt) && startedAt >= queuedAt) {
+                            return sum + (startedAt - queuedAt);
+                        }
+                        return sum;
+                    }, 0);
+                    const avgWaitMs = completedHeroes.length ? totalWaitMs / completedHeroes.length : 0;
                     const backoffEvents = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
                     const totalCost = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
 
                     return {
                         heroCount: heroTasks.length,
                         avgGenSeconds: (avgMs / 1000).toFixed(2),
+                        avgWaitSeconds: (avgWaitMs / 1000).toFixed(2),
                         backoffEvents,
                         totalCostUsd: totalCost.toFixed(4),
                     };

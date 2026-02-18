@@ -26,43 +26,56 @@ export class StoryImageStrategy extends BaseImageStrategy {
 
     protected async performGeneration(task: ImageTask): Promise<ImageGenerationResult> {
         return this.queue(async () => {
+            const payload = (task as any).payload || {};
+            const imageSpecs = payload.imageSpecs;
+            const brief = String(imageSpecs?.brief || '').trim();
+            if (!imageSpecs || !brief) {
+                const refusalError: any = new Error('Missing mandatory imageSpecs for narrative type.');
+                refusalError.correction_log = ['Missing mandatory imageSpecs for narrative type.'];
+                refusalError.refusal = true;
+                throw refusalError;
+            }
+
             const siliconFlowKey = this.configService.get<string>('SILICONFLOW_API_KEY');
             if (!siliconFlowKey) {
                 throw new Error('SILICONFLOW_API_KEY is not defined in environment variables.');
             }
 
-            const payload = (task as any).payload || {};
-            const imageSpecs = payload.imageSpecs || {};
-            const generation = imageSpecs?.rendering?.generation || {};
+            const imageSpecsSafe = imageSpecs || {};
+            const generation = imageSpecsSafe?.rendering?.generation || {};
             const promptParts = generation?.promptParts || {};
-            const constraints = imageSpecs?.constraints || {};
+            const constraints = imageSpecsSafe?.constraints || {};
             const dims = this.resolveDimensions(task);
             const width = dims.width;
             const height = dims.height;
             const imageSize = `${width}x${height}`;
+            const exportScale = this.resolveExportScale(imageSpecsSafe);
 
             const positiveParts = this.asStringList(promptParts.positive);
             const negativeParts = this.asStringList(promptParts.negative);
             const paletteLocked = Boolean(constraints.paletteLockToCourseStyleGuide);
             const noBakedInText = Boolean(constraints.noBakedInText);
+            const customTheme = (task as any)?.metadata?.custom_theme;
+            const styleGuide = String(customTheme?.image_style_suffix || 'Wellness illustration, simplified faceless silhouettes').trim();
 
             const paletteHexes = this.asStringList((task as any)?.metadata?.course_palette_hexes)
                 .filter(v => /^#[0-9a-f]{3,8}$/i.test(v));
 
-            const positivePrompt = positiveParts.length
+            const subjectPrompt = positiveParts.length
                 ? positiveParts.join(', ')
-                : (imageSpecs?.brief || task.refined_prompt || 'minimal wellness illustration');
+                : (brief || task.refined_prompt || 'minimal wellness illustration');
 
             const effectiveNegative = [...negativeParts];
             if (noBakedInText) {
                 effectiveNegative.push('text', 'typography', 'letters', 'words', 'watermark', 'logo');
             }
+            effectiveNegative.push('photorealistic', 'cinematic', '3d render', 'realistic photo');
 
             const palettePrefix = paletteLocked && paletteHexes.length
                 ? `Use only this locked course palette: ${paletteHexes.join(', ')}. `
                 : '';
 
-            const finalPrompt = `${palettePrefix}${positivePrompt}${effectiveNegative.length ? ` --no ${effectiveNegative.join(', ')}` : ''}`;
+            const finalPrompt = `Style: ${styleGuide}. Subject: ${palettePrefix}${subjectPrompt}${effectiveNegative.length ? ` --no ${effectiveNegative.join(', ')}` : ''}`;
             this.observability.emitLog(
                 'info',
                 `Story Image Prompt (size=${imageSize}): ${finalPrompt}`,
@@ -92,35 +105,25 @@ export class StoryImageStrategy extends BaseImageStrategy {
                 path.join(relativeOutputDir, 'assets', 'story_image.png'),
                 Buffer.from(imageBinary.data)
             );
-            const bentoPayload = {
-                story_mode: true,
-                cells: [
-                    {
-                        col_span: 12,
-                        row_span: 12,
-                        content: {
-                            type: 'image_only',
-                            image_url: './assets/story_image.png'
-                        }
-                    }
-                ],
-                background: {
-                    color: (task as any)?.metadata?.custom_theme?.background_main
-                }
+            const framePayload = {
+                image_url: './assets/story_image.png',
             };
-            const frameHtml = this.stampingService.stamp('bento', bentoPayload, (task as any)?.metadata?.custom_theme);
+            const frameHtml = this.stampingService.stamp('story_frame', framePayload, customTheme);
 
             const dimsForCapture = this.resolveDimensions(task);
             const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-            const posterBuffer = await this.browserService.screenshotHtml(frameHtml, taskBaseUrl, dimsForCapture);
+            const posterBuffer = await this.browserService.screenshotHtml(frameHtml, taskBaseUrl, {
+                ...dimsForCapture,
+                resizeMode: 'fill',
+                scale: exportScale,
+            });
             const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), posterBuffer);
             await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(frameHtml));
             await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify({
-                template_id: 'bento',
-                story_mode: true,
-                cells: bentoPayload.cells,
+                template_id: 'story_frame',
                 image_url: assetUrl,
-                image_size: imageSize
+                image_size: imageSize,
+                export_scale: exportScale,
             }, null, 2)));
 
             const elapsedMs = Date.now() - started;
@@ -156,9 +159,10 @@ export class StoryImageStrategy extends BaseImageStrategy {
                     image_prompts: [finalPrompt],
                     blueprint_prompt: task.refined_prompt,
                     image_size: imageSize,
-                    stamped_template: 'bento',
+                    stamped_template: 'story_frame',
                     quality_score: 90,
                     model,
+                    export_scale: exportScale,
                 }
             };
         });
@@ -268,5 +272,11 @@ export class StoryImageStrategy extends BaseImageStrategy {
         const areaFactor = (width * height) / (1024 * 1024);
         const retryFactor = Math.max(1, attempts);
         return baseCost * areaFactor * retryFactor;
+    }
+
+    private resolveExportScale(imageSpecs: any): number {
+        const rawScale = Number(imageSpecs?.rendering?.export?.scale || 1);
+        if (!Number.isFinite(rawScale) || rawScale <= 0) return 1;
+        return Math.max(1, Math.round(rawScale));
     }
 }
