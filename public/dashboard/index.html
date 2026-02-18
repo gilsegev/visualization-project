@@ -510,10 +510,10 @@
                         || t?.details?.refined_prompt?.toLowerCase?.().includes('story_image')
                     );
                     const completedHeroes = heroTasks.filter((t) => t?.status === 'completed');
-                    const totalMs = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
+                    const totalMs = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
                     const avgMs = completedHeroes.length ? totalMs / completedHeroes.length : 0;
-                    const backoffEvents = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
-                    const totalCost = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
+                    const backoffEvents = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
+                    const totalCost = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
 
                     return {
                         heroCount: heroTasks.length,
