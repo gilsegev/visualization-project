@@ -185,6 +185,24 @@
             <!-- Right Panel: Visualizer (70%) -->
             <section class="flex-1 flex flex-col bg-obsidian relative overflow-y-auto p-8">
                 <div class="max-w-7xl mx-auto w-full space-y-12">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Hero</div>
+                            <div class="text-2xl font-bold text-white mt-1">{{ narrativeMetrics.heroCount }}</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">NarrativeHeroGenTime</div>
+                            <div class="text-2xl font-bold text-neon mt-1">{{ narrativeMetrics.avgGenSeconds }}s</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">SiliconFlowBackoffEvents</div>
+                            <div class="text-2xl font-bold text-warning mt-1">{{ narrativeMetrics.backoffEvents }}</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Cost (est USD)</div>
+                            <div class="text-2xl font-bold text-success mt-1">${{ narrativeMetrics.totalCostUsd }}</div>
+                        </div>
+                    </div>
 
                     <!-- Empty State -->
                     <div v-if="!Object.keys(groupedTasks).length" class="text-center py-20 opacity-30">
@@ -483,6 +501,28 @@
                     return groups;
                 });
 
+                const narrativeMetrics = computed(() => {
+                    const allTasks = Object.values(tasks.value || {});
+                    const heroTasks = allTasks.filter((t) =>
+                        (t?.metadata?.task_type === 'story_image')
+                        || (t?.details?.output_dir || '').includes('/hero/')
+                        || (t?.details?.output_dir || '').includes('\\hero\\')
+                        || t?.details?.refined_prompt?.toLowerCase?.().includes('story_image')
+                    );
+                    const completedHeroes = heroTasks.filter((t) => t?.status === 'completed');
+                    const totalMs = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
+                    const avgMs = completedHeroes.length ? totalMs / completedHeroes.length : 0;
+                    const backoffEvents = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
+                    const totalCost = completedHeroes.reduce((sum, t: any) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
+
+                    return {
+                        heroCount: heroTasks.length,
+                        avgGenSeconds: (avgMs / 1000).toFixed(2),
+                        backoffEvents,
+                        totalCostUsd: totalCost.toFixed(4),
+                    };
+                });
+
                 // Helpers
                 const decodeSlug = (slug) => slug.replace(/-/g, ' ');
 
@@ -704,6 +744,7 @@
                 return {
                     isConnected, isDragging, logs, tasks, batch, logContainer,
                     groupedTasks, selectedTask,
+                    narrativeMetrics,
                     logMode, selectedAssetFilter, filteredLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },

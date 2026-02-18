@@ -73,11 +73,13 @@ export class StoryImageStrategy extends BaseImageStrategy {
             const model = this.configService.get<string>('SILICONFLOW_STORY_MODEL') || 'black-forest-labs/FLUX.1-schnell';
             const started = Date.now();
             this.observability.emitLog('info', `Story image request queued model=${model} size=${imageSize}`, 'StoryImage', task.id);
+            let backoffEvents = 0;
             const generationResponse = await this.generateWithBackoff({
                 apiKey: siliconFlowKey,
                 model,
                 prompt: finalPrompt,
                 imageSize,
+                onBackoff: () => { backoffEvents += 1; }
             });
             const imageUrl = generationResponse?.data?.data?.[0]?.url;
             if (!imageUrl) {
@@ -122,6 +124,14 @@ export class StoryImageStrategy extends BaseImageStrategy {
             }, null, 2)));
 
             const elapsedMs = Date.now() - started;
+            const attempts = Number(generationResponse?.meta?.attempts || 1);
+            const estimatedCostUsd = this.estimateCostUsd(width, height, attempts);
+            this.observability.emitLog(
+                'info',
+                `NarrativeHero metrics | gen_ms=${elapsedMs} attempts=${attempts} backoff_events=${backoffEvents} est_cost_usd=${estimatedCostUsd.toFixed(4)}`,
+                'StoryImage',
+                task.id
+            );
             this.observability.emitLog('success', `Story image generated in ${elapsedMs}ms`, 'StoryImage', task.id);
 
             return {
@@ -129,15 +139,25 @@ export class StoryImageStrategy extends BaseImageStrategy {
                 posterUrl: publicUrl,
                 payload: {
                     output_dir: relativeOutputDir,
-                    metrics: { generation_ms: elapsedMs.toFixed(2) },
+                    metrics: {
+                        generation_ms: elapsedMs.toFixed(2),
+                        narrative_hero_gen_ms: elapsedMs.toFixed(2),
+                        siliconflow_backoff_events: backoffEvents,
+                        siliconflow_attempts: attempts,
+                        estimated_cost_usd: estimatedCostUsd.toFixed(4),
+                        total_ms: elapsedMs.toFixed(2),
+                    },
                     prompt: {
                         positive: positiveParts,
                         negative: effectiveNegative,
                         final: finalPrompt,
                         palette_locked: paletteLocked,
                     },
+                    image_prompts: [finalPrompt],
+                    blueprint_prompt: task.refined_prompt,
                     image_size: imageSize,
                     stamped_template: 'bento',
+                    quality_score: 90,
                     model,
                 }
             };
@@ -149,6 +169,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
         model: string;
         prompt: string;
         imageSize: string;
+        onBackoff?: () => void;
     }): Promise<any> {
         const maxAttempts = 4;
         let attempt = 0;
@@ -157,7 +178,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
         while (attempt < maxAttempts) {
             attempt += 1;
             try {
-                return await axios.post(
+                const response = await axios.post(
                     'https://api.siliconflow.com/v1/images/generations',
                     {
                         model: params.model,
@@ -174,11 +195,14 @@ export class StoryImageStrategy extends BaseImageStrategy {
                         timeout: 45000,
                     }
                 );
+                (response as any).meta = { attempts: attempt };
+                return response;
             } catch (error) {
                 lastError = error;
                 const status = (error as AxiosError)?.response?.status;
                 const retryable = status === 429 || status === 503;
                 if (!retryable || attempt >= maxAttempts) break;
+                params.onBackoff?.();
                 const delayMs = 1000 * Math.pow(2, attempt - 1); // 1s -> 2s -> 4s
                 this.observability.emitLog(
                     'warn',
@@ -237,5 +261,12 @@ export class StoryImageStrategy extends BaseImageStrategy {
         const parsed = Number(String(value).replace(/[^\d.]/g, ''));
         if (!Number.isFinite(parsed) || parsed <= 0) return null;
         return Math.max(256, Math.round(parsed));
+    }
+
+    private estimateCostUsd(width: number, height: number, attempts: number): number {
+        const baseCost = Number(this.configService.get<string>('SILICONFLOW_STORY_BASE_COST_USD') || 0.02);
+        const areaFactor = (width * height) / (1024 * 1024);
+        const retryFactor = Math.max(1, attempts);
+        return baseCost * areaFactor * retryFactor;
     }
 }

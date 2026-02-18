@@ -156,6 +156,7 @@ export class ImageOrchestratorService {
                         batch_id: batchId,
                         dimensions: viz.dimensions,
                         theme_id: themeId, // Pass through for strategy
+                        task_type: taskType,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
                         course_palette_hexes: coursePaletteHexes,
