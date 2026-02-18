@@ -56,7 +56,14 @@ async function main() {
         }
     };
 
-    const strategy = new StoryImageStrategy(cfg as any, storage as any, obs as any);
+    const stamping = {
+        stamp: (_templateId: string, payload: AnyObj) => `<!doctype html><html><body><img src="${payload.image_url || ''}"></body></html>`
+    };
+    const browser = {
+        screenshotHtml: async () => Buffer.from('poster')
+    };
+
+    const strategy = new StoryImageStrategy(cfg as any, storage as any, obs as any, stamping as any, browser as any);
 
     const results: AnyObj = {};
 
@@ -133,4 +140,3 @@ main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
-

@@ -27,6 +27,8 @@ export class TemplateStampingService {
             fileName = 'versus.html';
         } else if (templateId === 'steps' || templateId === 'step_list' || templateId === 'step_journey') {
             fileName = 'steps.html';
+        } else if (templateId === 'story_frame') {
+            fileName = 'story_frame.html';
         }
 
         const filePath = path.join(templatesDir, fileName);

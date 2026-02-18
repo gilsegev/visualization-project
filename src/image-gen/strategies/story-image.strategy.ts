@@ -7,6 +7,8 @@ import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
 import { ObservabilityGateway } from '../../observability/observability.gateway';
+import { TemplateStampingService } from '../services/template-stamping.service';
+import { BrowserService } from '../browser.service';
 
 @Injectable()
 export class StoryImageStrategy extends BaseImageStrategy {
@@ -16,6 +18,8 @@ export class StoryImageStrategy extends BaseImageStrategy {
         private readonly configService: ConfigService,
         private readonly localStorage: LocalStorageService,
         private readonly observability: ObservabilityGateway,
+        private readonly stampingService: TemplateStampingService,
+        private readonly browserService: BrowserService,
     ) {
         super();
     }
@@ -82,10 +86,23 @@ export class StoryImageStrategy extends BaseImageStrategy {
 
             const imageBinary = await axios.get(imageUrl, { responseType: 'arraybuffer', timeout: 30000 });
             const relativeOutputDir = this.getRelativeOutputDir(task);
-            const publicUrl = await this.localStorage.save(
-                path.join(relativeOutputDir, 'poster.png'),
+            const assetUrl = await this.localStorage.save(
+                path.join(relativeOutputDir, 'assets', 'story_image.png'),
                 Buffer.from(imageBinary.data)
             );
+            const framePayload = { image_url: './assets/story_image.png' };
+            const frameHtml = this.stampingService.stamp('story_frame', framePayload, (task as any)?.metadata?.custom_theme);
+
+            const dimsForCapture = this.resolveDimensions(task);
+            const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
+            const posterBuffer = await this.browserService.screenshotHtml(frameHtml, taskBaseUrl, dimsForCapture);
+            const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), posterBuffer);
+            await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(frameHtml));
+            await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify({
+                template_id: 'story_frame',
+                image_url: assetUrl,
+                image_size: imageSize
+            }, null, 2)));
 
             const elapsedMs = Date.now() - started;
             this.observability.emitLog('success', `Story image generated in ${elapsedMs}ms`, 'StoryImage', task.id);
@@ -103,6 +120,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
                         palette_locked: paletteLocked,
                     },
                     image_size: imageSize,
+                    stamped_template: 'story_frame',
                     model,
                 }
             };
