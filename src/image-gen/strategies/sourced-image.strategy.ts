@@ -94,9 +94,13 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             }
 
             let best: { provider: string; imageUrl: string; query: string; clipScore: number } | undefined;
+            let clipDegradedMode = false;
+            let clipTopScore = 0;
+            let clipThreshold = 0.75;
             if (this.disableClip) {
                 phaseMs.clip_scoring_ms = 0;
                 best = { ...candidates[0], clipScore: 0 };
+                clipTopScore = 0;
                 this.observability.emitLog('info', 'Phase 3/6: CLIP disabled; selecting top retrieved candidate', 'SourcedImage', task.id);
             } else {
                 this.observability.emitLog('info', `Phase 3/6: CLIP scoring ${candidates.length} candidates`, 'SourcedImage', task.id);
@@ -115,11 +119,34 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     }
                 }
                 phaseMs.clip_scoring_ms = Date.now() - clipStart;
-                scored.sort((a, b) => b.clipScore - a.clipScore);
-                best = scored[0];
-                if (!best || best.clipScore < 0.75) {
-                    this.observability.emitLog('warn', 'All sourced candidates below CLIP threshold; falling back to story generator', 'SourcedImage', task.id);
-                    return this.fallbackToStory(task);
+                if (!scored.length) {
+                    clipDegradedMode = true;
+                    best = { ...candidates[0], clipScore: 0 };
+                    clipTopScore = 0;
+                    this.observability.emitLog(
+                        'warn',
+                        'CLIP scorer unavailable for all candidates; using top retrieved sourced candidate',
+                        'SourcedImage',
+                        task.id
+                    );
+                } else {
+                    scored.sort((a, b) => b.clipScore - a.clipScore);
+                    best = scored[0];
+                    clipTopScore = Number(best?.clipScore || 0);
+                }
+                if (!clipDegradedMode && (!best || best.clipScore < 0.75)) {
+                    this.observability.emitLog(
+                        'warn',
+                        `All sourced candidates below CLIP threshold (top=${clipTopScore.toFixed(3)} threshold=${clipThreshold.toFixed(2)}); falling back to story generator`,
+                        'SourcedImage',
+                        task.id
+                    );
+                    return this.fallbackToStory(task, {
+                        clip_score: Number(clipTopScore.toFixed(4)),
+                        clip_threshold: clipThreshold,
+                        clip_degraded_mode: false,
+                        sourced_fallback_reason: 'clip_below_threshold',
+                    });
                 }
             }
 
@@ -184,6 +211,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     metrics: {
                         total_ms: elapsedMs.toFixed(2),
                         clip_score: Number(best.clipScore.toFixed(4)),
+                        clip_degraded_mode: clipDegradedMode,
                         vision_score: visionGate.score,
                         query_expansion_ms: phaseMs.query_expansion_ms.toFixed(2),
                         retrieval_ms: phaseMs.retrieval_ms.toFixed(2),
@@ -359,7 +387,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         }
     }
 
-    private async fallbackToStory(task: ImageTask): Promise<ImageGenerationResult> {
+    private async fallbackToStory(task: ImageTask, sourcedDiagnostics?: Record<string, any>): Promise<ImageGenerationResult> {
         const fallbackTask: any = {
             ...task,
             type: 'story_image',
@@ -368,7 +396,20 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 sourced_fallback: true,
             }
         };
-        return this.storyImageStrategy.generate(fallbackTask);
+        const storyResult = await this.storyImageStrategy.generate(fallbackTask);
+        const mergedMetrics = {
+            ...(storyResult?.payload?.metrics || {}),
+            ...(sourcedDiagnostics || {}),
+            sourced_fallback: true,
+        };
+        return {
+            ...storyResult,
+            payload: {
+                ...(storyResult?.payload || {}),
+                source_type: 'sourced_image_fallback_story',
+                metrics: mergedMetrics,
+            },
+        };
     }
 
     private resolveDimensions(task: ImageTask): { width: number; height: number } {

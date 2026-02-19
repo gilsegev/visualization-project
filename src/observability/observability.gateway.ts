@@ -117,18 +117,29 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
 
     @SubscribeMessage('open_folder')
     handleOpenFolder(client: Socket, relativePath: string) {
-        if (!relativePath) return;
+        if (!relativePath || typeof relativePath !== 'string') return;
         const fs = require('fs');
         const path = require('path');
         const cp = require('child_process');
 
-        // Construct absolute path (assuming relative to public/generated-images)
-        const fullPath = path.join(process.cwd(), 'public', 'generated-images', relativePath);
+        const baseDir = path.resolve(process.cwd(), 'public', 'generated-images');
+        const fullPath = path.resolve(baseDir, relativePath);
+
+        // Prevent malformed/escaped paths from shelling outside generated-images.
+        if (!fullPath.startsWith(baseDir)) {
+            this.logger.warn(`Rejected open_folder path outside base dir: ${relativePath}`);
+            return;
+        }
+
+        if (!fs.existsSync(fullPath)) {
+            this.logger.warn(`Rejected open_folder missing path: ${fullPath}`);
+            return;
+        }
 
         this.logger.log(`Request to open folder: ${fullPath}`);
 
-        // Windows-specific open command
-        cp.exec(`start "" "${fullPath}"`, (err) => {
+        // Use explorer with argv instead of cmd shell parsing to avoid quote/escape issues.
+        cp.execFile('explorer.exe', [fullPath], (err: any) => {
             if (err) this.logger.error(`Failed to open folder: ${err.message}`);
         });
     }

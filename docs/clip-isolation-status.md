@@ -31,3 +31,21 @@ Date: 2026-02-19
 ## Deployment
 
 - See `docs/deployment.md` for separate-container deployment instructions (`app` + `clip-scorer`).
+
+## Follow-Up Fixes (2026-02-19)
+
+- Strengthened CLIP scoring in `tools/clip-scorer/server.js`:
+  - Added strict scoring mode (`CLIP_STRICT_MODE`, default `true`).
+  - Added hard-negative label set plus domain-specific negatives.
+  - Returned expanded diagnostics: `positive_score`, `strongest_negative_score`, `strongest_negative_label`, `strict_mode`.
+- Improved sourced fallback behavior in `src/image-gen/strategies/sourced-image.strategy.ts`:
+  - If external CLIP scorer is unavailable for all candidates, keep sourced flow and use top retrieved Unsplash candidate.
+  - Preserve CLIP diagnostics on story fallback (`clip_score`, `clip_threshold`, `sourced_fallback_reason`) for observability.
+- Improved observability clarity in `public/dashboard/index.html`:
+  - Added CLIP score badges on task cards.
+  - Added sourced scoring block in modal.
+  - Added selected-asset metrics card in `BY ASSET` tab with CLIP/threshold/fallback reason.
+  - Clicking an asset card now syncs `BY ASSET` selection.
+- Fixed Windows folder-open reliability in `src/observability/observability.gateway.ts`:
+  - Replaced shell `start` command with `explorer.exe` argument-safe invocation.
+  - Added path normalization, existence checks, and base-dir guard.

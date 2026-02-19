@@ -139,6 +139,36 @@
                                 {{ task?.details?.title || task?.taskId }} ({{ getStatusLabel(task) }})
                             </option>
                         </select>
+
+                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2">
+                            <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
+                            <div class="mt-1 text-[11px] font-mono text-slate-300">
+                                <div>
+                                    <span class="text-slate-500">Status:</span>
+                                    <span class="ml-1" :class="getStatusTextClass(selectedAssetTask)">{{ getStatusLabel(selectedAssetTask) }}</span>
+                                </div>
+                                <div v-if="hasClipScore(selectedAssetTask)" class="mt-0.5">
+                                    <span class="text-neon">CLIP Score:</span>
+                                    <span class="ml-1 text-neon font-bold">{{ formatClipScore(selectedAssetTask.metrics?.clip_score) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.clip_threshold !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">CLIP Threshold:</span>
+                                    <span class="ml-1 text-slate-200">{{ Number(selectedAssetTask.metrics?.clip_threshold).toFixed(2) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.sourced_fallback_reason" class="mt-0.5">
+                                    <span class="text-warning">Sourced Fallback:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.metrics?.sourced_fallback_reason }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.vision_score !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">Vision Score:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.metrics?.vision_score }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.total_ms !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">Total:</span>
+                                    <span class="ml-1 text-slate-200">{{ (Number(selectedAssetTask.metrics?.total_ms || 0) / 1000).toFixed(2) }}s</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Log Stream -->
@@ -174,6 +204,11 @@
                             <span v-if="log.taskId && logMode === 'VERBOSE'"
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.taskId.split('-').pop() }}
+                            </span>
+
+                            <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
+                                class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
+                                CLIP
                             </span>
 
                             <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
@@ -258,7 +293,8 @@
                             <!-- Tasks Grid -->
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <div v-for="task in lesson.tasks" :key="task.taskId"
-                                    class="bg-surface rounded-lg border border-slate-700 overflow-hidden group hover:border-slate-500 transition-all shadow-lg flex flex-col h-[280px]">
+                                    class="bg-surface rounded-lg border border-slate-700 overflow-hidden group hover:border-slate-500 transition-all shadow-lg flex flex-col h-[280px] cursor-pointer"
+                                    @click="selectAsset(task)">
 
                                     <!-- Header / Status Indicator -->
                                     <div class="px-3 py-2 border-b border-slate-700/50 flex justify-between items-center text-xs font-mono"
@@ -268,10 +304,17 @@
                                             {{ getStatusLabel(task) }}
                                         </span>
 
-                                        <!-- Duration if complete -->
-                                        <span v-if="task.status === 'completed'" class="text-slate-500">
-                                            {{ ((task.metrics?.total_ms || 0) / 1000).toFixed(1) }}s
-                                        </span>
+                                        <div class="flex items-center gap-2">
+                                            <span v-if="hasClipScore(task)"
+                                                class="text-[10px] px-1.5 py-0.5 rounded bg-neon/15 border border-neon/30 text-neon"
+                                                :title="`CLIP score: ${formatClipScore(task.metrics?.clip_score)}`">
+                                                CLIP {{ formatClipScore(task.metrics?.clip_score) }}
+                                            </span>
+                                            <!-- Duration if complete -->
+                                            <span v-if="task.status === 'completed'" class="text-slate-500">
+                                                {{ ((task.metrics?.total_ms || 0) / 1000).toFixed(1) }}s
+                                            </span>
+                                        </div>
                                     </div>
 
                                     <!-- Visual Preview Area -->
@@ -423,6 +466,22 @@
                         <pre
                             class="text-[10px] text-slate-400 font-mono">{{ JSON.stringify(selectedTask.metadata, null, 2) }}</pre>
                     </div>
+
+                    <!-- 6. Sourced Image Scoring -->
+                    <div v-if="hasClipScore(selectedTask)"
+                        class="mb-4 overflow-y-auto max-h-[20vh] border border-neon/30 rounded p-3 bg-black">
+                        <h4 class="text-xs font-mono text-neon uppercase mb-2">Sourced Image Scoring</h4>
+                        <div class="text-sm text-slate-300 font-mono">
+                            CLIP Score:
+                            <span class="text-neon font-bold ml-1">{{ formatClipScore(selectedTask.metrics?.clip_score)
+                                }}</span>
+                        </div>
+                        <div v-if="selectedTask.metrics?.vision_score !== undefined"
+                            class="text-sm text-slate-400 font-mono mt-1">
+                            Vision Score:
+                            <span class="text-slate-200 ml-1">{{ selectedTask.metrics?.vision_score }}</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -474,6 +533,11 @@
 
                         return false;
                     });
+                });
+
+                const selectedAssetTask = computed(() => {
+                    if (!selectedAssetFilter.value) return null;
+                    return tasks.value?.[selectedAssetFilter.value] || null;
                 });
 
                 // Derived State: Hierarchical Grouping
@@ -603,6 +667,7 @@
                 const openImage = (url, task) => {
                     // If task is provided, open modal. functionality
                     if (task) {
+                        selectAsset(task);
                         selectedTask.value = task;
                     } else {
                         window.open(url, '_blank');
@@ -660,6 +725,24 @@
                     if (task.status === 'processing') return task.stage ? task.stage.toUpperCase() : 'PROCESSING';
                     if (task.stage === 'Triage') return 'TRIAGE';
                     return 'INTAKE';
+                };
+
+                const selectAsset = (task) => {
+                    const taskId = task?.taskId;
+                    if (!taskId) return;
+                    selectedAssetFilter.value = taskId;
+                };
+
+                const hasClipScore = (task) => {
+                    const raw = task?.metrics?.clip_score;
+                    const score = Number(raw);
+                    return Number.isFinite(score);
+                };
+
+                const formatClipScore = (raw) => {
+                    const score = Number(raw);
+                    if (!Number.isFinite(score)) return 'n/a';
+                    return score.toFixed(3);
                 };
 
                 // Handlers
@@ -761,11 +844,13 @@
                     isConnected, isDragging, logs, tasks, batch, logContainer,
                     groupedTasks, selectedTask,
                     narrativeMetrics,
+                    selectedAssetTask,
                     logMode, selectedAssetFilter, filteredLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
-                    getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir
+                    getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
+                    hasClipScore, formatClipScore, selectAsset
                 };
 
             }
