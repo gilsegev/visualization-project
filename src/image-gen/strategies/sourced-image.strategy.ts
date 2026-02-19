@@ -71,7 +71,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const exportScale = this.resolveExportScale(imageSpecs);
             const sourceUrl = String(imageSpecs?.source?.assetUrl || '').trim();
 
-            this.observability.emitLog('info', 'Phase 1/6: Local CLIP enabled for semantic scoring', 'SourcedImage', task.id);
+            this.observability.emitLog('info', 'Phase 1/6: CLIP scorer enabled for semantic scoring', 'SourcedImage', task.id);
 
             // Fast path: when manifest already provides an explicit source asset, do direct stamping.
             // This keeps sourced mode reliable and avoids unnecessary CLIP/LLM gating for trusted inputs.
