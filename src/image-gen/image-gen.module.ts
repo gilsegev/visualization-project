@@ -13,7 +13,9 @@ import { InfographicStrategy } from './strategies/infographic.strategy';
 import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdom-infographic.strategy';
 import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
 import { StoryImageStrategy } from './strategies/story-image.strategy';
+import { SourcedImageStrategy } from './strategies/sourced-image.strategy';
 import { TemplateStampingService } from './services/template-stamping.service';
+import { LocalClipService } from './services/local-clip.service';
 import { BrowserService } from './browser.service';
 import { ObservabilityModule } from '../observability/observability.module';
 
@@ -36,7 +38,9 @@ import { ObservabilityModule } from '../observability/observability.module';
         DEPRECATED_HtmlInfographicStrategy,
         TemplateStampingStrategy,
         StoryImageStrategy,
+        SourcedImageStrategy,
         TemplateStampingService,
+        LocalClipService,
         BrowserService,
     ],
 })

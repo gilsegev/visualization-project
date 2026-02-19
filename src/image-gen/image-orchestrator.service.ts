@@ -9,6 +9,7 @@ import { ObservabilityGateway } from '../observability/observability.gateway';
 export class ImageOrchestratorService {
     private readonly logger = new Logger(ImageOrchestratorService.name);
     private readonly manifestTaskConcurrency: number;
+    private readonly manifestTaskTimeoutMs: number;
 
     constructor(
         private readonly imageRouter: ImageRouterService,
@@ -19,6 +20,10 @@ export class ImageOrchestratorService {
         this.manifestTaskConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
             ? configuredConcurrency
             : 8;
+        const configuredTimeout = Number(process.env.MANIFEST_TASK_TIMEOUT_MS || 120000);
+        this.manifestTaskTimeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
+            ? configuredTimeout
+            : 120000;
     }
 
     private stopSignal = false;
@@ -45,8 +50,11 @@ export class ImageOrchestratorService {
         return `${Math.round(px)}px`;
     }
 
-    private resolveManifestTaskType(viz: any): 'story_image' | 'data_viz' | 'infographic' {
+    private resolveManifestTaskType(viz: any): 'story_image' | 'sourced_image' | 'data_viz' | 'infographic' {
         const rawType = String(viz?.type || '').toLowerCase();
+        if (rawType === 'sourced_image' || String(viz?.imageSpecs?.rendering?.generation?.source || '').toLowerCase() === 'sourced') {
+            return 'sourced_image';
+        }
         if (rawType === 'story_image' || !!viz?.imageSpecs) {
             return 'story_image';
         }
@@ -84,7 +92,7 @@ export class ImageOrchestratorService {
         return 'bar';
     }
 
-    private buildManifestPayloadForTask(viz: any, taskType: 'story_image' | 'data_viz' | 'infographic'): any {
+    private buildManifestPayloadForTask(viz: any, taskType: 'story_image' | 'sourced_image' | 'data_viz' | 'infographic'): any {
         const { visualizationId, ...vizContent } = viz;
 
         if (taskType !== 'data_viz') {
@@ -332,7 +340,11 @@ export class ImageOrchestratorService {
                     this.observability.emitLog('info', 'Starting Generation Strategy', 'Orchestrator', task.id, batchId);
 
                     const strategy = this.strategyFactory.getStrategy(task);
-                    const result = await (strategy as any).performGeneration(task, index + 1);
+                    const result: any = await this.withTimeout(
+                        (strategy as any).performGeneration(task, index + 1),
+                        this.manifestTaskTimeoutMs,
+                        `Task timeout after ${this.manifestTaskTimeoutMs}ms`,
+                    );
                     const taskEndedAt = new Date();
                     const taskDurationMs = performance.now() - taskStartPerf;
 
@@ -347,6 +359,7 @@ export class ImageOrchestratorService {
                         metrics: {
                             ...(result?.payload?.metrics || {}),
                             wait_ms: waitMs.toFixed(2),
+                            generation_timeout_ms: this.manifestTaskTimeoutMs,
                             ...(task?.metadata?.task_type === 'story_image' ? { narrative_wait_ms: waitMs.toFixed(2) } : {})
                         },
                         details: {
@@ -421,5 +434,21 @@ export class ImageOrchestratorService {
             durationSeconds: parseFloat(duration),
             results: results
         };
+    }
+
+    private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+        let timer: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                const err: any = new Error(timeoutMessage);
+                err.code = 'TASK_TIMEOUT';
+                reject(err);
+            }, timeoutMs);
+        });
+        try {
+            return await Promise.race([promise, timeoutPromise]);
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 }

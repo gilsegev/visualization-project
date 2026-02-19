@@ -7,6 +7,7 @@ import { InfographicStrategy } from './strategies/infographic.strategy';
 import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdom-infographic.strategy';
 import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
 import { StoryImageStrategy } from './strategies/story-image.strategy';
+import { SourcedImageStrategy } from './strategies/sourced-image.strategy';
 import { ImageGeneratorStrategy } from './image-generator.strategy';
 import { ImageTask } from './image-task.schema';
 
@@ -21,6 +22,7 @@ export class ImageStrategyFactory {
         private readonly deprecatedHtmlStrategy: DEPRECATED_HtmlInfographicStrategy,
         private readonly templateStampingStrategy: TemplateStampingStrategy,
         private readonly storyImageStrategy: StoryImageStrategy,
+        private readonly sourcedImageStrategy: SourcedImageStrategy,
     ) { }
 
     getStrategy(task: ImageTask): ImageGeneratorStrategy {
@@ -39,6 +41,8 @@ export class ImageStrategyFactory {
                 return this.templateStampingStrategy;
             case 'story_image':
                 return this.storyImageStrategy;
+            case 'sourced_image':
+                return this.sourcedImageStrategy;
             default:
                 throw new InternalServerErrorException(`No strategy found for image task type: ${(task as any).type}`);
         }
