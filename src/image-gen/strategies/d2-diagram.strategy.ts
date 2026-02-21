@@ -204,7 +204,14 @@ Constraints:
     }
 
     private buildDeterministicD2(payload: any, theme: Theme): string {
-        const items = Array.isArray(payload?.items) ? payload.items : [];
+        const items = Array.isArray(payload?.items)
+            ? payload.items
+            : (Array.isArray(payload?.structure?.milestones)
+                ? payload.structure.milestones.map((m: any) => ({
+                    title: `${m?.year ? `${m.year}: ` : ''}${m?.title || 'Milestone'}`,
+                    description: m?.detail || ''
+                }))
+                : []);
         const flowNodes = items.length
             ? items.map((it: any, idx: number) => ({ id: `n${idx + 1}`, title: String(it?.title || `Step ${idx + 1}`), description: String(it?.description || '') }))
             : [{ id: 'n1', title: String(payload?.title || 'Start'), description: String(payload?.description || '') }];
@@ -264,6 +271,17 @@ html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;backgroun
         }
         const structure = payload?.structure || {};
         const nodes: Array<{ title: string; description: string }> = [];
+        if (Array.isArray(structure?.milestones) && structure.milestones.length) {
+            for (const m of structure.milestones) {
+                const year = String(m?.year || '').trim();
+                const title = String(m?.title || 'Milestone').trim();
+                const detail = String(m?.detail || '').trim();
+                nodes.push({
+                    title: year ? `${year}: ${title}` : title,
+                    description: detail
+                });
+            }
+        }
         if (structure?.start) {
             nodes.push({ title: 'Start', description: String(structure.start) });
         }
