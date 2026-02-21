@@ -8,6 +8,7 @@ import { DEPRECATED_HtmlInfographicStrategy } from './strategies/DEPRECATED_jsdo
 import { TemplateStampingStrategy } from './strategies/template-stamping.strategy';
 import { StoryImageStrategy } from './strategies/story-image.strategy';
 import { SourcedImageStrategy } from './strategies/sourced-image.strategy';
+import { D2DiagramStrategy } from './strategies/d2-diagram.strategy';
 import { ImageGeneratorStrategy } from './image-generator.strategy';
 import { ImageTask } from './image-task.schema';
 
@@ -23,6 +24,7 @@ export class ImageStrategyFactory {
         private readonly templateStampingStrategy: TemplateStampingStrategy,
         private readonly storyImageStrategy: StoryImageStrategy,
         private readonly sourcedImageStrategy: SourcedImageStrategy,
+        private readonly d2DiagramStrategy: D2DiagramStrategy,
     ) { }
 
     getStrategy(task: ImageTask): ImageGeneratorStrategy {
@@ -36,8 +38,9 @@ export class ImageStrategyFactory {
             case 'beautify_slide':
                 return this.beautifySlideStrategy;
             case 'infographic':
-                // V2 Architecture: Use TemplateStampingStrategy for ALL infographics
-                // It handles blueprint generation and dispatching to specific templates (Hub, Versus, Steps)
+                if (this.isD2TemplateType(task)) {
+                    return this.d2DiagramStrategy;
+                }
                 return this.templateStampingStrategy;
             case 'story_image':
                 return this.storyImageStrategy;
@@ -46,5 +49,10 @@ export class ImageStrategyFactory {
             default:
                 throw new InternalServerErrorException(`No strategy found for image task type: ${(task as any).type}`);
         }
+    }
+
+    private isD2TemplateType(task: ImageTask): boolean {
+        const raw = String((task as any)?.metadata?.template_type || (task as any)?.payload?.type || '').toLowerCase().trim();
+        return raw === 'flowchart' || raw === 'timeline' || raw === 'process_map';
     }
 }

@@ -229,6 +229,7 @@ export class ImageOrchestratorService {
                         batch_id: batchId,
                         queued_at: new Date().toISOString(),
                         dimensions: viz.dimensions,
+                        template_type: viz.type,
                         theme_id: themeId, // Pass through for strategy
                         task_type: taskType,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
