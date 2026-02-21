@@ -471,6 +471,23 @@ ${text}`;
     }
 
     private normalizeBlueprintTemplate(blueprint: any, sourcePayload: any, taskId: string): any {
+        const rawType = String(sourcePayload?.type || '').toLowerCase();
+        if (rawType.includes('metaphorical_tree_diagram')) {
+            if (blueprint?.template_id !== 'hub_radial') {
+                this.observability.emitLog(
+                    'warn',
+                    `Blueprint template overridden to 'hub_radial' for source type '${rawType}' (original='${blueprint?.template_id ?? 'null'}')`,
+                    'BlueprintGen',
+                    taskId
+                );
+            }
+            return {
+                ...blueprint,
+                template_id: 'hub_radial',
+                normalization_reason: (blueprint as any)?.normalization_reason || 'metaphorical_tree_diagram maps to hub_radial'
+            };
+        }
+
         const supported = new Set(['hub_radial', 'versus_split', 'step_journey', 'bento_grid', 'steps', 'step_list']);
         if (supported.has(String(blueprint?.template_id || ''))) {
             return blueprint;
@@ -594,7 +611,15 @@ ${text}`;
     private buildFallbackBlueprintFromPayload(payload: any, refinedPrompt: string): HtmlInfographicBlueprint {
         const rawType = String(payload.type || '').toLowerCase();
         const title = payload.title || 'Visualization';
-        const summary = payload.description || payload.purpose || refinedPrompt || 'Auto-generated blueprint from manifest payload.';
+        const concise = (v: any, max = 240) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+        const summary = concise(
+            payload.description
+            || payload.purpose
+            || payload.summaryNote
+            || payload.footer
+            || payload.bottomNote
+            || 'Auto-generated blueprint from manifest payload.'
+        );
 
         const toItems = (arr: any[], itemMapper: (x: any, i: number) => any) => (Array.isArray(arr) ? arr.map(itemMapper).filter(Boolean) : []);
 
@@ -674,6 +699,82 @@ ${text}`;
                 template_id: 'step_journey',
                 center_topic: { title, description: summary },
                 items: items.length ? items : [{ title: 'Step 1', description: summary }]
+            } as any;
+        }
+
+        if (rawType.includes('circular_flow')) {
+            const stepItems = Array.isArray(payload.steps)
+                ? payload.steps.map((s: any, i: number) => ({
+                    title: `Step ${i + 1}`,
+                    description: concise(String(s || ''), 140)
+                }))
+                : [];
+
+            if (payload.inhale?.instruction) {
+                stepItems.push({
+                    title: `Inhale (${payload.inhale?.count || 4} counts)`,
+                    description: concise(String(payload.inhale.instruction), 140)
+                });
+            }
+            if (payload.exhale?.instruction) {
+                stepItems.push({
+                    title: `Exhale (${payload.exhale?.count || 6} counts)`,
+                    description: concise(String(payload.exhale.instruction), 140)
+                });
+            }
+
+            const centerDescription = concise(
+                payload?.centerText?.primary && payload?.centerText?.secondary
+                    ? `${payload.centerText.primary}. ${payload.centerText.secondary}`
+                    : payload?.centerText?.primary
+                        || payload?.centerText?.secondary
+                        || payload.subtitle
+                        || summary,
+                180
+            );
+
+            return {
+                quality_score: 80,
+                explanation: 'Fallback hub radial blueprint synthesized from circular_flow payload.',
+                template_id: 'hub_radial',
+                center_topic: { title, description: centerDescription },
+                items: stepItems.length ? stepItems.slice(0, 10) : [{ title: 'Breathing Cycle', description: summary }]
+            } as any;
+        }
+
+        if (rawType.includes('grid_reference_card') || Array.isArray(payload.distortions)) {
+            const distortions = Array.isArray(payload.distortions) ? payload.distortions : [];
+            const cells = distortions.map((d: any) => ({
+                col_span: 4,
+                row_span: 2,
+                content: {
+                    type: 'text',
+                    title: String(d?.name || 'Cognitive Pattern'),
+                    text: `${String(d?.definition || '')}${d?.example ? ` Example: ${String(d.example)}` : ''}`.trim()
+                }
+            }));
+            if (payload.summaryNote) {
+                cells.push({
+                    col_span: 12,
+                    row_span: 2,
+                    content: { type: 'text', title: 'Summary Note', text: String(payload.summaryNote) }
+                });
+            }
+
+            return {
+                quality_score: 82,
+                explanation: 'Fallback bento blueprint synthesized from grid_reference_card/distortions payload.',
+                template_id: 'bento_grid',
+                title,
+                subtitle: summary,
+                cells: cells.length ? cells : [{
+                    col_span: 12,
+                    row_span: 3,
+                    content: { type: 'text', title, text: summary }
+                }],
+                background: {
+                    visual_style_directive: concise(payload?.background?.visual_style_directive || `${title} educational reference card background`)
+                }
             } as any;
         }
 
