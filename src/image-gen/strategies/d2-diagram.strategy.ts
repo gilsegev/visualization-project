@@ -204,6 +204,35 @@ Constraints:
     }
 
     private buildDeterministicD2(payload: any, theme: Theme): string {
+        const branchModel = this.extractBranchModel(payload);
+        if (branchModel) {
+            const lines: string[] = [];
+            lines.push(`top: "${this.escapeD2(branchModel.topTitle)}\\n${this.escapeD2(branchModel.topDesc)}" { shape: rectangle class: primary }`);
+            lines.push(`split: "${this.escapeD2(branchModel.splitTitle)}" { shape: rectangle class: primary }`);
+            lines.push('top -> split');
+
+            branchModel.branches.forEach((b, bi) => {
+                const headId = `b${bi + 1}_h`;
+                lines.push(`${headId}: "${this.escapeD2(b.name)}\\n${this.escapeD2(b.timeframe)}" { shape: rectangle class: primary }`);
+                lines.push(`split -> ${headId}`);
+                let prev = headId;
+                b.steps.forEach((s, si) => {
+                    const id = `b${bi + 1}_s${si + 1}`;
+                    lines.push(`${id}: "${this.escapeD2(s)}" { shape: rectangle class: primary }`);
+                    lines.push(`${prev} -> ${id}`);
+                    prev = id;
+                });
+                lines.push(`${prev} -> merge`);
+            });
+
+            lines.push(`merge: "${this.escapeD2(branchModel.mergeTitle)}\\n${this.escapeD2(branchModel.mergeDesc)}" { shape: rectangle class: primary }`);
+            if (branchModel.footer) {
+                lines.push(`footer: "${this.escapeD2(branchModel.footer)}" { shape: rectangle class: primary }`);
+                lines.push('merge -> footer');
+            }
+            return this.injectBranding(lines.join('\n'), theme);
+        }
+
         const items = Array.isArray(payload?.items)
             ? payload.items
             : (Array.isArray(payload?.structure?.milestones)
@@ -285,6 +314,49 @@ html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;backgroun
         if (structure?.start) {
             nodes.push({ title: 'Start', description: String(structure.start) });
         }
+        if (structure?.topSection && typeof structure.topSection === 'object') {
+            const label = String(structure.topSection?.label || 'Start').trim();
+            const nextNode = String(structure.topSection?.nextNode || '').trim();
+            nodes.push({
+                title: label,
+                description: nextNode ? `Next: ${nextNode}` : ''
+            });
+            if (nextNode) {
+                nodes.push({
+                    title: nextNode,
+                    description: 'Pathway split point'
+                });
+            }
+        }
+        if (Array.isArray(structure?.branches) && structure.branches.length) {
+            for (const branch of structure.branches) {
+                const name = String(branch?.name || 'Branch').trim();
+                const timeframe = String(branch?.timeframe || '').trim();
+                nodes.push({
+                    title: name,
+                    description: timeframe || 'Pathway branch'
+                });
+                if (Array.isArray(branch?.sequence)) {
+                    for (const step of branch.sequence) {
+                        nodes.push({
+                            title: `${name}: Sequence`,
+                            description: String(step || '')
+                        });
+                    }
+                }
+                if (Array.isArray(branch?.effects)) {
+                    for (const effect of branch.effects) {
+                        nodes.push({
+                            title: `${name}: Effect`,
+                            description: String(effect || '')
+                        });
+                    }
+                }
+            }
+        }
+        if (structure?.convergenceNote) {
+            nodes.push({ title: 'Convergence', description: String(structure.convergenceNote) });
+        }
         if (Array.isArray(structure?.decisionNodes)) {
             for (const d of structure.decisionNodes) {
                 nodes.push({ title: String(d?.question || d?.id || 'Decision'), description: `Yes -> ${d?.yes || ''} | No -> ${d?.no || ''}` });
@@ -303,6 +375,10 @@ html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;backgroun
     }
 
     private buildFallbackSvg(payload: any, theme: Theme): string {
+        const branchModel = this.extractBranchModel(payload);
+        if (branchModel) {
+            return this.buildBranchFallbackSvg(branchModel, payload, theme);
+        }
         const nodes = this.extractFlowNodes(payload);
         const width = 1400;
         const minCardW = 520;
@@ -364,6 +440,152 @@ ${titleBlock}
 ${subtitleBlock}
 ${cards}
 </svg>`;
+    }
+
+    private buildBranchFallbackSvg(branchModel: {
+        topTitle: string;
+        topDesc: string;
+        splitTitle: string;
+        branches: Array<{ name: string; timeframe: string; steps: string[] }>;
+        mergeTitle: string;
+        mergeDesc: string;
+        footer?: string;
+    }, payload: any, theme: Theme): string {
+        const width = 1400;
+        const bg = this.normalizeColor(theme.background_main, '#FAF9F6');
+        const stroke = this.normalizeColor(theme.primary_accent, '#5B9A8B');
+        const text = this.normalizeColor(theme.text_main, '#1A365D');
+        const muted = this.normalizeColor(theme.text_secondary || theme.text_main, '#4A5568');
+        const c4 = this.mixHex(bg, '#DEE1EB', 0.55);
+        const c6 = this.mixHex(stroke, '#E4DBFE', 0.45);
+        const sketchStack = `Patrick Hand, Virgil, Comic Sans MS, Segoe Print, Bradley Hand, Chalkboard SE, cursive`;
+        const bodyStack = `${this.escapeXml(String(theme.font_name || 'Source Sans Pro'))}, Source Sans Pro, Segoe UI, sans-serif`;
+        const fontFamily = `${sketchStack}, ${bodyStack}`;
+        const centerX = width / 2;
+        const margin = 56;
+        const cardH = 86;
+        const gapY = 18;
+        const colGap = 70;
+        const colCount = Math.max(2, branchModel.branches.length);
+        const colW = Math.floor((width - margin * 2 - colGap * (colCount - 1)) / colCount);
+        const cardW = Math.max(300, Math.min(380, colW));
+
+        const flowTitleRaw = String(payload?.center_topic?.title || payload?.center?.title || payload?.title || 'Flowchart');
+        const flowSubtitleRaw = String(payload?.center_topic?.description || payload?.center?.description || payload?.description || '');
+        const titleLines = this.wrapTextLines(flowTitleRaw, 42, 3);
+        const subtitleLines = this.wrapTextLines(flowSubtitleRaw, 70, 2);
+        const titleBlock = titleLines.map((line, idx) => `<text x="${centerX}" y="${margin - 8 + idx * 42}" text-anchor="middle" font-family="${fontFamily}" font-size="38" font-weight="800" fill="${text}" letter-spacing="1.0">${this.escapeXml(line)}</text>`).join('\n');
+        const subtitleStartY = margin - 8 + titleLines.length * 42;
+        const subtitleBlock = subtitleLines.map((line, idx) => `<text x="${centerX}" y="${subtitleStartY + 14 + idx * 24}" text-anchor="middle" font-family="${bodyStack}" font-size="18" font-weight="600" fill="${muted}" opacity="0.92">${this.escapeXml(line)}</text>`).join('\n');
+        const dynamicHeaderHeight = Math.max(86, (titleLines.length * 42) + (subtitleLines.length ? (14 + subtitleLines.length * 24) : 0) + 22);
+
+        const topY = margin + dynamicHeaderHeight + 8;
+        const splitY = topY + cardH + 40;
+        const branchStartY = splitY + cardH + 46;
+        const branchRowCount = Math.max(...branchModel.branches.map(b => 1 + Math.max(1, b.steps.length)));
+        const mergeY = branchStartY + branchRowCount * (cardH + gapY) + 24;
+        const footerY = mergeY + cardH + 32;
+        const dynamicHeight = Math.max(950, footerY + (branchModel.footer ? cardH + 56 : 56));
+
+        const rect = (x: number, y: number, w: number, h: number, fill: string, title: string, desc: string) => {
+            const midX = x + w / 2;
+            const titleText = this.escapeXml(this.truncate(title, 48));
+            const descText = this.escapeXml(this.truncate(desc, 62));
+            return `
+<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="2.2" stroke-dasharray="4 2"/>
+<text x="${midX}" y="${y + 34}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${text}">${titleText}</text>
+<text x="${midX}" y="${y + 60}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${muted}" opacity="0.96">${descText}</text>`;
+        };
+
+        const arrows: string[] = [];
+        const cards: string[] = [];
+        const centerCardX = Math.floor((width - 520) / 2);
+        const centerCardW = 520;
+        cards.push(rect(centerCardX, topY, centerCardW, cardH, c6, branchModel.topTitle, branchModel.topDesc));
+        cards.push(rect(centerCardX, splitY, centerCardW, cardH, c4, branchModel.splitTitle, 'Branch into parallel pathways'));
+        arrows.push(`<line x1="${centerX}" y1="${topY + cardH}" x2="${centerX}" y2="${splitY}" stroke="${stroke}" stroke-width="2.4"/>`);
+
+        const branchTails: Array<{ x: number; y: number }> = [];
+        branchModel.branches.forEach((b, bi) => {
+            const colX = margin + bi * (cardW + colGap);
+            const colCenterX = colX + cardW / 2;
+            const headY = branchStartY;
+            cards.push(rect(colX, headY, cardW, cardH, c6, b.name, b.timeframe || 'Pathway'));
+            arrows.push(`<polyline points="${centerX},${splitY + cardH} ${centerX},${splitY + cardH + 12} ${colCenterX},${splitY + cardH + 12} ${colCenterX},${headY}" fill="none" stroke="${stroke}" stroke-width="2.2"/>`);
+
+            let currentY = headY;
+            const steps = b.steps.length ? b.steps : ['(no steps provided)'];
+            steps.forEach((step, si) => {
+                const y = headY + (si + 1) * (cardH + gapY);
+                cards.push(rect(colX, y, cardW, cardH, c4, `${b.name} Step ${si + 1}`, step));
+                arrows.push(`<line x1="${colCenterX}" y1="${currentY + cardH}" x2="${colCenterX}" y2="${y}" stroke="${stroke}" stroke-width="2.2"/>`);
+                currentY = y;
+            });
+            branchTails.push({ x: colCenterX, y: currentY + cardH });
+        });
+
+        cards.push(rect(centerCardX, mergeY, centerCardW, cardH, c6, branchModel.mergeTitle, branchModel.mergeDesc));
+        branchTails.forEach((tail) => {
+            arrows.push(`<polyline points="${tail.x},${tail.y} ${tail.x},${mergeY - 10} ${centerX},${mergeY - 10} ${centerX},${mergeY}" fill="none" stroke="${stroke}" stroke-width="2.2"/>`);
+        });
+
+        if (branchModel.footer) {
+            cards.push(rect(centerCardX, footerY, centerCardW, cardH, c4, 'Footer Note', branchModel.footer));
+            arrows.push(`<line x1="${centerX}" y1="${mergeY + cardH}" x2="${centerX}" y2="${footerY}" stroke="${stroke}" stroke-width="2.2"/>`);
+        }
+
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${dynamicHeight}" viewBox="0 0 ${width} ${dynamicHeight}">
+<defs>
+  <style type="text/css"><![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap');
+  ]]></style>
+</defs>
+<rect x="0" y="0" width="${width}" height="${dynamicHeight}" fill="${bg}"/>
+${titleBlock}
+${subtitleBlock}
+${arrows.join('\n')}
+${cards.join('\n')}
+</svg>`;
+    }
+
+    private extractBranchModel(payload: any): {
+        topTitle: string;
+        topDesc: string;
+        splitTitle: string;
+        branches: Array<{ name: string; timeframe: string; steps: string[] }>;
+        mergeTitle: string;
+        mergeDesc: string;
+        footer?: string;
+    } | null {
+        const structure = payload?.structure || {};
+        const branches = Array.isArray(structure?.branches) ? structure.branches : [];
+        if (!branches.length) return null;
+
+        const topLabel = String(structure?.topSection?.label || payload?.title || 'Start').trim();
+        const nextNode = String(structure?.topSection?.nextNode || 'Pathway Split').trim();
+        const mappedBranches = branches.map((b: any) => ({
+            name: String(b?.name || 'Branch').trim(),
+            timeframe: String(b?.timeframe || '').trim(),
+            steps: [
+                ...(Array.isArray(b?.sequence) ? b.sequence.map((x: any) => String(x || '').trim()).filter(Boolean) : []),
+                ...(Array.isArray(b?.effects) ? b.effects.map((x: any) => String(x || '').trim()).filter(Boolean) : []),
+            ]
+        }));
+
+        return {
+            topTitle: topLabel,
+            topDesc: `Next: ${nextNode}`,
+            splitTitle: nextNode,
+            branches: mappedBranches,
+            mergeTitle: 'Convergence',
+            mergeDesc: String(structure?.convergenceNote || 'Pathways converge into a shared outcome.'),
+            footer: structure?.footerNote ? String(structure.footerNote) : undefined
+        };
+    }
+
+    private escapeD2(input: string): string {
+        return String(input || '').replace(/"/g, '\'').replace(/\n+/g, ' ').trim();
     }
 
     private truncate(input: string, max: number): string {

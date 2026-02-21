@@ -190,12 +190,12 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const buildSpokePrompt = (item: any, idx: number): string => {
             const title = (item?.title || `Spoke ${idx + 1}`).trim();
             const desc = (item?.description || '').trim();
-            const concept = this.toTextSafeIconConcept(`${title}. ${desc}`);
+            const concept = this.buildHubIconConcept(`${title}. ${desc}`, idx, totalItems, centerTitle);
 
             // Use neutral slot cues for diversity; avoid time words that bias toward clock imagery.
             const slotHint = `radial slot ${idx + 1} of ${totalItems}`;
 
-            const base = `symbolic minimalist icon for ${concept}. Semantic cue for ${this.toTextSafeIconConcept(centerTitle)}. ${slotHint}. Focus on object/action metaphor, not UI symbols. Avoid clocks, watches, timer dials, countdown graphics, compasses, gauges, or circular tick marks. No words, letters, numbers, equations, formulas, or labels.`;
+            const base = `symbolic minimalist icon for ${concept}. Semantic cue for ${this.toTextSafeIconConcept(centerTitle)}. ${slotHint}. Focus on object/action metaphor and organic wellness imagery with simple shapes. Use human-body and airflow cues when relevant.`;
             const normalized = base.toLowerCase().replace(/\s+/g, ' ').trim();
             const seen = promptUsage.get(normalized) || 0;
             promptUsage.set(normalized, seen + 1);
@@ -497,6 +497,7 @@ ${text}`;
         const hasComparisonSignals =
             Array.isArray(payload.panels) ||
             Array.isArray(payload.comparison_items) ||
+            Array.isArray(payload.domains) ||
             Array.isArray(payload?.paths) ||
             Array.isArray(blueprint?.versus_subjects) ||
             Array.isArray(blueprint?.comparison_items);
@@ -527,11 +528,10 @@ ${text}`;
         let fullPrompt = '';
         if (isBackground) {
             // Refinement 8: Use the prompt for the center image background, but keep it abstract/soft
-            fullPrompt = `soft abstract background for ${prompt}, minimalist, high resolution, subtle grain, elegant, ${theme.background_main} tones --no text, letters, numbers, typography, writing, busy patterns, realistic photos`;
+            fullPrompt = `soft abstract background for ${prompt}, minimalist, high resolution, subtle grain, elegant, ${theme.background_main} tones, smooth gradients, calm composition`;
         } else {
             // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
-            // Refinement 6: Strong Negative Prompting for Text
-            fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights --no text, font, characters, words, writing, labels, numbers`;
+            fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights, text-free iconography`;
         }
         const resolvedImageSize = imageSize || (isBackground ? '768x768' : '512x512');
         this.observability.emitLog('info', `ðŸ–¼ï¸ Constructing Image Prompt (size=${resolvedImageSize}): ${fullPrompt}`, 'ImageGen', taskId);
@@ -631,6 +631,35 @@ ${text}`;
                 versus_subjects: subjects,
                 comparison_items,
                 verdict: payload.bottomNote ? { title: 'Takeaway', text: payload.bottomNote } : undefined
+            } as any;
+        }
+
+        if (rawType.includes('annotated_silhouette') && Array.isArray(payload.domains) && payload.domains.length >= 2) {
+            const domains = payload.domains.slice(0, 4).map((d: any, idx: number) => ({
+                name: String(d?.name || `Domain ${idx + 1}`),
+                description: String(d?.category || 'Stress domain')
+            }));
+            const symptomLists: string[][] = payload.domains.slice(0, 4).map((d: any) =>
+                Array.isArray(d?.symptoms) ? d.symptoms.map((s: any) => String(s || '')).filter(Boolean) : []
+            );
+            const rowCount = Math.max(3, ...symptomLists.map((s) => s.length));
+            const comparison_items = Array.from({ length: rowCount }).map((_, rowIdx) => ({
+                metric: `Symptom ${rowIdx + 1}`,
+                values: domains.map((domain, domainIdx) => ({
+                    value: symptomLists[domainIdx]?.[rowIdx] || 'N/A',
+                    description: `${domain.name} indicator`,
+                    score: 5
+                }))
+            }));
+
+            return {
+                quality_score: 82,
+                explanation: 'Fallback versus blueprint synthesized from annotated silhouette domains.',
+                template_id: 'versus_split',
+                center_topic: { title, subtitle: summary },
+                versus_subjects: domains,
+                comparison_items,
+                verdict: payload.footer ? { title: 'Takeaway', text: String(payload.footer) } : undefined
             } as any;
         }
 
@@ -801,7 +830,7 @@ ${text}`;
         }
         const imagePromises = subjects.map(async (subj: any, idx: number) => {
             const concept = this.toTextSafeIconConcept(`${subj?.name || ''}. ${subj?.description || ''}`);
-            const prompt = `Vertical symbolic portrait of ${concept}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text, letters, words, numbers, equations, formulas, labels`;
+            const prompt = `Vertical symbolic portrait of ${concept}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting, text-free educational icon style`;
 
             try {
                 const result = await this.generateImage(prompt, theme, false, task.id, '256x256');
@@ -992,6 +1021,27 @@ ${text}`;
         return concept.split(' ').slice(0, 14).join(' ');
     }
 
+    private buildHubIconConcept(raw: string, idx: number, totalItems: number, centerTitle: string): string {
+        const text = `${raw} ${centerTitle}`.toLowerCase();
+        const isBreathing = /\b(breath|inhale|exhale|lungs|respir|calm|relax|cycle)\b/.test(text);
+        if (!isBreathing) {
+            return this.toTextSafeIconConcept(raw);
+        }
+
+        const breathingMetaphors = [
+            'calm seated posture with soft breath wave',
+            'nose inhale airflow line into lungs silhouette',
+            'hand on belly mindful breathing posture',
+            'lungs expanding with smooth upward airflow',
+            'gentle exhale airflow wave moving outward',
+            'relaxation cue soft body posture and steady breath',
+            'grounding symbol with smooth breathing rhythm line',
+            'calm attention icon with chest and belly breath focus'
+        ];
+        const mapped = breathingMetaphors[idx % breathingMetaphors.length];
+        return `${mapped}, wellness breathing practice visual metaphor`;
+    }
+
     private async generateProceduralStepIcon(idx: number, theme: Theme, size = 256): Promise<Buffer> {
         const primary = theme.primary_accent || '#5B9A8B';
         const secondary = theme.secondary_accent || '#E8A598';
@@ -1046,7 +1096,7 @@ ${text}`;
             const type = cell.content?.type || '';
             if (type.includes('image')) {
                 const iconConcept = this.toTextSafeIconConcept(`${cell.content?.title || ''}. ${cell.content?.text || ''}`);
-                const imgPrompt = `symbolic conceptual icon for ${iconConcept}. Clean vector visual metaphor. No words, letters, numbers, equations, formulas, or labels.`;
+                const imgPrompt = `symbolic conceptual icon for ${iconConcept}. Clean vector visual metaphor with text-free educational icon style.`;
 
                 try {
                     const cellSize = this.estimateBentoCellImageSize(cell);

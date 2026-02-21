@@ -75,7 +75,7 @@ export class StoryImageStrategy extends BaseImageStrategy {
                 ? `Use only this locked course palette: ${paletteHexes.join(', ')}. `
                 : '';
 
-            const finalPrompt = `Style: ${styleGuide}. Subject: ${palettePrefix}${subjectPrompt}${effectiveNegative.length ? ` --no ${effectiveNegative.join(', ')}` : ''}`;
+            const finalPrompt = `Style: ${styleGuide}. Subject: ${palettePrefix}${subjectPrompt}. Render as clean educational illustration with simple symbolic forms and clear focal subject.`;
             this.observability.emitLog(
                 'info',
                 `Story Image Prompt (size=${imageSize}): ${finalPrompt}`,
