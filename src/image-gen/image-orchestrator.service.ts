@@ -299,12 +299,23 @@ export class ImageOrchestratorService {
 
                 const taskType = this.resolveManifestTaskType(viz);
                 const taskPayload = this.buildManifestPayloadForTask(viz, taskType);
+                const stylingGuidance = {
+                    theme_id: themeId || null,
+                    design_philosophy: designPhilosophy || null,
+                    color_palette: globalStyle.colorPalette || null,
+                    typography: globalStyle.typography || null,
+                    media_style: globalStyle.mediaStyle || null,
+                    viz_style: viz.style || viz.styleGuide || viz.visualStyle || null,
+                    dimensions: viz.dimensions || null,
+                };
+
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                     type: taskType,
                     refined_prompt: refinedPrompt.trim(),
                     payload: taskPayload,
                     metadata: {
+                        title: viz.title || vizDescription,
                         course_id: courseSlug,
                         lesson_id: lesson.lessonId,
                         lesson_title: lesson.title,
@@ -315,6 +326,7 @@ export class ImageOrchestratorService {
                         template_type: this.resolveTemplateTypeForRouting(viz),
                         theme_id: themeId, // Pass through for strategy
                         task_type: taskType,
+                        styling_guidance: stylingGuidance,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
                         course_palette_hexes: coursePaletteHexes,
@@ -353,7 +365,8 @@ export class ImageOrchestratorService {
                 details: {
                     title: t.metadata.title || t.metadata.lesson_title,
                     refined_prompt: t.refined_prompt,
-                    original_instruction: t.metadata.original_instruction
+                    original_instruction: t.metadata.original_instruction,
+                    styling_guidance: t.metadata.styling_guidance
                 },
                 metadata: t.metadata
             };
@@ -369,7 +382,8 @@ export class ImageOrchestratorService {
                 details: {
                     title: task.metadata.title || task.metadata.lesson_title,
                     refined_prompt: task.refined_prompt,
-                    original_instruction: task.metadata.original_instruction
+                    original_instruction: task.metadata.original_instruction,
+                    styling_guidance: task.metadata.styling_guidance
                 },
                 metadata: {
                     course_id: task.metadata.course_id,
@@ -453,13 +467,14 @@ export class ImageOrchestratorService {
                             output_dir: result?.payload?.output_dir,
                             image_prompts: result?.payload?.image_prompts,
                             blueprint_prompt: result?.payload?.blueprint_prompt,
-                            source_query: result?.payload?.source_query,
-                            sourced_queries: result?.payload?.sourced_queries,
-                            sourced_candidates: result?.payload?.sourced_candidates,
-                            sourced_query_signals: result?.payload?.sourced_query_signals,
-                            sourced_query_config: result?.payload?.sourced_query_config
-                        }
-                    };
+                        source_query: result?.payload?.source_query,
+                        sourced_queries: result?.payload?.sourced_queries,
+                        sourced_candidates: result?.payload?.sourced_candidates,
+                        sourced_query_signals: result?.payload?.sourced_query_signals,
+                        sourced_query_config: result?.payload?.sourced_query_config,
+                        styling_guidance: task?.metadata?.styling_guidance
+                    }
+                };
 
                     this.observability.emitProgress(finalResult as any);
                     return finalResult;

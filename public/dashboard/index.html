@@ -135,8 +135,9 @@
                         <select v-model="selectedAssetFilter"
                             class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
                             <option value="">Select an Asset...</option>
+                            <option v-if="batchStylingGuidance" value="__styling__">Styling (Batch Guidance)</option>
                             <option v-for="task in (tasks || {})" :key="task?.taskId" :value="task?.taskId">
-                                {{ task?.details?.title || task?.taskId }} ({{ getStatusLabel(task) }})
+                                {{ taskLabel(task) }} ({{ getStatusLabel(task) }})
                             </option>
                         </select>
 
@@ -198,6 +199,10 @@
                                             {{ candidate?.image_url }}
                                         </a>
                                     </div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.styling_guidance" class="mt-1">
+                                    <span class="text-slate-500 block">Styling:</span>
+                                    <pre class="ml-2 text-slate-300 whitespace-pre-wrap break-words">{{ JSON.stringify(selectedAssetTask.details.styling_guidance, null, 2) }}</pre>
                                 </div>
                             </div>
                         </div>
@@ -549,6 +554,10 @@
                                 <span v-if="candidate?.query" class="text-slate-500 ml-1">({{ candidate.query }})</span>
                             </div>
                         </div>
+                        <div v-if="selectedTask.details?.styling_guidance" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Styling</div>
+                            <pre class="text-xs text-slate-300 font-mono whitespace-pre-wrap break-words">{{ JSON.stringify(selectedTask.details.styling_guidance, null, 2) }}</pre>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -605,7 +614,25 @@
 
                 const selectedAssetTask = computed(() => {
                     if (!selectedAssetFilter.value) return null;
+                    if (selectedAssetFilter.value === '__styling__') {
+                        if (!batchStylingGuidance.value) return null;
+                        return {
+                            taskId: '__styling__',
+                            status: 'completed',
+                            details: { styling_guidance: batchStylingGuidance.value },
+                            metrics: {}
+                        };
+                    }
                     return tasks.value?.[selectedAssetFilter.value] || null;
+                });
+
+                const batchStylingGuidance = computed(() => {
+                    const all = Object.values(tasks.value || {});
+                    for (const t of all) {
+                        const style = t?.details?.styling_guidance || t?.metadata?.styling_guidance;
+                        if (style) return style;
+                    }
+                    return null;
                 });
 
                 // Derived State: Hierarchical Grouping
@@ -801,6 +828,13 @@
                     selectedAssetFilter.value = taskId;
                 };
 
+                const taskLabel = (task) => {
+                    const title = task?.details?.title || task?.metadata?.title || task?.metadata?.lesson_title || task?.taskId;
+                    const id = String(task?.taskId || '');
+                    const shortId = id.length > 6 ? id.slice(-6) : id;
+                    return `${title} [${shortId}]`;
+                };
+
                 const hasClipScore = (task) => {
                     const raw = task?.metrics?.clip_score;
                     const score = Number(raw);
@@ -922,13 +956,13 @@
                     isConnected, isDragging, logs, tasks, batch, logContainer,
                     groupedTasks, selectedTask,
                     narrativeMetrics,
-                    selectedAssetTask,
+                    selectedAssetTask, batchStylingGuidance,
                     logMode, selectedAssetFilter, filteredLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
-                    hasClipScore, formatClipScore, extractUrls, selectAsset
+                    hasClipScore, formatClipScore, extractUrls, selectAsset, taskLabel
                 };
 
             }
