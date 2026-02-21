@@ -52,7 +52,24 @@ export class ImageStrategyFactory {
     }
 
     private isD2TemplateType(task: ImageTask): boolean {
-        const raw = String((task as any)?.metadata?.template_type || (task as any)?.payload?.type || '').toLowerCase().trim();
-        return raw === 'flowchart' || raw === 'timeline' || raw === 'process_map';
+        const taskAny = task as any;
+        const raw = String(taskAny?.metadata?.template_type || taskAny?.payload?.type || '').toLowerCase().trim();
+        const refined = String(taskAny?.refined_prompt || '').toLowerCase();
+        const payload = taskAny?.payload || {};
+        const structure = payload?.structure || {};
+        const hasBranchingStructure =
+            (Array.isArray(structure?.decisionNodes) && structure.decisionNodes.length > 0)
+            || (structure?.outputs && typeof structure.outputs === 'object' && Object.keys(structure.outputs).length > 0)
+            || (Array.isArray(payload?.items) && payload.items.length > 5 && /decision|flow|branch/.test(refined));
+
+        if (hasBranchingStructure) return true;
+        if (/create a\s+(flowchart|timeline|process[_\s-]?map|process[_\s-]?flow)\b/.test(refined)) return true;
+
+        return raw === 'flowchart'
+            || raw === 'timeline'
+            || raw === 'process_map'
+            || raw === 'process_flow'
+            || raw === 'process map'
+            || raw === 'process-flow';
     }
 }

@@ -120,6 +120,26 @@ export class ImageOrchestratorService {
         };
     }
 
+    private inferStepCount(viz: any): number {
+        if (Array.isArray(viz?.items)) return viz.items.length;
+        if (Array.isArray(viz?.steps)) return viz.steps.length;
+        const structure = viz?.structure || {};
+        const decisionNodes = Array.isArray(structure?.decisionNodes) ? structure.decisionNodes.length : 0;
+        const outputs = structure?.outputs && typeof structure.outputs === 'object' ? Object.keys(structure.outputs).length : 0;
+        const timeline = Array.isArray(structure?.timeline) ? structure.timeline.length : 0;
+        const processSteps = Array.isArray(structure?.processSteps) ? structure.processSteps.length : 0;
+        const base = Math.max(decisionNodes + outputs + (decisionNodes > 0 ? 1 : 0), timeline, processSteps);
+        return base + (structure?.footerNote ? 1 : 0);
+    }
+
+    private resolveTemplateTypeForRouting(viz: any): string {
+        const rawType = String(viz?.type || '').toLowerCase().trim();
+        const stepLike = new Set(['process_flow', 'flowchart', 'timeline', 'process_map', 'step_journey', 'step_list', 'steps']);
+        if (!stepLike.has(rawType)) return rawType;
+        const stepCount = this.inferStepCount(viz);
+        return stepCount > 5 ? 'flowchart' : 'steps';
+    }
+
     async generateCourse(content: string) {
         const start = performance.now();
         this.logger.log(`Starting course generation for content length: ${content.length}`);
@@ -229,7 +249,7 @@ export class ImageOrchestratorService {
                         batch_id: batchId,
                         queued_at: new Date().toISOString(),
                         dimensions: viz.dimensions,
-                        template_type: viz.type,
+                        template_type: this.resolveTemplateTypeForRouting(viz),
                         theme_id: themeId, // Pass through for strategy
                         task_type: taskType,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,

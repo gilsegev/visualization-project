@@ -26,7 +26,9 @@ export class TemplateStampingService {
         } else if (templateId === 'versus_split' || templateId === 'versus') {
             fileName = 'versus.html';
         } else if (templateId === 'steps' || templateId === 'step_list' || templateId === 'step_journey') {
-            fileName = 'steps.html';
+            const itemCount = Array.isArray(data?.items) ? data.items.length : 0;
+            fileName = itemCount > 5 ? 'multi-step.html' : 'steps.html';
+            this.logger.log(`Step template routing: items=${itemCount} -> ${fileName}`);
         } else if (templateId === 'story_frame') {
             fileName = 'story_frame.html';
         }

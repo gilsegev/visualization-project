@@ -99,8 +99,7 @@ export class DataVizStrategy extends BaseImageStrategy {
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
     const theme = this.buildCourseChartTheme(task);
-    const vChartLibPath = path.resolve(process.cwd(), 'public/assets/vchart.js');
-    const vChartLib = fs.readFileSync(vChartLibPath, 'utf8');
+    const vChartLib = this.loadVChartLib();
 
     // Construct the HTML with VChart spec
     // Reusing the robust spec logic from Prompt 8
@@ -269,6 +268,29 @@ export class DataVizStrategy extends BaseImageStrategy {
       </body>
       </html>
     `;
+  }
+
+  private loadVChartLib(): string {
+    const candidates = [
+      path.resolve(process.cwd(), 'public/assets/vchart.js'),
+      path.resolve(process.cwd(), 'node_modules/@visactor/vchart/build/index.min.js'),
+      path.resolve(process.cwd(), 'node_modules/@visactor/vchart/build/index.js'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      try {
+        const content = fs.readFileSync(candidate, 'utf8');
+        if (content && content.length > 1000) {
+          this.logger.log(`[DataViz] Loaded VChart runtime from: ${candidate}`);
+          return content;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+
+    throw new Error('VChart runtime not found. Expected public/assets/vchart.js or node_modules/@visactor/vchart/build/index.min.js');
   }
 
   private buildCourseChartTheme(task: ImageTask): {

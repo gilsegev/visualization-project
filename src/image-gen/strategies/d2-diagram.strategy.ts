@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
 import { ConfigService } from '@nestjs/config';
@@ -32,7 +32,7 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         this.renderTimeoutMs = Math.max(1000, Number(this.configService.get<string>('D2_RENDER_TIMEOUT_MS') || 5000));
         const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
         this.openai = new OpenAI({
-            apiKey: apiKey,
+            apiKey,
             baseURL: 'https://openrouter.ai/api/v1',
             defaultHeaders: {
                 'HTTP-Referer': 'https://visualization-project.local',
@@ -60,7 +60,13 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         const scriptPath = path.join(absoluteOutputDir, 'diagram.d2');
         const svgPath = path.join(absoluteOutputDir, 'diagram.svg');
         await fs.promises.writeFile(scriptPath, d2Script, 'utf8');
-        await this.runD2(scriptPath, svgPath, task.id);
+        const d2Used = await this.runD2(scriptPath, svgPath, task.id);
+
+        if (!d2Used) {
+            const fallbackSvg = this.buildFallbackSvg(task.payload || {}, theme);
+            await fs.promises.writeFile(svgPath, fallbackSvg, 'utf8');
+            this.observability.emitLog('warn', 'D2 CLI unavailable; rendered styled fallback flowchart SVG', 'D2Strategy', task.id);
+        }
         const d2Ms = performance.now() - d2Start;
 
         const dims = taskAny.metadata?.dimensions || {};
@@ -94,6 +100,7 @@ export class D2DiagramStrategy extends BaseImageStrategy {
                 html: reviewHtml,
                 output_dir: relativeOutputDir,
                 metrics: {
+                    d2_cli_used: d2Used,
                     d2_render_ms: d2Ms.toFixed(2),
                     total_ms: totalMs.toFixed(2)
                 },
@@ -147,22 +154,46 @@ Constraints:
     }
 
     private injectBranding(script: string, theme: Theme): string {
-        const fontFamily = String(theme.font_name || 'Inter').replace(/"/g, '');
+        const fontFamily = String(theme.font_name || 'Source Sans Pro').replace(/"/g, '');
         const fill = this.normalizeColor(theme.background_main, '#FAF9F6');
         const stroke = this.normalizeColor(theme.primary_accent, '#5B9A8B');
         const text = this.normalizeColor(theme.text_main, '#1A365D');
+        const muted = this.normalizeColor(theme.text_secondary || theme.text_main, '#4A5568');
+        const c2 = this.mixHex(stroke, '#FFFFFF', 0.75);
+        const c3 = this.mixHex(stroke, '#A78BFA', 0.25);
+        const c4 = this.mixHex(fill, '#DEE1EB', 0.55);
+        const c5 = this.mixHex(stroke, '#88DCF7', 0.35);
+        const c6 = this.mixHex(stroke, '#E4DBFE', 0.45);
+
         const header = [
+            'vars: {',
+            '  d2-config: {',
+            '    theme-id: 3',
+            '    sketch: true',
+            '    layout-engine: dagre',
+            '  }',
+            '  colors: {',
+            `    c2: "${c2}"`,
+            `    c3: "${c3}"`,
+            `    c4: "${c4}"`,
+            `    c5: "${c5}"`,
+            `    c6: "${c6}"`,
+            '  }',
+            '}',
+            '',
             'direction: down',
-            `vars: { d2-config: { theme-overrides: { N1: "${fill}", N7: "${stroke}", N2: "${text}" } } }`,
             '',
             'classes: {',
             '  primary: {',
             '    shape: rectangle',
             '    style: {',
-            `      fill: "${fill}"`,
+            '      fill: ${colors.c6}',
             `      stroke: "${stroke}"`,
+            '      stroke-width: 2',
+            '      stroke-dash: 4',
+            '      border-radius: 14',
             `      font-family: "${fontFamily}"`,
-            '      font-size: 16',
+            '      font-size: 17',
             `      font-color: "${text}"`,
             '    }',
             '  }',
@@ -188,14 +219,20 @@ Constraints:
         return this.injectBranding(body, theme);
     }
 
-    private async runD2(inputPath: string, outputSvgPath: string, taskId: string): Promise<void> {
+    private async runD2(inputPath: string, outputSvgPath: string, taskId: string): Promise<boolean> {
         const args = [inputPath, outputSvgPath, '--layout=dagre', '--theme=200'];
         const started = performance.now();
         try {
             await execFileAsync(this.d2Bin, args, { timeout: this.renderTimeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024 });
             const duration = performance.now() - started;
             this.observability.emitLog('info', `D2 render complete in ${duration.toFixed(0)}ms`, 'D2Strategy', taskId);
+            return true;
         } catch (error: any) {
+            const code = String(error?.code || '').toUpperCase();
+            if (code === 'ENOENT') {
+                this.observability.emitLog('warn', `D2 executable not found (D2_BIN=${this.d2Bin}); using fallback renderer`, 'D2Strategy', taskId);
+                return false;
+            }
             const stderr = String(error?.stderr || error?.message || '').trim();
             throw new Error(`D2 render failed: ${stderr || 'unknown error'}`);
         }
@@ -213,7 +250,172 @@ html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;backgroun
     private normalizeColor(value: string | undefined, fallback: string): string {
         const raw = String(value || '').trim();
         if (/^#[0-9a-f]{3,8}$/i.test(raw)) return raw;
+        const embedded = raw.match(/#[0-9a-f]{3,8}/i)?.[0];
+        if (embedded) return embedded;
         return fallback;
     }
-}
 
+    private extractFlowNodes(payload: any): Array<{ title: string; description: string }> {
+        if (Array.isArray(payload?.items) && payload.items.length) {
+            return payload.items.map((it: any, i: number) => ({
+                title: String(it?.title || `Step ${i + 1}`),
+                description: String(it?.description || '')
+            }));
+        }
+        const structure = payload?.structure || {};
+        const nodes: Array<{ title: string; description: string }> = [];
+        if (structure?.start) {
+            nodes.push({ title: 'Start', description: String(structure.start) });
+        }
+        if (Array.isArray(structure?.decisionNodes)) {
+            for (const d of structure.decisionNodes) {
+                nodes.push({ title: String(d?.question || d?.id || 'Decision'), description: `Yes -> ${d?.yes || ''} | No -> ${d?.no || ''}` });
+            }
+        }
+        if (structure?.outputs && typeof structure.outputs === 'object') {
+            for (const [k, v] of Object.entries(structure.outputs)) {
+                nodes.push({ title: `Output: ${k}`, description: String(v || '') });
+            }
+        }
+        if (structure?.footerNote) {
+            nodes.push({ title: 'Footer Note', description: String(structure.footerNote) });
+        }
+        if (nodes.length) return nodes;
+        return [{ title: String(payload?.title || 'Process Flow'), description: String(payload?.description || '') }];
+    }
+
+    private buildFallbackSvg(payload: any, theme: Theme): string {
+        const nodes = this.extractFlowNodes(payload);
+        const width = 1400;
+        const minCardW = 520;
+        const maxCardW = 1080;
+        const cardH = 90;
+        const gap = 22;
+        const margin = 56;
+        const headerHeight = 86;
+        const height = Math.max(900, margin * 2 + headerHeight + nodes.length * cardH + Math.max(0, nodes.length - 1) * gap);
+        const bg = this.normalizeColor(theme.background_main, '#FAF9F6');
+        const stroke = this.normalizeColor(theme.primary_accent, '#5B9A8B');
+        const text = this.normalizeColor(theme.text_main, '#1A365D');
+        const muted = this.normalizeColor(theme.text_secondary || theme.text_main, '#4A5568');
+        const c4 = this.mixHex(bg, '#DEE1EB', 0.55);
+        const c6 = this.mixHex(stroke, '#E4DBFE', 0.45);
+        const sketchStack = `Patrick Hand, Virgil, Comic Sans MS, Segoe Print, Bradley Hand, Chalkboard SE, cursive`;
+        const bodyStack = `${this.escapeXml(String(theme.font_name || 'Source Sans Pro'))}, Source Sans Pro, Segoe UI, sans-serif`;
+        const fontFamily = `${sketchStack}, ${bodyStack}`;
+        const centerX = width / 2;
+        const flowTitleRaw = String(payload?.center_topic?.title || payload?.center?.title || payload?.title || 'Flowchart');
+        const flowSubtitleRaw = String(payload?.center_topic?.description || payload?.center?.description || payload?.description || '');
+        const titleLines = this.wrapTextLines(flowTitleRaw, 42, 3);
+        const subtitleLines = this.wrapTextLines(flowSubtitleRaw, 70, 2);
+        const titleBlock = titleLines.map((line, idx) => `<text x="${centerX}" y="${margin - 8 + idx * 42}" text-anchor="middle" font-family="${fontFamily}" font-size="38" font-weight="800" fill="${text}" letter-spacing="1.0">${this.escapeXml(line)}</text>`).join('\n');
+        const subtitleStartY = margin - 8 + titleLines.length * 42;
+        const subtitleBlock = subtitleLines.map((line, idx) => `<text x="${centerX}" y="${subtitleStartY + 14 + idx * 24}" text-anchor="middle" font-family="${bodyStack}" font-size="18" font-weight="600" fill="${muted}" opacity="0.92">${this.escapeXml(line)}</text>`).join('\n');
+        const dynamicHeaderHeight = Math.max(headerHeight, (titleLines.length * 42) + (subtitleLines.length ? (14 + subtitleLines.length * 24) : 0) + 22);
+
+        const cards = nodes.map((n, i) => {
+            const title = this.escapeXml(this.truncate(n.title, 92));
+            const desc = this.escapeXml(this.truncate(n.description, 128));
+            const approxWidth = Math.max(title.length * 10.5, desc.length * 8.2) + 90;
+            const cardW = Math.max(minCardW, Math.min(maxCardW, Math.floor(approxWidth)));
+            const x = Math.floor((width - cardW) / 2);
+            const y = margin + dynamicHeaderHeight + i * (cardH + gap);
+            const ty = y + 34;
+            const dy = y + 62;
+            const midX = x + cardW / 2;
+            const arrow = i < nodes.length - 1
+                ? `<line x1="${centerX}" y1="${y + cardH}" x2="${centerX}" y2="${y + cardH + gap - 8}" stroke="${stroke}" stroke-width="2.5"/><polygon points="${centerX - 6},${y + cardH + gap - 14} ${centerX + 6},${y + cardH + gap - 14} ${centerX},${y + cardH + gap - 4}" fill="${stroke}"/>`
+                : '';
+            return `
+<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="14" fill="${i % 2 === 0 ? c6 : c4}" stroke="${stroke}" stroke-width="2.2" stroke-dasharray="4 2"/>
+<text x="${midX}" y="${ty}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${text}">${title}</text>
+<text x="${midX}" y="${dy}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${muted}" opacity="0.96">${desc}</text>
+${arrow}`;
+        }).join('\n');
+
+        const dynamicHeight = Math.max(900, margin * 2 + dynamicHeaderHeight + nodes.length * cardH + Math.max(0, nodes.length - 1) * gap);
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${dynamicHeight}" viewBox="0 0 ${width} ${dynamicHeight}">
+<defs>
+  <style type="text/css"><![CDATA[
+    @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@400;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap');
+  ]]></style>
+</defs>
+<rect x="0" y="0" width="${width}" height="${dynamicHeight}" fill="${bg}"/>
+${titleBlock}
+${subtitleBlock}
+${cards}
+</svg>`;
+    }
+
+    private truncate(input: string, max: number): string {
+        const raw = String(input || '').replace(/\s+/g, ' ').trim();
+        if (raw.length <= max) return raw;
+        return `${raw.slice(0, Math.max(0, max - 3)).trim()}...`;
+    }
+
+    private wrapTextLines(input: string, maxCharsPerLine: number, maxLines: number): string[] {
+        const words = String(input || '').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+        if (!words.length) return [];
+        const lines: string[] = [];
+        let current = '';
+        for (const word of words) {
+            const next = current ? `${current} ${word}` : word;
+            if (next.length <= maxCharsPerLine) {
+                current = next;
+                continue;
+            }
+            if (current) lines.push(current);
+            current = word;
+            if (lines.length >= maxLines) break;
+        }
+        if (lines.length < maxLines && current) lines.push(current);
+        if (lines.length > maxLines) lines.length = maxLines;
+        if (lines.length && words.join(' ').length > lines.join(' ').length) {
+            const last = lines[lines.length - 1];
+            lines[lines.length - 1] = this.truncate(last, Math.max(8, maxCharsPerLine - 3));
+        }
+        return lines;
+    }
+
+    private hexToRgba(hex: string, alpha: number): string {
+        const normalized = this.normalizeColor(hex, '#FAF9F6').replace('#', '');
+        const full = normalized.length === 3
+            ? normalized.split('').map(ch => ch + ch).join('')
+            : normalized.slice(0, 6);
+        const value = parseInt(full, 16);
+        const r = (value >> 16) & 255;
+        const g = (value >> 8) & 255;
+        const b = value & 255;
+        const a = Math.max(0, Math.min(1, alpha));
+        return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    private mixHex(base: string, mix: string, mixRatio: number): string {
+        const a = this.hexToRgb(this.normalizeColor(base, '#000000'));
+        const b = this.hexToRgb(this.normalizeColor(mix, '#ffffff'));
+        const t = Math.max(0, Math.min(1, mixRatio));
+        const r = Math.round(a.r * (1 - t) + b.r * t);
+        const g = Math.round(a.g * (1 - t) + b.g * t);
+        const bl = Math.round(a.b * (1 - t) + b.b * t);
+        return `#${[r, g, bl].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+    }
+
+    private hexToRgb(hex: string): { r: number; g: number; b: number } {
+        const normalized = this.normalizeColor(hex, '#000000').replace('#', '');
+        const full = normalized.length === 3
+            ? normalized.split('').map(ch => ch + ch).join('')
+            : normalized.slice(0, 6);
+        const value = parseInt(full, 16);
+        return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+    }
+
+    private escapeXml(input: string): string {
+        return String(input || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+    }
+}
