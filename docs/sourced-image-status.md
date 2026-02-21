@@ -43,3 +43,25 @@ Using `public/assets/sourced_image.json`:
 ## Known Next Step
 
 - Re-enable CLIP + vision gate after Unsplash sourcing baseline is stable in repeated runs.
+
+## Update: 2026-02-21 (Observability + Runtime Reliability)
+
+- Added combined dev runner so app startup includes CLIP scorer by default:
+  - `npm run start:dev:with-clip`
+  - Starts both app and scorer (`tools/start-dev-with-clip.js`).
+- Updated runbook:
+  - `docs/running-the-app.md` now defaults dev instructions to `start:dev:with-clip`.
+- Improved sourced-image observability (By Asset + Verbose):
+  - Persist and surface `source_query` (selected query).
+  - Persist and surface `sourced_queries` (all Unsplash queries sent).
+  - Persist and surface `sourced_candidates` (all candidate URLs + query provenance).
+  - Added explicit verbose log line with all sourced candidate URLs for fast inspection.
+- Forwarded sourced-image debug fields through orchestrator task details to dashboard:
+  - `src/image-gen/image-orchestrator.service.ts`.
+- Dashboard updates (`public/dashboard/index.html`):
+  - By Asset panel now shows selected query, full query list, and clickable candidate links.
+  - Modal scoring panel now shows the same sourced query/candidate provenance.
+  - Verbose log stream auto-detects URLs and renders them as clickable links.
+- Degraded-mode resilience for CLIP outages:
+  - When CLIP scorer is unavailable, sourced strategy uses vision-only ranking over top candidates before fallback.
+  - Added config: `SOURCED_IMAGE_DEGRADED_VISION_THRESHOLD` (default `35`).

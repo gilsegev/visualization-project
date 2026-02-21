@@ -422,7 +422,10 @@ export class ImageOrchestratorService {
                             duration_ms: taskDurationMs.toFixed(2),
                             output_dir: result?.payload?.output_dir,
                             image_prompts: result?.payload?.image_prompts,
-                            blueprint_prompt: result?.payload?.blueprint_prompt
+                            blueprint_prompt: result?.payload?.blueprint_prompt,
+                            source_query: result?.payload?.source_query,
+                            sourced_queries: result?.payload?.sourced_queries,
+                            sourced_candidates: result?.payload?.sourced_candidates
                         }
                     };
 

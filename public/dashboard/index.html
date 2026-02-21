@@ -167,6 +167,24 @@
                                     <span class="text-slate-500">Total:</span>
                                     <span class="ml-1 text-slate-200">{{ (Number(selectedAssetTask.metrics?.total_ms || 0) / 1000).toFixed(2) }}s</span>
                                 </div>
+                                <div v-if="selectedAssetTask?.details?.source_query" class="mt-0.5">
+                                    <span class="text-slate-500">Selected Query:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_queries?.length" class="mt-1">
+                                    <span class="text-slate-500 block">Unsplash Queries:</span>
+                                    <div v-for="(query, qIdx) in selectedAssetTask.details.sourced_queries" :key="`asset-q-${qIdx}`" class="ml-2 text-slate-300">
+                                        - {{ query }}
+                                    </div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_candidates?.length" class="mt-1">
+                                    <span class="text-slate-500 block">Sourced Candidates:</span>
+                                    <div v-for="(candidate, cIdx) in selectedAssetTask.details.sourced_candidates" :key="`asset-c-${cIdx}`" class="ml-2">
+                                        <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
+                                            {{ candidate?.image_url }}
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -212,6 +230,13 @@
                             </span>
 
                             <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
+                            <div v-if="extractUrls(log.message).length" class="ml-2 mt-1 space-y-0.5">
+                                <a v-for="(url, uIdx) in extractUrls(log.message)" :key="`log-url-${i}-${uIdx}`"
+                                    :href="url" target="_blank" rel="noopener noreferrer"
+                                    class="block text-neon underline break-all">
+                                    {{ url }}
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -468,10 +493,10 @@
                     </div>
 
                     <!-- 6. Sourced Image Scoring -->
-                    <div v-if="hasClipScore(selectedTask)"
+                    <div v-if="hasClipScore(selectedTask) || selectedTask?.details?.sourced_queries?.length || selectedTask?.details?.sourced_candidates?.length"
                         class="mb-4 overflow-y-auto max-h-[20vh] border border-neon/30 rounded p-3 bg-black">
                         <h4 class="text-xs font-mono text-neon uppercase mb-2">Sourced Image Scoring</h4>
-                        <div class="text-sm text-slate-300 font-mono">
+                        <div v-if="hasClipScore(selectedTask)" class="text-sm text-slate-300 font-mono">
                             CLIP Score:
                             <span class="text-neon font-bold ml-1">{{ formatClipScore(selectedTask.metrics?.clip_score)
                                 }}</span>
@@ -480,6 +505,25 @@
                             class="text-sm text-slate-400 font-mono mt-1">
                             Vision Score:
                             <span class="text-slate-200 ml-1">{{ selectedTask.metrics?.vision_score }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.source_query" class="text-sm text-slate-400 font-mono mt-1">
+                            Selected Query:
+                            <span class="text-slate-200 ml-1">{{ selectedTask.details.source_query }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_queries?.length" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Unsplash Queries Sent</div>
+                            <div v-for="(query, idx) in selectedTask.details.sourced_queries" :key="`modal-q-${idx}`" class="text-xs text-slate-300 font-mono">
+                                - {{ query }}
+                            </div>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_candidates?.length" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Sourced Candidate URLs</div>
+                            <div v-for="(candidate, idx) in selectedTask.details.sourced_candidates" :key="`modal-c-${idx}`" class="text-xs font-mono">
+                                <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
+                                    {{ candidate?.image_url }}
+                                </a>
+                                <span v-if="candidate?.query" class="text-slate-500 ml-1">({{ candidate.query }})</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -745,6 +789,16 @@
                     return score.toFixed(3);
                 };
 
+                const extractUrls = (text) => {
+                    const message = String(text || '');
+                    const matches = message.match(/https?:\/\/[^\s|]+/g) || [];
+                    const dedup = [];
+                    for (const url of matches) {
+                        if (!dedup.includes(url)) dedup.push(url);
+                    }
+                    return dedup;
+                };
+
                 // Handlers
                 const processManifest = async (file) => {
                     const reader = new FileReader();
@@ -850,7 +904,7 @@
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
-                    hasClipScore, formatClipScore, selectAsset
+                    hasClipScore, formatClipScore, extractUrls, selectAsset
                 };
 
             }
