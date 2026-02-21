@@ -159,16 +159,46 @@ export class ImageOrchestratorService {
         const outputs = structure?.outputs && typeof structure.outputs === 'object' ? Object.keys(structure.outputs).length : 0;
         const timeline = Array.isArray(structure?.timeline) ? structure.timeline.length : 0;
         const processSteps = Array.isArray(structure?.processSteps) ? structure.processSteps.length : 0;
-        const base = Math.max(decisionNodes + outputs + (decisionNodes > 0 ? 1 : 0), timeline, processSteps);
-        return base + (structure?.footerNote ? 1 : 0);
+        const branches = Array.isArray(structure?.branches) ? structure.branches.length : 0;
+        const hasTopSection = structure?.topSection ? 1 : 0;
+        const hasConvergence = structure?.convergenceNote ? 1 : 0;
+        const hasFooter = structure?.footerNote ? 1 : 0;
+        const branchFlowEstimate = hasTopSection + branches + hasConvergence + hasFooter;
+        const decisionFlowEstimate = decisionNodes + outputs + (decisionNodes > 0 ? 1 : 0) + hasFooter;
+        return Math.max(decisionFlowEstimate, timeline, processSteps, branchFlowEstimate);
     }
 
     private resolveTemplateTypeForRouting(viz: any): string {
         const rawType = String(viz?.type || '').toLowerCase().trim();
-        const stepLike = new Set(['process_flow', 'flowchart', 'timeline', 'process_map', 'step_journey', 'step_list', 'steps']);
-        if (!stepLike.has(rawType)) return rawType;
+        // Hard rule: if the original payload explicitly calls this a flowchart, keep it a flowchart.
+        if (rawType.includes('flowchart')) return 'flowchart';
+
+        const pathLikeTypes = new Set([
+            'process_flow',
+            'timeline',
+            'process_map',
+            'step_journey',
+            'step_list',
+            'steps',
+            'pathway',
+            'path',
+            'line_process',
+            'process_line'
+        ]);
+        const structure = viz?.structure || {};
+        const hasPathLikeStructure =
+            Array.isArray(structure?.branches) && structure.branches.length > 0
+            || Array.isArray(structure?.processSteps) && structure.processSteps.length > 0
+            || Array.isArray(structure?.timeline) && structure.timeline.length > 0
+            || Array.isArray(structure?.decisionNodes) && structure.decisionNodes.length > 0
+            || (structure?.outputs && typeof structure.outputs === 'object' && Object.keys(structure.outputs).length > 0);
+
+        if (!pathLikeTypes.has(rawType) && !hasPathLikeStructure) return rawType;
+
         const stepCount = this.inferStepCount(viz);
-        return stepCount > 5 ? 'flowchart' : 'steps';
+        if (stepCount > 5) return 'flowchart';
+        if (stepCount >= 2) return 'steps';
+        return rawType;
     }
 
     async generateCourse(content: string) {

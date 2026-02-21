@@ -57,19 +57,29 @@ export class ImageStrategyFactory {
         const refined = String(taskAny?.refined_prompt || '').toLowerCase();
         const payload = taskAny?.payload || {};
         const structure = payload?.structure || {};
+
+        // Respect explicit triage first. Do not override non-flow templates with prompt heuristics.
+        if (raw === 'steps' || raw === 'step_list' || raw === 'step_journey') return false;
+        if (raw === 'versus' || raw === 'versus_split' || raw === 'hub' || raw === 'hub_radial' || raw === 'bento_grid') return false;
+
         const hasBranchingStructure =
             (Array.isArray(structure?.decisionNodes) && structure.decisionNodes.length > 0)
             || (structure?.outputs && typeof structure.outputs === 'object' && Object.keys(structure.outputs).length > 0)
             || (Array.isArray(payload?.items) && payload.items.length > 5 && /decision|flow|branch/.test(refined));
 
         if (hasBranchingStructure) return true;
-        if (/create a\s+(flowchart|timeline|process[_\s-]?map|process[_\s-]?flow)\b/.test(refined)) return true;
+        if (/create a\s+([a-z_ -]*flowchart|timeline|process[_\s-]?map|process[_\s-]?flow|pathway|process[_\s-]?line)\b/.test(refined)) return true;
+        if (/\b(flowchart|timeline|process map|process flow|pathway|path|sequence|line process)\b/.test(refined) && Array.isArray(payload?.items) && payload.items.length > 5) return true;
 
         return raw === 'flowchart'
+            || raw === 'vertical_flowchart'
             || raw === 'timeline'
             || raw === 'process_map'
             || raw === 'process_flow'
             || raw === 'process map'
-            || raw === 'process-flow';
+            || raw === 'process-flow'
+            || raw === 'pathway'
+            || raw === 'process_line'
+            || raw === 'line_process';
     }
 }

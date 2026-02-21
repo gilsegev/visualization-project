@@ -1,4 +1,4 @@
-
+﻿
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
 import { ImageTask } from '../image-task.schema';
@@ -13,6 +13,7 @@ import { THEME_LIBRARY, Theme } from '../themes.config';
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as sharp from 'sharp';
 import { ObservabilityGateway } from '../../observability/observability.gateway'; // Import Gateway
 import * as pLimit from 'p-limit';
 
@@ -189,12 +190,12 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const buildSpokePrompt = (item: any, idx: number): string => {
             const title = (item?.title || `Spoke ${idx + 1}`).trim();
             const desc = (item?.description || '').trim();
+            const concept = this.toTextSafeIconConcept(`${title}. ${desc}`);
 
-            // Clock position hint gives each spoke unique spatial identity for better diversity.
-            const hour = Math.round(((idx / totalItems) * 12)) || 12;
-            const clockPosition = `${hour} o'clock position`;
+            // Use neutral slot cues for diversity; avoid time words that bias toward clock imagery.
+            const slotHint = `radial slot ${idx + 1} of ${totalItems}`;
 
-            const base = `minimalist visual representation of ${title}. Context: ${desc}. Symbol for ${centerTitle}. ${clockPosition}`;
+            const base = `symbolic minimalist icon for ${concept}. Semantic cue for ${this.toTextSafeIconConcept(centerTitle)}. ${slotHint}. Focus on object/action metaphor, not UI symbols. Avoid clocks, watches, timer dials, countdown graphics, compasses, gauges, or circular tick marks. No words, letters, numbers, equations, formulas, or labels.`;
             const normalized = base.toLowerCase().replace(/\s+/g, ' ').trim();
             const seen = promptUsage.get(normalized) || 0;
             promptUsage.set(normalized, seen + 1);
@@ -362,7 +363,7 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                                 { role: 'system', content: systemPrompt },
                                 { role: 'user', content: prompt }
                             ],
-                            temperature: 0.4, // Increased from 0.2 to allow creative expansion for sparse prompts
+                            temperature: 0.2,
                             max_tokens: 2000
                         });
                     });
@@ -429,7 +430,13 @@ ${text}`;
                         // Log the RAW text that failed parsing
                         this.logger.error(`Blueprint JSON Parse Failed. Raw Output: ${text.substring(0, 500)}...`);
                         this.observability.emitLog('error', `Model JSON Parse Error. Raw: ${text.substring(0, 200)}...`, 'BlueprintGen', taskId);
-                        throw new Error(`Invalid JSON from LLM: ${text.substring(0, 50)}...`);
+                        const fallback = this.buildFallbackBlueprintFromPayload(sourcePayload, prompt);
+                        this.observability.emitLog('warn', `Blueprint JSON invalid; using deterministic fallback template='${fallback.template_id}'`, 'BlueprintGen', taskId);
+                        const normalizedFallback = this.normalizeBlueprintTemplate(fallback, sourcePayload, taskId);
+                        if (!THEME_LIBRARY[(normalizedFallback as HtmlInfographicBlueprint).theme_id]) {
+                            (normalizedFallback as HtmlInfographicBlueprint).theme_id = 'corp_blue';
+                        }
+                        return normalizedFallback as HtmlInfographicBlueprint;
                     }
                 },
                 {
@@ -527,7 +534,7 @@ ${text}`;
             fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights --no text, font, characters, words, writing, labels, numbers`;
         }
         const resolvedImageSize = imageSize || (isBackground ? '768x768' : '512x512');
-        this.observability.emitLog('info', `🖼️ Constructing Image Prompt (size=${resolvedImageSize}): ${fullPrompt}`, 'ImageGen', taskId);
+        this.observability.emitLog('info', `ðŸ–¼ï¸ Constructing Image Prompt (size=${resolvedImageSize}): ${fullPrompt}`, 'ImageGen', taskId);
 
         try {
             return await this.withRetries<{ url: string; prompt: string }>(
@@ -581,9 +588,13 @@ ${text}`;
 
     private buildFallbackBlueprint(task: ImageTask): HtmlInfographicBlueprint {
         const payload: any = (task as any).payload || {};
+        return this.buildFallbackBlueprintFromPayload(payload, task?.refined_prompt || '');
+    }
+
+    private buildFallbackBlueprintFromPayload(payload: any, refinedPrompt: string): HtmlInfographicBlueprint {
         const rawType = String(payload.type || '').toLowerCase();
         const title = payload.title || 'Visualization';
-        const summary = payload.description || payload.purpose || 'Auto-generated blueprint from manifest payload.';
+        const summary = payload.description || payload.purpose || refinedPrompt || 'Auto-generated blueprint from manifest payload.';
 
         const toItems = (arr: any[], itemMapper: (x: any, i: number) => any) => (Array.isArray(arr) ? arr.map(itemMapper).filter(Boolean) : []);
 
@@ -789,7 +800,8 @@ ${text}`;
             blueprint.center_topic = { title: blueprint.title, subtitle: blueprint.description || '' };
         }
         const imagePromises = subjects.map(async (subj: any, idx: number) => {
-            const prompt = `Vertical portrait of ${subj.name}, ${subj.description || ''}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text`;
+            const concept = this.toTextSafeIconConcept(`${subj?.name || ''}. ${subj?.description || ''}`);
+            const prompt = `Vertical symbolic portrait of ${concept}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting --no text, letters, words, numbers, equations, formulas, labels`;
 
             try {
                 const result = await this.generateImage(prompt, theme, false, task.id, '256x256');
@@ -895,20 +907,15 @@ ${text}`;
             this.logger.warn(`[Steps] Background generation failed: ${e.message}`);
         }
 
-        // 2. Generate Step Images
+        // 2. Generate Step Images (deterministic local icons to guarantee no text/numbers in icon layer)
         const imagePromises = (blueprint.items || []).map(async (item, idx) => {
-            // Refinement: Remove Title to prevent text bleeding. Use description only.
-            const prompt = `Symbolic visual representation of ${item.description}, ${theme.image_style_suffix}, flat vector art, iconic style, isolated on white, ${theme.primary_accent} --no text, letters, words, typography, writing, numbers, labels, watermark`;
             try {
-                const result = await this.generateImage(prompt, theme, false, task.id, '256x256');
-                if (!result.url) return;
-
-                const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
+                const buffer = await this.generateProceduralStepIcon(idx, theme, 256);
                 const filename = `step_${task.id}_${idx}.png`;
                 await this.localStorage.save(path.join(relativeOutputDir, 'assets', filename), buffer);
 
                 (item as any).image_url = `./assets/${filename}`;
-                return `Step ${idx}: ${result.prompt}`;
+                return `Step ${idx}: procedural no-text icon`;
             } catch (e) {
                 this.logger.error(`[Steps] Item ${idx} image failed: ${e.message}`);
                 return null;
@@ -964,6 +971,66 @@ ${text}`;
             }
         };
     }
+
+    private toTextSafeIconConcept(input: string): string {
+        const raw = String(input || '').toLowerCase();
+        const mapped = raw
+            .replace(/\b(?:step|decision|output|start|footer|note|title)\b/g, ' ')
+            .replace(/\b(?:qnan|snan|nan)\b/g, 'undefined numeric state')
+            .replace(/\b(?:infinity|infinite)\b/g, 'infinite scale concept')
+            .replace(/\b(?:zero)\b/g, 'empty state concept')
+            .replace(/\b(?:subnormal|denormalized?)\b/g, 'near-threshold state')
+            .replace(/\b(?:exponent|fraction|frac|bitmask|ieee)\b/g, 'numeric classification concept')
+            .replace(/\b(?:if|then|else|is|are|was|were|be|to|for|of|in|on|at|by|from|with)\b/g, ' ')
+            .replace(/[0-9]+/g, ' ')
+            .replace(/[=+\-*/<>()[\]{}:;.,±∞'"`]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const fallback = 'decision process symbol, branching flow, classification states';
+        const concept = mapped.length ? mapped : fallback;
+        return concept.split(' ').slice(0, 14).join(' ');
+    }
+
+    private async generateProceduralStepIcon(idx: number, theme: Theme, size = 256): Promise<Buffer> {
+        const primary = theme.primary_accent || '#5B9A8B';
+        const secondary = theme.secondary_accent || '#E8A598';
+        const stroke = '#1A365D';
+        const center = Math.floor(size / 2);
+        const r = Math.floor(size * 0.26);
+        const variant = idx % 6;
+
+        let symbol = '';
+        if (variant === 0) {
+            symbol = `<path d="M ${center - 28} ${center} L ${center - 4} ${center + 24} L ${center + 32} ${center - 20}" fill="none" stroke="${stroke}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />`;
+        } else if (variant === 1) {
+            symbol = `<path d="M ${center} ${center - 30} L ${center - 28} ${center + 26} L ${center + 28} ${center + 26} Z" fill="none" stroke="${stroke}" stroke-width="8" stroke-linejoin="round" />`;
+        } else if (variant === 2) {
+            symbol = `<rect x="${center - 30}" y="${center - 30}" width="60" height="60" rx="12" fill="none" stroke="${stroke}" stroke-width="8" />`;
+        } else if (variant === 3) {
+            symbol = `<circle cx="${center}" cy="${center}" r="28" fill="none" stroke="${stroke}" stroke-width="8" /><circle cx="${center}" cy="${center}" r="10" fill="${stroke}" />`;
+        } else if (variant === 4) {
+            symbol = `<path d="M ${center - 30} ${center + 12} C ${center - 16} ${center - 18}, ${center + 8} ${center - 18}, ${center + 28} ${center + 12}" fill="none" stroke="${stroke}" stroke-width="8" stroke-linecap="round" />`;
+        } else {
+            symbol = `<path d="M ${center - 30} ${center + 24} L ${center - 6} ${center - 16} L ${center + 10} ${center + 2} L ${center + 30} ${center - 24}" fill="none" stroke="${stroke}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />`;
+        }
+
+        const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <defs>
+    <linearGradient id="g${idx}" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="${primary}" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="${secondary}" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="${size}" height="${size}" rx="${Math.floor(size * 0.12)}" fill="#FFFFFF"/>
+  <circle cx="${center}" cy="${center}" r="${r + 22}" fill="url(#g${idx})" opacity="0.22"/>
+  <circle cx="${center}" cy="${center}" r="${r}" fill="#FFFFFF" stroke="${primary}" stroke-width="4"/>
+  ${symbol}
+</svg>`;
+
+        return await sharp(Buffer.from(svg)).png().toBuffer();
+    }
     private async handleBento(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Handling Bento Grid Template...');
@@ -978,9 +1045,8 @@ ${text}`;
         const cellImagePromises = (blueprint.cells || []).map(async (cell: any, idx: number) => {
             const type = cell.content?.type || '';
             if (type.includes('image')) {
-                const imgPrompt = cell.content.title
-                    ? `${cell.content.title}: ${cell.content.text || ''}`
-                    : cell.content.text || 'abstract conceptual visual';
+                const iconConcept = this.toTextSafeIconConcept(`${cell.content?.title || ''}. ${cell.content?.text || ''}`);
+                const imgPrompt = `symbolic conceptual icon for ${iconConcept}. Clean vector visual metaphor. No words, letters, numbers, equations, formulas, or labels.`;
 
                 try {
                     const cellSize = this.estimateBentoCellImageSize(cell);
@@ -1054,3 +1120,5 @@ ${text}`;
         };
     }
 }
+
+
