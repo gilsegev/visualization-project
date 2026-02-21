@@ -120,6 +120,37 @@ export class ImageOrchestratorService {
         };
     }
 
+    private buildVisualizationContext(viz: any): string {
+        const parts: string[] = [];
+        const context = String(viz?.context || '').trim();
+        const purpose = String(viz?.purpose || '').trim();
+        const description = String(viz?.content_description || '').trim();
+        const reasoning = String(viz?.reasoning || '').trim();
+        const sectionTitle = String(viz?.section_title || '').trim();
+        const concepts = Array.isArray(viz?.supports_concepts) ? viz.supports_concepts.filter(Boolean).map((c: any) => String(c).trim()) : [];
+
+        if (context) parts.push(context);
+        if (purpose) parts.push(`Purpose: ${purpose}`);
+        if (description) parts.push(`Content: ${description}`);
+        if (reasoning) parts.push(`Reasoning: ${reasoning}`);
+        if (sectionTitle) parts.push(`Section: ${sectionTitle}`);
+        if (concepts.length) parts.push(`Supports concepts: ${concepts.join(', ')}`);
+
+        if (viz?.structure && typeof viz.structure === 'object') {
+            try {
+                const serialized = JSON.stringify(viz.structure);
+                if (serialized.length) {
+                    const clipped = serialized.length > 800 ? `${serialized.slice(0, 800)}...` : serialized;
+                    parts.push(`Structure: ${clipped}`);
+                }
+            } catch {
+                // ignore non-serializable structure
+            }
+        }
+
+        return parts.join(' | ').trim();
+    }
+
     private inferStepCount(viz: any): number {
         if (Array.isArray(viz?.items)) return viz.items.length;
         if (Array.isArray(viz?.steps)) return viz.steps.length;
@@ -221,8 +252,10 @@ export class ImageOrchestratorService {
             const visualItems = lesson.visualizations || lesson.items || [];
             visualItems.forEach((viz: any) => {
                 const vizDescription = viz.description || viz.title || 'a visual representation';
-                const vizContext = viz.context || '';
-                const refinedPrompt = `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}. Context: ${vizContext}`;
+                const vizContext = this.buildVisualizationContext(viz);
+                const refinedPrompt = vizContext
+                    ? `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}. Context: ${vizContext}`
+                    : `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}.`;
 
                 // Support for specific theme overrides
                 const themeId = viz.metadata?.theme_id || viz.theme_id;

@@ -20,3 +20,7 @@
   3. `node_modules/@visactor/vchart/build/index.js`
 - This removes hard dependency on `public/assets/vchart.js` and prevents `ENOENT` failures for chart tasks.
 
+## Prompt context quality fix
+- Updated manifest prompt construction in `ImageOrchestratorService`:
+  - Context is now synthesized from `context`, `purpose`, `content_description`, `reasoning`, `section_title`, `supports_concepts`, and clipped `structure` JSON.
+  - The dangling `Context:` suffix is removed when no context material exists.
