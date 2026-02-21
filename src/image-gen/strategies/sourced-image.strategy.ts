@@ -75,6 +75,22 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const dims = this.resolveDimensions(task);
             const exportScale = this.resolveExportScale(imageSpecs);
             const sourceUrl = String(imageSpecs?.source?.assetUrl || '').trim();
+            const orientation = dims.width >= dims.height ? 'landscape' : 'portrait';
+            const normalizedBrief = this.normalizeQuery(brief, 12);
+            const signalTokens = normalizedBrief.split(' ').filter(Boolean);
+            const querySignals = {
+                normalized_brief: normalizedBrief,
+                domain_terms: this.pickDomainTerms(signalTokens),
+                scene_terms: this.pickSceneTerms(signalTokens),
+            };
+            const queryConfig = {
+                provider: 'unsplash',
+                orientation,
+                per_page: 8,
+                content_filter: 'high',
+                max_queries: 5,
+                candidate_cap: 8,
+            };
 
             this.observability.emitLog('info', 'Phase 1/6: CLIP scorer enabled for semantic scoring', 'SourcedImage', task.id);
 
@@ -88,14 +104,20 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const queries = sourceUrl ? ['provided-source'] : await this.buildSearchQueries(brief, task.id);
             phaseMs.query_expansion_ms = Date.now() - queryStart;
             this.observability.emitLog('info', `Phase 2/6: Query expansion complete (${queries.length} queries)`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Query signals: normalized="${querySignals.normalized_brief}" domain="${querySignals.domain_terms}" scene="${querySignals.scene_terms}"`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Unsplash query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
 
             const retrievalStart = Date.now();
             const candidates = await this.fetchUnsplashCandidates(queries, dims.width, dims.height, task.id);
             phaseMs.retrieval_ms = Date.now() - retrievalStart;
             const sourcedCandidates = candidates.map((c) => ({ query: c.query, image_url: c.imageUrl }));
             if (sourcedCandidates.length) {
-                const candidateUrls = sourcedCandidates.map((c) => c.image_url);
-                this.observability.emitLog('info', `Sourced candidate URLs (${candidateUrls.length}): ${candidateUrls.join(' | ')}`, 'SourcedImage', task.id);
+                const queryCounts = sourcedCandidates.reduce((acc: Record<string, number>, c) => {
+                    acc[c.query] = (acc[c.query] || 0) + 1;
+                    return acc;
+                }, {});
+                const compact = Object.entries(queryCounts).map(([q, count]) => `"${q}"=${count}`).join(' ; ');
+                this.observability.emitLog('info', `Sourced candidates summary (${sourcedCandidates.length}): ${compact}`, 'SourcedImage', task.id);
             }
 
             if (!candidates.length) {
@@ -239,6 +261,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 query: best.query,
                 sourced_queries: queries,
                 sourced_candidates: sourcedCandidates,
+                sourced_query_signals: querySignals,
+                sourced_query_config: queryConfig,
             }, null, 2)));
 
             const elapsedMs = Date.now() - started;
@@ -270,6 +294,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     source_query: best.query,
                     sourced_queries: queries,
                     sourced_candidates: sourcedCandidates,
+                    sourced_query_signals: querySignals,
+                    sourced_query_config: queryConfig,
                     source_type: 'sourced_image',
                     quality_score: visionGate.score,
                 },

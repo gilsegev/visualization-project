@@ -171,6 +171,20 @@
                                     <span class="text-slate-500">Selected Query:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
                                 </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_query_signals" class="mt-1">
+                                    <span class="text-slate-500 block">Query Phrases:</span>
+                                    <div class="ml-2 text-slate-300">normalized: {{ selectedAssetTask.details.sourced_query_signals.normalized_brief }}</div>
+                                    <div class="ml-2 text-slate-300">domain: {{ selectedAssetTask.details.sourced_query_signals.domain_terms }}</div>
+                                    <div class="ml-2 text-slate-300">scene: {{ selectedAssetTask.details.sourced_query_signals.scene_terms }}</div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_query_config" class="mt-1">
+                                    <span class="text-slate-500 block">Unsplash Params:</span>
+                                    <div class="ml-2 text-slate-300">orientation: {{ selectedAssetTask.details.sourced_query_config.orientation }}</div>
+                                    <div class="ml-2 text-slate-300">per_page: {{ selectedAssetTask.details.sourced_query_config.per_page }}</div>
+                                    <div class="ml-2 text-slate-300">content_filter: {{ selectedAssetTask.details.sourced_query_config.content_filter }}</div>
+                                    <div class="ml-2 text-slate-300">max_queries: {{ selectedAssetTask.details.sourced_query_config.max_queries }}</div>
+                                    <div class="ml-2 text-slate-300">candidate_cap: {{ selectedAssetTask.details.sourced_query_config.candidate_cap }}</div>
+                                </div>
                                 <div v-if="selectedAssetTask?.details?.sourced_queries?.length" class="mt-1">
                                     <span class="text-slate-500 block">Unsplash Queries:</span>
                                     <div v-for="(query, qIdx) in selectedAssetTask.details.sourced_queries" :key="`asset-q-${qIdx}`" class="ml-2 text-slate-300">
@@ -509,6 +523,16 @@
                         <div v-if="selectedTask.details?.source_query" class="text-sm text-slate-400 font-mono mt-1">
                             Selected Query:
                             <span class="text-slate-200 ml-1">{{ selectedTask.details.source_query }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_query_signals" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Query Phrases</div>
+                            <div class="text-xs text-slate-300 font-mono">normalized: {{ selectedTask.details.sourced_query_signals.normalized_brief }}</div>
+                            <div class="text-xs text-slate-300 font-mono">domain: {{ selectedTask.details.sourced_query_signals.domain_terms }}</div>
+                            <div class="text-xs text-slate-300 font-mono">scene: {{ selectedTask.details.sourced_query_signals.scene_terms }}</div>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_query_config" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Unsplash Params</div>
+                            <div class="text-xs text-slate-300 font-mono">orientation={{ selectedTask.details.sourced_query_config.orientation }} per_page={{ selectedTask.details.sourced_query_config.per_page }} content_filter={{ selectedTask.details.sourced_query_config.content_filter }} max_queries={{ selectedTask.details.sourced_query_config.max_queries }} candidate_cap={{ selectedTask.details.sourced_query_config.candidate_cap }}</div>
                         </div>
                         <div v-if="selectedTask.details?.sourced_queries?.length" class="mt-2">
                             <div class="text-xs text-slate-500 font-mono uppercase mb-1">Unsplash Queries Sent</div>

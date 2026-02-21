@@ -425,7 +425,9 @@ export class ImageOrchestratorService {
                             blueprint_prompt: result?.payload?.blueprint_prompt,
                             source_query: result?.payload?.source_query,
                             sourced_queries: result?.payload?.sourced_queries,
-                            sourced_candidates: result?.payload?.sourced_candidates
+                            sourced_candidates: result?.payload?.sourced_candidates,
+                            sourced_query_signals: result?.payload?.sourced_query_signals,
+                            sourced_query_config: result?.payload?.sourced_query_config
                         }
                     };
 
