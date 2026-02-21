@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PS Timeline Template</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Optional: nicer typography -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* ====== Theme variables (compiled from your SCSS) ====== */
+    :root{
+      --color-white: #fff;
+      --brand-color-g: #348e80;
+      --brand-color: #df8625;
+    }
+
+    /* ====== Base ====== */
+    body{
+      margin:0;
+      padding:0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--color-white);
+    }
+
+    .container{
+      position: relative;
+      width: min(1100px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    /* ====== TIMELINE (compiled CSS equivalent of your SCSS) ====== */
+    .ps-timeline-sec{
+      position: relative;
+      background: var(--color-white);
+    }
+
+    .ps-timeline-sec .container{
+      position: relative;
+    }
+
+    /* Desktop / default */
+    .ps-timeline-sec ol.ps-timeline{
+      margin: 390px 0;
+      padding: 0;
+      border-top: 2px solid var(--brand-color-g);
+      list-style: none;
+      position: relative;
+    }
+
+    .ps-timeline-sec ol.ps-timeline:before{
+      background: var(--brand-color-g);
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:100%;
+      position:absolute;
+      left:8px;
+      top:49.5%;
+    }
+
+    .ps-timeline-sec ol.ps-timeline:after{
+      background: var(--brand-color-g);
+      content:"";
+      width:10px;
+      height:10px;
+      border-radius:100%;
+      position:absolute;
+      right:8px;
+      top:49.5%;
+    }
+
+    .ps-timeline-sec ol.ps-timeline > li{
+      float:left;
+      width:25%;
+      padding-top:30px;
+      position:relative;
+      min-height: 260px;
+      box-sizing: border-box;
+    }
+
+    .ps-timeline-sec ol.ps-timeline > li span{
+      width:50px;
+      height:50px;
+      margin-left:-25px;
+      background: var(--color-white);
+      border:4px solid var(--brand-color-g);
+      border-radius:50%;
+      box-shadow:0 0 0 0px var(--color-white);
+      text-align:center;
+      line-height:40px;
+      color: var(--brand-color);
+      font-size:2em;
+      font-style:normal;
+      position:absolute;
+      top:-26px;
+      left:50%;
+      box-sizing: border-box;
+      font-weight: 800;
+    }
+
+    .ps-timeline-sec ol.ps-timeline > li span.ps-sp-top:before{
+      content:'';
+      width:2px;
+      height:50px;
+      background: var(--brand-color-g);
+      position:absolute;
+      top:-50px;
+      left:50%;
+      transform: translateX(-50%);
+    }
+    .ps-timeline-sec ol.ps-timeline > li span.ps-sp-top:after{
+      content:'';
+      width:8px;
+      height:8px;
+      background: var(--brand-color-g);
+      position:absolute;
+      bottom:90px;
+      left:50%;
+      transform: translateX(-50%);
+      border-radius:100%;
+    }
+
+    .ps-timeline-sec ol.ps-timeline > li span.ps-sp-bot:before{
+      content:'';
+      width:2px;
+      height:50px;
+      background: var(--brand-color-g);
+      position:absolute;
+      bottom:-50px;
+      left:50%;
+      transform: translateX(-50%);
+    }
+    .ps-timeline-sec ol.ps-timeline > li span.ps-sp-bot:after{
+      content:'';
+      width:8px;
+      height:8px;
+      background: var(--brand-color-g);
+      position:absolute;
+      top:90px;
+      left:50%;
+      transform: translateX(-50%);
+      border-radius:100%;
+    }
+
+    .ps-timeline-sec .img-handler-top{
+      position:absolute;
+      bottom:0;
+      margin-bottom:130px;
+      width:100%;
+    }
+    .ps-timeline-sec .img-handler-top img{
+      display:table;
+      margin:0 auto;
+      max-width: 140px;
+      height:auto;
+    }
+
+    .ps-timeline-sec .img-handler-bot{
+      position:absolute;
+      margin-top:60px;
+      width:100%;
+      top: 0;
+    }
+    .ps-timeline-sec .img-handler-bot img{
+      display:table;
+      margin:0 auto;
+      max-width: 140px;
+      height:auto;
+    }
+
+    .ps-timeline-sec .ps-top{
+      position:absolute;
+      bottom:0;
+      margin-bottom:100px;
+      width:100%;
+    }
+    .ps-timeline-sec .ps-bot{
+      position:absolute;
+      margin-top:35px;
+      width:100%;
+      top: 0;
+    }
+    .ps-timeline-sec ol.ps-timeline > li p{
+      text-align:center;
+      width:80%;
+      margin:0 auto;
+      color: #111827;
+      font-weight: 600;
+      line-height: 1.25;
+      font-size: 14px;
+    }
+
+    /* Mobile (xs) = max-width: 767px */
+    @media screen and (max-width: 767px){
+      .ps-timeline-sec ol.ps-timeline:before{
+        background: var(--brand-color-g);
+        content:"";
+        width:10px;
+        height:10px;
+        border-radius:100%;
+        position:absolute;
+        top:130px !important;
+        left:36px !important;
+      }
+      .ps-timeline-sec ol.ps-timeline:after{
+        background: var(--brand-color-g);
+        content:"";
+        width:10px;
+        height:10px;
+        border-radius:100%;
+        position:absolute;
+        top: inherit !important;
+        left:36px;
+        right: auto !important;
+      }
+
+      .ps-timeline-sec ol.ps-timeline{
+        margin: 130px 0 !important;
+        border-left: 2px solid var(--brand-color-g);
+        padding-left: 0 !important;
+        padding-top: 120px !important;
+        border-top: 0 !important;
+        margin-left: 25px !important;
+      }
+
+      .ps-timeline-sec ol.ps-timeline > li{
+        height: 220px;
+        float:none !important;
+        width: inherit !important;
+      }
+
+      .ps-timeline-sec ol.ps-timeline > li:nth-child(2) .img-handler-bot img{
+        width: 70px;
+      }
+
+      .ps-timeline-sec ol.ps-timeline > li:last-child{
+        margin: 0;
+        bottom: 0 !important;
+        height: 120px;
+      }
+      .ps-timeline-sec ol.ps-timeline > li:last-child .img-handler-bot{
+        bottom: 40px !important;
+        width: 40% !important;
+        margin-left: 25px !important;
+        margin-top: 0 !important;
+      }
+      .ps-timeline-sec ol.ps-timeline > li:last-child .img-handler-bot img{
+        width: 100%;
+      }
+      .ps-timeline-sec ol.ps-timeline > li:last-child .ps-top{
+        margin-bottom: 0 !important;
+        top: 20px;
+        width: 50% !important;
+      }
+
+      .ps-timeline-sec ol.ps-timeline > li span{
+        left: 0 !important;
+      }
+      .ps-timeline-sec ol.ps-timeline > li span.ps-sp-top:before,
+      .ps-timeline-sec ol.ps-timeline > li span.ps-sp-top:after,
+      .ps-timeline-sec ol.ps-timeline > li span.ps-sp-bot:before,
+      .ps-timeline-sec ol.ps-timeline > li span.ps-sp-bot:after{
+        content:none !important;
+      }
+
+      .ps-timeline-sec .img-handler-top{
+        position:absolute !important;
+        bottom:150px !important;
+        width:30% !important;
+        float:left !important;
+        margin-left:35px !important;
+        margin-bottom:0 !important;
+      }
+      .ps-timeline-sec .img-handler-top img{
+        margin:0 auto !important;
+        width:80% !important;
+      }
+
+      .ps-timeline-sec .img-handler-bot{
+        position:absolute !important;
+        bottom:115px !important;
+        width:30% !important;
+        float:left !important;
+        margin-left:35px !important;
+        margin-bottom:0 !important;
+        top: auto;
+      }
+
+      .ps-timeline-sec ol.ps-timeline > li p{
+        text-align:left !important;
+        width:100% !important;
+        margin:0 auto !important;
+        margin-top:0px !important;
+      }
+
+      .ps-timeline-sec .ps-top,
+      .ps-timeline-sec .ps-bot{
+        width:60% !important;
+        float:right !important;
+        right:0;
+        top:-40px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <section class="ps-timeline-sec">
+    <div class="container">
+      <ol class="ps-timeline" id="timeline-root">
+        <!-- Rendered items go here -->
+      </ol>
+    </div>
+  </section>
+
+  <script>
+    /**
+     * DATA INJECTION POINT
+     * Your pipeline can replace this with actual JSON.
+     */
+    const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
+    /**
+     * Expected data shape:
+     * {
+     *   theme?: { brandColorG?: "#348e80", brandColor?: "#df8625", background?: "#fff" },
+     *   items: [
+     *     { number: "01", text: "...", imageUrl: "...", position: "top"|"bottom" }
+     *   ]
+     * }
+     */
+
+    function applyTheme(theme){
+      if (!theme) return;
+      const root = document.documentElement;
+
+      if (theme.background) root.style.setProperty("--color-white", theme.background);
+      if (theme.brandColorG) root.style.setProperty("--brand-color-g", theme.brandColorG);
+      if (theme.brandColor) root.style.setProperty("--brand-color", theme.brandColor);
+    }
+
+    function safeText(s){
+      return (s ?? "").toString();
+    }
+
+    function escapeHtml(input){
+      return safeText(input)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function render(data){
+      if (!data) return;
+
+      const theme = data.theme || {};
+      applyTheme(theme);
+
+      const items = Array.isArray(data.items) ? data.items : [];
+      const root = document.getElementById("timeline-root");
+      root.innerHTML = "";
+
+      // If you provide no position, alternate top/bottom like the original
+      items.forEach((item, idx) => {
+        const pos = item.position || ((idx % 2 === 0) ? "top" : "bottom");
+        const number = item.number || String(idx + 1).padStart(2, "0");
+        const title = item.title || "";
+        const description = item.description || item.text || "";
+        const text = [title, description].filter(Boolean).join(": ");
+        const safeCombinedText = escapeHtml(text);
+        const imageUrl = item.image_url || item.imageUrl || "";
+        const safeImageUrl = escapeHtml(imageUrl);
+
+        const li = document.createElement("li");
+
+        if (pos === "top") {
+          li.innerHTML = `
+            <div class="img-handler-top">
+              ${safeImageUrl ? `<img src="${safeImageUrl}" alt=""/>` : ``}
+            </div>
+            <div class="ps-bot">
+              <p>${safeCombinedText}</p>
+            </div>
+            <span class="ps-sp-top">${number}</span>
+          `;
+        } else {
+          li.innerHTML = `
+            <div class="img-handler-bot">
+              ${safeImageUrl ? `<img src="${safeImageUrl}" alt=""/>` : ``}
+            </div>
+            <div class="ps-top">
+              <p>${safeCombinedText}</p>
+            </div>
+            <span class="ps-sp-bot">${number}</span>
+          `;
+        }
+
+        root.appendChild(li);
+      });
+    }
+
+    if (DATA_PAYLOAD) {
+      try { render(DATA_PAYLOAD); } catch (e) { console.error(e); }
+    }
+
+    // Example for local testing:
+    /*
+    render({
+      theme: { brandColorG:"#348e80", brandColor:"#df8625", background:"#fff" },
+      items: [
+        { number:"01", position:"top", imageUrl:"https://via.placeholder.com/120", text:"Do you have a recent injury or long term pain?" },
+        { number:"02", position:"bottom", imageUrl:"https://via.placeholder.com/120", text:"Have you tried Physiotherapy, Chiropractor or your GP without the pain free results?" },
+        { number:"03", position:"top", imageUrl:"https://via.placeholder.com/120", text:"Let Physology assess and treat your pain with our trusted revolutionary approach." },
+        { number:"04", position:"bottom", imageUrl:"https://via.placeholder.com/120", text:"Join our happy family of pain free clients." }
+      ]
+    });
+    */
+  </script>
+</body>
+</html>
