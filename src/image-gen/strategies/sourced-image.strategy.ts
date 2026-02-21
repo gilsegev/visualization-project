@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import * as path from 'path';
+import * as fs from 'fs';
 import OpenAI from 'openai';
 import * as pLimit from 'p-limit';
 import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy';
@@ -16,6 +17,7 @@ import { QueryOptimizer } from '../services/query-optimizer';
 
 @Injectable()
 export class SourcedImageStrategy extends BaseImageStrategy {
+    private readonly defaultSourceProvider: 'unsplash' | 'pixabay';
     private readonly openai: OpenAI | null;
     private readonly queue = pLimit(1); // Keep CLIP/vision calls serialized to avoid provider/runtime instability.
     private readonly taskTimeoutMs: number;
@@ -53,6 +55,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 'X-Title': 'Visualization Project Sourced Image'
             }
         }) : null;
+        this.defaultSourceProvider = this.resolveSourceProvider();
         this.queryOptimizer = new QueryOptimizer(this.openai);
     }
 
@@ -80,18 +83,19 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const sourceUrl = String(imageSpecs?.source?.assetUrl || '').trim();
             const orientation = 'landscape';
             const normalizedBrief = this.normalizeQuery(brief, 12);
+            const sourceProvider = this.defaultSourceProvider;
             const signalTokens = normalizedBrief.split(' ').filter(Boolean);
             const querySignals = {
                 normalized_brief: normalizedBrief,
                 domain_terms: this.pickDomainTerms(signalTokens),
                 scene_terms: this.pickSceneTerms(signalTokens),
             };
-            const queryConfig = {
-                provider: 'unsplash',
+            let queryConfig: Record<string, any> = {
+                provider: sourceProvider,
                 orientation,
                 per_page: 10,
                 content_filter: 'high',
-                order_by: 'relevant',
+                order_by: sourceProvider === 'pixabay' ? 'popular' : 'relevant',
                 max_queries: 5,
                 candidate_cap: 10,
             };
@@ -108,15 +112,40 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const expanded = sourceUrl
                 ? { queries: ['provided-source'], mode: 'heuristic' as const }
                 : await this.queryOptimizer.expandQuery(brief, 1900, () => this.expandQueriesHeuristic(brief));
-            const queries = expanded.queries;
+            let queries = expanded.queries;
+            if (sourceProvider === 'pixabay') {
+                queries = this.optimizePixabayQueries(queries, brief);
+            }
             phaseMs.query_expansion_ms = Date.now() - queryStart;
             this.observability.emitLog('info', `Phase 2/6: Query expansion complete (${queries.length} queries, mode=${expanded.mode})`, 'SourcedImage', task.id);
+            if ((expanded as any)?.plan) {
+                const plan = (expanded as any).plan;
+                this.observability.emitLog(
+                    'info',
+                    `LLM query plan: subject="${plan.subject || ''}" state="${plan.state || ''}" setting="${plan.setting || ''}" required=[${(plan.required_terms || []).join(', ')}]`,
+                    'SourcedImage',
+                    task.id
+                );
+            }
             this.observability.emitLog('info', `Expanded queries: ${queries.join(' | ')}`, 'SourcedImage', task.id);
             this.observability.emitLog('info', `Query signals: normalized="${querySignals.normalized_brief}" domain="${querySignals.domain_terms}" scene="${querySignals.scene_terms}"`, 'SourcedImage', task.id);
-            this.observability.emitLog('info', `Unsplash query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} order_by=${queryConfig.order_by} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
+            if (sourceProvider === 'pixabay') {
+                const inferredCategory = this.inferPixabayCategory(queries.join(' '));
+                const minDims = this.resolvePixabayMinDimensions(dims.width, dims.height);
+                queryConfig = {
+                    ...queryConfig,
+                    lang: 'en',
+                    image_type: 'photo',
+                    safesearch: true,
+                    category: inferredCategory || undefined,
+                    min_width: minDims.min_width,
+                    min_height: minDims.min_height,
+                };
+            }
+            this.observability.emitLog('info', `${sourceProvider} query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} order_by=${queryConfig.order_by} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
 
             const retrievalStart = Date.now();
-            const candidates = await this.fetchUnsplashCandidates(queries, dims.width, dims.height, task.id);
+            const candidates = await this.fetchProviderCandidates(sourceProvider, queries, dims.width, dims.height, task.id);
             phaseMs.retrieval_ms = Date.now() - retrievalStart;
             const sourcedCandidates = candidates.map((c) => ({ query: c.query, image_url: c.imageUrl }));
             if (sourcedCandidates.length) {
@@ -130,7 +159,12 @@ export class SourcedImageStrategy extends BaseImageStrategy {
 
             if (!candidates.length) {
                 this.observability.emitLog('warn', 'No sourced candidates found; falling back to story generator', 'SourcedImage', task.id);
-                return this.fallbackToStory(task);
+                return this.fallbackToStory(task, undefined, {
+                    brief,
+                    queries,
+                    candidates: sourcedCandidates,
+                    queryConfig,
+                });
             }
 
             let best: { provider: string; imageUrl: string; query: string; clipScore: number } | undefined;
@@ -146,7 +180,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 this.observability.emitLog('info', `Phase 3/6: CLIP scoring ${candidates.length} candidates`, 'SourcedImage', task.id);
                 const clipStart = Date.now();
                 const scored: Array<{ provider: string; imageUrl: string; query: string; clipScore: number }> = [];
-                for (const c of candidates) {
+                for (let idx = 0; idx < candidates.length; idx++) {
+                    const c = candidates[idx];
                     try {
                         const clipScore = await this.withTimeout(
                             this.clipService.scoreImageAgainstBrief(c.imageUrl, brief),
@@ -154,6 +189,12 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                             'CLIP scoring timeout',
                         );
                         scored.push({ ...c, clipScore });
+                        this.observability.emitLog(
+                            'info',
+                            `CLIP candidate ${idx + 1}/${candidates.length} | query="${c.query}" clip=${clipScore.toFixed(3)} url=${c.imageUrl}`,
+                            'SourcedImage',
+                            task.id
+                        );
                     } catch (error) {
                         this.observability.emitLog('warn', `CLIP scoring failed for candidate: ${error?.message || error}`, 'SourcedImage', task.id);
                     }
@@ -186,6 +227,11 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                         clip_threshold: clipThreshold,
                         clip_degraded_mode: false,
                         sourced_fallback_reason: 'clip_below_threshold',
+                    }, {
+                        brief,
+                        queries,
+                        candidates: sourcedCandidates,
+                        queryConfig,
                     });
                 }
             }
@@ -203,8 +249,15 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     let bestVision = -1;
                     let bestVisionReason = 'Vision ranking unavailable';
                     let bestByVision = best;
-                    for (const c of visionPool) {
+                    for (let idx = 0; idx < visionPool.length; idx++) {
+                        const c = visionPool[idx];
                         const v = await this.visionGradeCandidate(c.imageUrl, brief, task);
+                        this.observability.emitLog(
+                            'info',
+                            `Vision candidate ${idx + 1}/${visionPool.length} | query="${c.query}" vision=${v.score} url=${c.imageUrl}`,
+                            'SourcedImage',
+                            task.id
+                        );
                         if (v.score > bestVision) {
                             bestVision = v.score;
                             bestVisionReason = v.reason;
@@ -221,6 +274,11 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                             clip_degraded_mode: true,
                             vision_score: visionGate.score,
                             sourced_fallback_reason: 'clip_down_and_vision_low',
+                        }, {
+                            brief,
+                            queries,
+                            candidates: sourcedCandidates,
+                            queryConfig,
                         });
                     }
                     this.observability.emitLog('info', `Vision ranking selected sourced candidate (score=${visionGate.score})`, 'SourcedImage', task.id);
@@ -228,10 +286,21 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     this.observability.emitLog('info', `Phase 4/6: Vision aesthetic gate on top candidate (clip=${best.clipScore.toFixed(3)})`, 'SourcedImage', task.id);
                     const visionStart = Date.now();
                     visionGate = await this.visionGradeCandidate(best.imageUrl, brief, task);
+                    this.observability.emitLog(
+                        'info',
+                        `Vision gate score | query="${best.query}" clip=${best.clipScore.toFixed(3)} vision=${visionGate.score} url=${best.imageUrl}`,
+                        'SourcedImage',
+                        task.id
+                    );
                     phaseMs.vision_gate_ms = Date.now() - visionStart;
                     if (visionGate.score < 75) {
                         this.observability.emitLog('warn', `Vision gate score ${visionGate.score} < 75; falling back to story generation`, 'SourcedImage', task.id);
-                        return this.fallbackToStory(task);
+                        return this.fallbackToStory(task, undefined, {
+                            brief,
+                            queries,
+                            candidates: sourcedCandidates,
+                            queryConfig,
+                        });
                     }
                 }
             }
@@ -239,6 +308,12 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const started = Date.now();
             const imageBinary = await axios.get(best.imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
             const relativeOutputDir = this.getRelativeOutputDir(task);
+            await this.persistSourcedArtifacts(relativeOutputDir, {
+                brief,
+                queries,
+                candidates: sourcedCandidates,
+                queryConfig,
+            }, task.id);
             const assetUrl = await this.localStorage.save(
                 path.join(relativeOutputDir, 'assets', 'sourced_image.png'),
                 Buffer.from(imageBinary.data)
@@ -309,6 +384,19 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 },
             };
         }), this.taskTimeoutMs, `Sourced image timeout after ${this.taskTimeoutMs}ms`);
+    }
+
+    private async fetchProviderCandidates(
+        provider: 'unsplash' | 'pixabay',
+        queries: string[],
+        width: number,
+        height: number,
+        taskId?: string,
+    ): Promise<Array<{ provider: string; imageUrl: string; query: string }>> {
+        if (provider === 'pixabay') {
+            return this.fetchPixabayCandidates(queries, width, height, taskId);
+        }
+        return this.fetchUnsplashCandidates(queries, width, height, taskId);
     }
 
     private async fetchUnsplashCandidates(
@@ -396,12 +484,154 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         return out.slice(0, 10);
     }
 
+    private async fetchPixabayCandidates(
+        queries: string[],
+        width: number,
+        height: number,
+        taskId?: string,
+    ): Promise<Array<{ provider: string; imageUrl: string; query: string }>> {
+        const key = this.getPixabayAccessKey();
+        if (!key) {
+            throw new Error('PIXABAY_API_KEY is missing. Set it in .env to enable sourced_image retrieval via pixabay.');
+        }
+
+        const orientation = width >= height ? 'horizontal' : 'vertical';
+        const category = this.inferPixabayCategory(queries.join(' '));
+        const minDims = this.resolvePixabayMinDimensions(width, height);
+        const out: Array<{ provider: string; imageUrl: string; query: string }> = [];
+        const seen = new Set<string>();
+        const limitedQueries = this.uniqueQueries(
+            queries.map((q) => this.toPixabayQuery(q)).filter(Boolean),
+        ).slice(0, 5);
+        this.observability.emitLog(
+            'info',
+            `pixabay params: orientation=${orientation} per_page=10 order=popular lang=en image_type=photo safesearch=true category=${category || 'any'} min_width=${minDims.min_width} min_height=${minDims.min_height}`,
+            'SourcedImage',
+            taskId
+        );
+        this.observability.emitLog('info', `Pixabay queries: ${limitedQueries.join(' | ')}`, 'SourcedImage', taskId);
+        const searches = limitedQueries.map(async (q) => {
+            try {
+                const res = await this.withTimeout(
+                    axios.get('https://pixabay.com/api/', {
+                        timeout: 8000,
+                        params: {
+                            key,
+                            q,
+                            image_type: 'photo',
+                            orientation,
+                            per_page: 10,
+                            safesearch: 'true',
+                            order: 'popular',
+                            lang: 'en',
+                            category: category || undefined,
+                            min_width: minDims.min_width,
+                            min_height: minDims.min_height,
+                        },
+                    }),
+                    10000,
+                    `Pixabay query timeout: ${q}`,
+                );
+                this.observability.emitLog('info', `Pixabay results (${q}): ${res?.data?.hits?.length || 0}`, 'SourcedImage', taskId);
+                return { q, results: res?.data?.hits || [] };
+            } catch (error) {
+                this.observability.emitLog('warn', `Pixabay query failed (${q}): ${this.formatAxiosError(error)}`, 'SourcedImage', taskId);
+                return { q, results: [] };
+            }
+        });
+
+        const settled = await this.withTimeout(Promise.all(searches), 15000, 'Pixabay retrieval timeout');
+        const perQuery = settled.map((chunk) => ({
+            q: chunk.q,
+            urls: (chunk.results || []).map((item: any) => item?.largeImageURL || item?.webformatURL).filter(Boolean),
+        }));
+        const maxCandidates = 10;
+        for (let round = 0; out.length < maxCandidates; round++) {
+            let addedThisRound = 0;
+            for (const pq of perQuery) {
+                const url = pq.urls[round];
+                if (!url || seen.has(url)) continue;
+                seen.add(url);
+                out.push({ provider: 'pixabay', imageUrl: url, query: pq.q });
+                addedThisRound++;
+                if (out.length >= maxCandidates) break;
+            }
+            if (addedThisRound === 0) break;
+        }
+        if (out.length > 0) return out.slice(0, 10);
+
+        const broadQueries = this.buildBroadQueries(limitedQueries);
+        if (!broadQueries.length) return [];
+        this.observability.emitLog('warn', `No hits from primary queries. Retrying broad queries: ${broadQueries.join(' | ')}`, 'SourcedImage', taskId);
+        const broadSearches = broadQueries.map(async (q) => {
+            try {
+                const res = await this.withTimeout(
+                    axios.get('https://pixabay.com/api/', {
+                        timeout: 8000,
+                        params: {
+                            key,
+                            q,
+                            image_type: 'photo',
+                            orientation,
+                            per_page: 10,
+                            safesearch: 'true',
+                            order: 'popular',
+                            lang: 'en',
+                            category: category || undefined,
+                            min_width: minDims.min_width,
+                            min_height: minDims.min_height,
+                        },
+                    }),
+                    10000,
+                    `Pixabay broad query timeout: ${q}`,
+                );
+                this.observability.emitLog('info', `Pixabay broad results (${q}): ${res?.data?.hits?.length || 0}`, 'SourcedImage', taskId);
+                return { q, results: res?.data?.hits || [] };
+            } catch (error) {
+                this.observability.emitLog('warn', `Pixabay broad query failed (${q}): ${this.formatAxiosError(error)}`, 'SourcedImage', taskId);
+                return { q, results: [] };
+            }
+        });
+        const broadSettled = await this.withTimeout(Promise.all(broadSearches), 15000, 'Pixabay broad retrieval timeout');
+        const broadPerQuery = broadSettled.map((chunk) => ({
+            q: chunk.q,
+            urls: (chunk.results || []).map((item: any) => item?.largeImageURL || item?.webformatURL).filter(Boolean),
+        }));
+        for (let round = 0; out.length < maxCandidates; round++) {
+            let addedThisRound = 0;
+            for (const pq of broadPerQuery) {
+                const url = pq.urls[round];
+                if (!url || seen.has(url)) continue;
+                seen.add(url);
+                out.push({ provider: 'pixabay', imageUrl: url, query: pq.q });
+                addedThisRound++;
+                if (out.length >= maxCandidates) break;
+            }
+            if (addedThisRound === 0) break;
+        }
+        return out.slice(0, 10);
+    }
+
+    private resolveSourceProvider(): 'unsplash' | 'pixabay' {
+        const raw = String(this.configService.get<string>('SOURCED_IMAGE_PROVIDER') || 'unsplash').toLowerCase().trim();
+        return raw === 'pixabay' ? 'pixabay' : 'unsplash';
+    }
+
     private getUnsplashAccessKey(): string {
         const candidates = [
             this.configService.get<string>('UNSPLASH_ACCESS_KEY'),
             this.configService.get<string>('UNSPLASH_KEY'),
             this.configService.get<string>('UPLASH_ACCESS_KEY'),
             this.configService.get<string>('UPLASH_KEY'),
+        ];
+        const key = candidates.map(v => String(v || '').trim()).find(Boolean);
+        return key || '';
+    }
+
+    private getPixabayAccessKey(): string {
+        const candidates = [
+            this.configService.get<string>('PIXABAY_API_KEY'),
+            this.configService.get<string>('PIXABAY_KEY'),
         ];
         const key = candidates.map(v => String(v || '').trim()).find(Boolean);
         return key || '';
@@ -427,7 +657,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             'realistic', 'photo', 'style', 'cinematic', 'natural', 'colors', 'shallow', 'depth',
             'field', 'logos', 'logo', 'text', 'overlay', 'watermark', 'branding', 'brand',
             'no', 'with', 'and', 'the', 'for', 'from', 'that', 'this', 'into', 'near',
-            'optional', 'beside', 'small', 'one', 'scene'
+            'optional', 'beside', 'small', 'one', 'scene', 'high', 'quality', 'curated',
+            'minimalist', 'non', 'corporate', 'professional', 'photography', 'soft', 'shadows'
         ]);
         const words = String(input || '')
             .toLowerCase()
@@ -442,6 +673,65 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             if (dedup.length >= maxWords) break;
         }
         return dedup.join(' ').trim();
+    }
+
+    private optimizePixabayQueries(baseQueries: string[], brief: string): string[] {
+        const compactFromExpanded = baseQueries
+            .map((q) => this.toPixabayQuery(q))
+            .filter(Boolean);
+        const seed = this.normalizeQuery(brief, 10);
+        const seedTokens = seed.split(' ').filter(Boolean);
+        const domain = this.pickDomainTerms(seedTokens);
+        const scene = this.pickSceneTerms(seedTokens);
+        const variants = [
+            `${domain} ${scene}`.trim(),
+            `${domain}`.trim(),
+            `${scene}`.trim(),
+            `${domain} outdoor`.trim(),
+            seed,
+        ].map((q) => this.toPixabayQuery(q));
+        return this.uniqueQueries([...compactFromExpanded, ...variants]).slice(0, 5);
+    }
+
+    private toPixabayQuery(input: string): string {
+        const noise = new Set([
+            'high', 'quality', 'curated', 'minimalist', 'non', 'corporate', 'professional', 'photography',
+            'editorial', 'premium', 'soft', 'shadows', 'composition'
+        ]);
+        const trimmed = this.normalizeQuery(input, 10)
+            .split(' ')
+            .filter((w) => !noise.has(w))
+            .slice(0, 7)
+            .join(' ');
+        const base = trimmed
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return base.length > 90 ? base.slice(0, 90).trim() : base;
+    }
+
+    private inferPixabayCategory(input: string): string | undefined {
+        const t = this.normalizeQuery(input, 20).split(' ');
+        if (t.some((w) => ['fishing', 'angler', 'tackle', 'bait', 'lure', 'boat'].includes(w))) return 'sports';
+        if (t.some((w) => ['forest', 'lake', 'river', 'mountain', 'outdoor', 'nature'].includes(w))) return 'nature';
+        if (t.some((w) => ['person', 'people', 'man', 'woman', 'child', 'family'].includes(w))) return 'people';
+        if (t.some((w) => ['computer', 'chip', 'hardware', 'electronics', 'memory', 'ddr'].includes(w))) return 'science';
+        return undefined;
+    }
+
+    private resolvePixabayMinDimensions(width: number, height: number): { min_width: number; min_height: number } {
+        const targetW = Math.max(640, Math.min(1600, Math.round(width * 0.65)));
+        const targetH = Math.max(400, Math.min(1200, Math.round(height * 0.65)));
+        return { min_width: targetW, min_height: targetH };
+    }
+
+    private formatAxiosError(error: any): string {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        const message = error?.message || String(error);
+        if (!status) return message;
+        const detail = typeof data === 'string' ? data : JSON.stringify(data || {});
+        return `status=${status} message=${message} body=${detail.slice(0, 300)}`;
     }
 
     private uniqueQueries(queries: string[]): string[] {
@@ -527,7 +817,16 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         }
     }
 
-    private async fallbackToStory(task: ImageTask, sourcedDiagnostics?: Record<string, any>): Promise<ImageGenerationResult> {
+    private async fallbackToStory(
+        task: ImageTask,
+        sourcedDiagnostics?: Record<string, any>,
+        sourcedArtifacts?: {
+            brief: string;
+            queries: string[];
+            candidates: Array<{ query: string; image_url: string }>;
+            queryConfig?: Record<string, any>;
+        }
+    ): Promise<ImageGenerationResult> {
         const fallbackTask: any = {
             ...task,
             type: 'story_image',
@@ -537,6 +836,9 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             }
         };
         const storyResult = await this.storyImageStrategy.generate(fallbackTask);
+        if (sourcedArtifacts && storyResult?.payload?.output_dir) {
+            await this.persistSourcedArtifacts(String(storyResult.payload.output_dir), sourcedArtifacts, task.id);
+        }
         const mergedMetrics = {
             ...(storyResult?.payload?.metrics || {}),
             ...(sourcedDiagnostics || {}),
@@ -550,6 +852,55 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 metrics: mergedMetrics,
             },
         };
+    }
+
+    private async persistSourcedArtifacts(
+        relativeOutputDir: string,
+        data: {
+            brief: string;
+            queries: string[];
+            candidates: Array<{ query: string; image_url: string }>;
+            queryConfig?: Record<string, any>;
+        },
+        taskId?: string,
+    ): Promise<void> {
+        try {
+            const assetsDir = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir, 'assets');
+            await fs.promises.mkdir(assetsDir, { recursive: true });
+
+            const queryConfig = data.queryConfig || {};
+            const lines = [
+                `brief: ${data.brief}`,
+                `queries (${data.queries.length}):`,
+                ...data.queries.map((q, i) => `  ${i + 1}. ${q}`),
+                `query_config: orientation=${queryConfig.orientation || 'n/a'} per_page=${queryConfig.per_page || 'n/a'} content_filter=${queryConfig.content_filter || 'n/a'} order_by=${queryConfig.order_by || 'n/a'}`,
+                `candidates (${data.candidates.length}):`,
+                ...data.candidates.map((c, i) => `  ${i + 1}. query="${c.query}" url="${c.image_url}"`),
+            ];
+            const txt = lines.join('\n');
+            await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'sourced-search-log.txt'), Buffer.from(txt, 'utf8'));
+            await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'sourced-search-log.json'), Buffer.from(JSON.stringify(data, null, 2), 'utf8'));
+
+            const top = data.candidates.slice(0, 10);
+            await Promise.all(top.map(async (c, idx) => {
+                try {
+                    const res = await this.withTimeout(
+                        axios.get(c.image_url, { responseType: 'arraybuffer', timeout: 10000 }),
+                        12000,
+                        `candidate download timeout ${idx + 1}`,
+                    );
+                    await this.localStorage.save(
+                        path.join(relativeOutputDir, 'assets', `sourced-candidate-${String(idx + 1).padStart(2, '0')}.jpg`),
+                        Buffer.from(res.data),
+                    );
+                } catch (error) {
+                    this.observability.emitLog('warn', `Failed saving sourced candidate ${idx + 1}: ${error?.message || error}`, 'SourcedImage', taskId);
+                }
+            }));
+            this.observability.emitLog('info', `Saved sourced artifacts in ./assets (queries + ${top.length} candidate images)`, 'SourcedImage', taskId);
+        } catch (error) {
+            this.observability.emitLog('warn', `Failed persisting sourced artifacts: ${error?.message || error}`, 'SourcedImage', taskId);
+        }
     }
 
     private resolveDimensions(task: ImageTask): { width: number; height: number } {

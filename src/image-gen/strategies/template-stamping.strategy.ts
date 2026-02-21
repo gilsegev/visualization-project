@@ -192,17 +192,14 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             const desc = (item?.description || '').trim();
             const concept = this.buildHubIconConcept(`${title}. ${desc}`, idx, totalItems, centerTitle);
 
-            // Use neutral slot cues for diversity; avoid time words that bias toward clock imagery.
-            const slotHint = `radial slot ${idx + 1} of ${totalItems}`;
-
-            const base = `symbolic minimalist icon for ${concept}. Semantic cue for ${this.toTextSafeIconConcept(centerTitle)}. ${slotHint}. Focus on object/action metaphor and organic wellness imagery with simple shapes. Use human-body and airflow cues when relevant.`;
+            const base = `symbolic minimalist icon for ${concept}. Semantic cue: ${this.toTextSafeIconConcept(centerTitle)}. Object/action metaphor only, organic wellness style, no clocks or timer dials.`;
             const normalized = base.toLowerCase().replace(/\s+/g, ' ').trim();
             const seen = promptUsage.get(normalized) || 0;
             promptUsage.set(normalized, seen + 1);
 
             // Deterministic anti-duplication token for repeated semantic prompts.
             if (seen > 0) {
-                return `${base}. Variation seed ${idx + 1}`;
+                return `${base} Variation seed ${idx + 1} of ${totalItems}.`;
             }
             return base;
         };
@@ -543,15 +540,45 @@ ${text}`;
 
         // Atomic "Sticker-Style" Prompt Construction
         let fullPrompt = '';
+        const hasSegment = (value: string, segment: string) =>
+            value.toLowerCase().includes(String(segment || '').toLowerCase());
+        const splitClauses = (text: string) =>
+            String(text || '')
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+        const packClauses = (clauses: string[], maxChars: number) => {
+            let out = '';
+            for (const clause of clauses) {
+                const next = out ? `${out}, ${clause}` : clause;
+                if (next.length > maxChars) break;
+                out = next;
+            }
+            if (out) return out;
+            return String(clauses[0] || '').slice(0, maxChars).trim();
+        };
+
         if (isBackground) {
             // Refinement 8: Use the prompt for the center image background, but keep it abstract/soft
             fullPrompt = `soft abstract background for ${prompt}, minimalist, high resolution, subtle grain, elegant, ${theme.background_main} tones, smooth gradients, calm composition`;
         } else {
             // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
-            fullPrompt = `${prompt}, ${theme.image_style_suffix}, high resolution, isolated on white background, ${theme.primary_accent} and ${theme.secondary_accent} highlights, text-free iconography`;
+            const base = String(prompt || '').trim();
+            const themeStyleClauses = splitClauses(theme.image_style_suffix);
+            const styleBits = [
+                ...themeStyleClauses,
+                'high resolution',
+                'isolated on white background',
+                `${theme.primary_accent} and ${theme.secondary_accent} highlights`,
+                'subject fully visible, centered, ample whitespace, no cropped edges',
+                'text-free iconography'
+            ].filter((bit) => bit && !hasSegment(base, bit));
+            fullPrompt = packClauses([base, ...styleBits], 900);
         }
         const resolvedImageSize = imageSize || (isBackground ? '768x768' : '512x512');
         this.observability.emitLog('info', `ðŸ–¼ï¸ Constructing Image Prompt (size=${resolvedImageSize}): ${fullPrompt}`, 'ImageGen', taskId);
+
+        const siliconflowModel = this.configService.get<string>('SILICONFLOW_MODEL') || 'black-forest-labs/FLUX.1-schnell';
 
         try {
             return await this.withRetries<{ url: string; prompt: string }>(
@@ -560,7 +587,7 @@ ${text}`;
                         const response = await axios.post(
                             'https://api.siliconflow.com/v1/images/generations',
                             {
-                                model: 'black-forest-labs/FLUX.1-schnell',
+                                model: siliconflowModel,
                                 prompt: fullPrompt,
                                 image_size: resolvedImageSize,
                                 num_inference_steps: 4,
@@ -931,7 +958,7 @@ ${text}`;
         }
         const imagePromises = subjects.map(async (subj: any, idx: number) => {
             const concept = this.toTextSafeIconConcept(`${subj?.name || ''}. ${subj?.description || ''}`);
-            const prompt = `Vertical symbolic portrait of ${concept}, ${theme.image_style_suffix}, high contrast, isolated, ${theme.primary_accent} lighting, text-free educational icon style`;
+            const prompt = `Symbolic icon of ${concept}, high contrast, isolated, ${theme.primary_accent} lighting, full subject visible, centered composition, no cropped edges, text-free educational icon style`;
 
             try {
                 const result = await this.generateImage(prompt, theme, false, task.id, '256x256');

@@ -141,7 +141,29 @@
                             </option>
                         </select>
 
-                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2">
+                        <div class="mt-2 rounded border border-slate-700 bg-black/40 p-2">
+                            <div class="text-[10px] text-slate-500 font-mono">PIXABAY QUERY LAB (TEMP)</div>
+                            <div class="mt-1 flex gap-1">
+                                <input v-model="queryLabInput"
+                                    class="flex-1 bg-black border border-slate-700 text-xs text-slate-200 px-2 py-1 rounded font-mono focus:border-neon outline-none"
+                                    placeholder="e.g. dawn light tackle box lures" />
+                                <button @click="runQueryLab" :disabled="queryLabLoading"
+                                    class="text-[10px] px-2 py-1 rounded border border-neon/40 text-neon hover:bg-neon/10 disabled:opacity-50 disabled:cursor-not-allowed font-mono">
+                                    {{ queryLabLoading ? 'RUNNING...' : 'TEST' }}
+                                </button>
+                            </div>
+                            <div v-if="queryLabError" class="mt-1 text-[10px] text-danger font-mono">{{ queryLabError }}</div>
+                            <div v-if="queryLabResults?.length" class="mt-2 max-h-[26vh] overflow-y-auto matrix-scroll border border-slate-800 rounded p-1">
+                                <div v-for="item in queryLabResults" :key="`ql-${item.index}`" class="mb-1 border-b border-slate-800 pb-1 text-[10px] font-mono">
+                                    <div class="text-slate-300">#{{ item.index }} clip=<span class="text-neon">{{ item.clip_score ?? 'n/a' }}</span> vision=<span class="text-sky-300">{{ item.vision_score ?? 'n/a' }}</span></div>
+                                    <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">{{ item.image_url }}</a>
+                                    <div v-if="item.vision_reason" class="text-slate-500 mt-0.5 break-words">vision: {{ item.vision_reason }}</div>
+                                    <div v-if="item.clip_error" class="text-warning mt-0.5 break-words">clip: {{ item.clip_error }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[45vh] overflow-y-auto matrix-scroll">
                             <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
                             <div class="mt-1 text-[11px] font-mono text-slate-300">
                                 <div>
@@ -150,7 +172,7 @@
                                 </div>
                                 <div v-if="hasClipScore(selectedAssetTask)" class="mt-0.5">
                                     <span class="text-neon">CLIP Score:</span>
-                                    <span class="ml-1 text-neon font-bold">{{ formatClipScore(selectedAssetTask.metrics?.clip_score) }}</span>
+                                    <span class="ml-1 text-neon font-bold">{{ formatClipScore(getClipScore(selectedAssetTask)) }}</span>
                                 </div>
                                 <div v-if="selectedAssetTask?.metrics?.clip_threshold !== undefined" class="mt-0.5">
                                     <span class="text-slate-500">CLIP Threshold:</span>
@@ -160,9 +182,13 @@
                                     <span class="text-warning">Sourced Fallback:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.metrics?.sourced_fallback_reason }}</span>
                                 </div>
-                                <div v-if="selectedAssetTask?.metrics?.vision_score !== undefined" class="mt-0.5">
+                                <div v-if="hasVisionScore(selectedAssetTask)" class="mt-0.5">
                                     <span class="text-slate-500">Vision Score:</span>
-                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.metrics?.vision_score }}</span>
+                                    <span class="ml-1 text-slate-200">{{ getVisionScore(selectedAssetTask) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.source_provider" class="mt-0.5">
+                                    <span class="text-slate-500">Provider:</span>
+                                    <span class="ml-1 text-slate-200 uppercase">{{ selectedAssetTask.details.source_provider }}</span>
                                 </div>
                                 <div v-if="selectedAssetTask?.metrics?.total_ms !== undefined" class="mt-0.5">
                                     <span class="text-slate-500">Total:</span>
@@ -179,7 +205,7 @@
                                     <div class="ml-2 text-slate-300">scene: {{ selectedAssetTask.details.sourced_query_signals.scene_terms }}</div>
                                 </div>
                                 <div v-if="selectedAssetTask?.details?.sourced_query_config" class="mt-1">
-                                    <span class="text-slate-500 block">Unsplash Params:</span>
+                                    <span class="text-slate-500 block">Source API Params:</span>
                                     <div class="ml-2 text-slate-300">orientation: {{ selectedAssetTask.details.sourced_query_config.orientation }}</div>
                                     <div class="ml-2 text-slate-300">per_page: {{ selectedAssetTask.details.sourced_query_config.per_page }}</div>
                                     <div class="ml-2 text-slate-300">content_filter: {{ selectedAssetTask.details.sourced_query_config.content_filter }}</div>
@@ -187,7 +213,7 @@
                                     <div class="ml-2 text-slate-300">candidate_cap: {{ selectedAssetTask.details.sourced_query_config.candidate_cap }}</div>
                                 </div>
                                 <div v-if="selectedAssetTask?.details?.sourced_queries?.length" class="mt-1">
-                                    <span class="text-slate-500 block">Unsplash Queries:</span>
+                                    <span class="text-slate-500 block">Source Queries:</span>
                                     <div v-for="(query, qIdx) in selectedAssetTask.details.sourced_queries" :key="`asset-q-${qIdx}`" class="ml-2 text-slate-300">
                                         - {{ query }}
                                     </div>
@@ -200,7 +226,7 @@
                                         </a>
                                     </div>
                                 </div>
-                                <div v-if="selectedAssetTask?.details?.styling_guidance" class="mt-1">
+                                <div v-if="selectedAssetFilter === '__styling__' && selectedAssetTask?.details?.styling_guidance" class="mt-1">
                                     <span class="text-slate-500 block">Styling:</span>
                                     <pre class="ml-2 text-slate-300 whitespace-pre-wrap break-words">{{ JSON.stringify(selectedAssetTask.details.styling_guidance, null, 2) }}</pre>
                                 </div>
@@ -351,8 +377,13 @@
                                         <div class="flex items-center gap-2">
                                             <span v-if="hasClipScore(task)"
                                                 class="text-[10px] px-1.5 py-0.5 rounded bg-neon/15 border border-neon/30 text-neon"
-                                                :title="`CLIP score: ${formatClipScore(task.metrics?.clip_score)}`">
-                                                CLIP {{ formatClipScore(task.metrics?.clip_score) }}
+                                                :title="`CLIP score: ${formatClipScore(getClipScore(task))}`">
+                                                CLIP {{ formatClipScore(getClipScore(task)) }}
+                                            </span>
+                                            <span v-if="hasVisionScore(task)"
+                                                class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-500 text-slate-200"
+                                                :title="`Vision score: ${getVisionScore(task)}`">
+                                                VISION {{ getVisionScore(task) }}
                                             </span>
                                             <!-- Duration if complete -->
                                             <span v-if="task.status === 'completed'" class="text-slate-500">
@@ -512,18 +543,22 @@
                     </div>
 
                     <!-- 6. Sourced Image Scoring -->
-                    <div v-if="hasClipScore(selectedTask) || selectedTask?.details?.sourced_queries?.length || selectedTask?.details?.sourced_candidates?.length"
+                    <div v-if="hasClipScore(selectedTask) || hasVisionScore(selectedTask) || selectedTask?.details?.sourced_queries?.length || selectedTask?.details?.sourced_candidates?.length"
                         class="mb-4 overflow-y-auto max-h-[20vh] border border-neon/30 rounded p-3 bg-black">
                         <h4 class="text-xs font-mono text-neon uppercase mb-2">Sourced Image Scoring</h4>
                         <div v-if="hasClipScore(selectedTask)" class="text-sm text-slate-300 font-mono">
                             CLIP Score:
-                            <span class="text-neon font-bold ml-1">{{ formatClipScore(selectedTask.metrics?.clip_score)
+                            <span class="text-neon font-bold ml-1">{{ formatClipScore(getClipScore(selectedTask))
                                 }}</span>
                         </div>
-                        <div v-if="selectedTask.metrics?.vision_score !== undefined"
+                        <div v-if="hasVisionScore(selectedTask)"
                             class="text-sm text-slate-400 font-mono mt-1">
                             Vision Score:
-                            <span class="text-slate-200 ml-1">{{ selectedTask.metrics?.vision_score }}</span>
+                            <span class="text-slate-200 ml-1">{{ getVisionScore(selectedTask) }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.source_provider" class="text-sm text-slate-400 font-mono mt-1">
+                            Provider:
+                            <span class="text-slate-200 ml-1 uppercase">{{ selectedTask.details.source_provider }}</span>
                         </div>
                         <div v-if="selectedTask.details?.source_query" class="text-sm text-slate-400 font-mono mt-1">
                             Selected Query:
@@ -536,11 +571,11 @@
                             <div class="text-xs text-slate-300 font-mono">scene: {{ selectedTask.details.sourced_query_signals.scene_terms }}</div>
                         </div>
                         <div v-if="selectedTask.details?.sourced_query_config" class="mt-2">
-                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Unsplash Params</div>
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Source API Params</div>
                             <div class="text-xs text-slate-300 font-mono">orientation={{ selectedTask.details.sourced_query_config.orientation }} per_page={{ selectedTask.details.sourced_query_config.per_page }} content_filter={{ selectedTask.details.sourced_query_config.content_filter }} max_queries={{ selectedTask.details.sourced_query_config.max_queries }} candidate_cap={{ selectedTask.details.sourced_query_config.candidate_cap }}</div>
                         </div>
                         <div v-if="selectedTask.details?.sourced_queries?.length" class="mt-2">
-                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Unsplash Queries Sent</div>
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Source Queries Sent</div>
                             <div v-for="(query, idx) in selectedTask.details.sourced_queries" :key="`modal-q-${idx}`" class="text-xs text-slate-300 font-mono">
                                 - {{ query }}
                             </div>
@@ -576,6 +611,10 @@
                 // Log Views State
                 const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
                 const selectedAssetFilter = ref('');
+                const queryLabInput = ref('dawn light tackle box lures');
+                const queryLabLoading = ref(false);
+                const queryLabError = ref('');
+                const queryLabResults = ref([]);
 
                 const logs = ref([]);
                 const tasks = ref({}); // Map: taskId -> task
@@ -797,6 +836,38 @@
                     }
                 };
 
+                const runQueryLab = async () => {
+                    const q = String(queryLabInput.value || '').trim();
+                    if (!q) {
+                        queryLabError.value = 'Query is required.';
+                        return;
+                    }
+                    queryLabLoading.value = true;
+                    queryLabError.value = '';
+                    queryLabResults.value = [];
+                    addLog('info', `Query Lab: testing "${q}"`, 'Frontend');
+                    try {
+                        const res = await fetch('/generate/source-debug', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: q, clip_brief: q, per_page: 10, orientation: 'horizontal' }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok || data?.error) {
+                            queryLabError.value = data?.error || `HTTP ${res.status}`;
+                            addLog('error', `Query Lab failed: ${queryLabError.value}`, 'Frontend');
+                            return;
+                        }
+                        queryLabResults.value = Array.isArray(data?.results) ? data.results : [];
+                        addLog('success', `Query Lab complete: ${queryLabResults.value.length} results`, 'Frontend');
+                    } catch (e) {
+                        queryLabError.value = e?.message || String(e);
+                        addLog('error', `Query Lab failed: ${queryLabError.value}`, 'Frontend');
+                    } finally {
+                        queryLabLoading.value = false;
+                    }
+                };
+
                 // Visual Styling Helpers
                 const getStatusClass = (task) => {
                     if (task.status === 'failed') return 'bg-danger/10';
@@ -835,10 +906,24 @@
                     return `${title} [${shortId}]`;
                 };
 
-                const hasClipScore = (task) => {
-                    const raw = task?.metrics?.clip_score;
+                const getClipScore = (task) => {
+                    const raw = task?.metrics?.clip_score ?? task?.details?.clip_score;
                     const score = Number(raw);
-                    return Number.isFinite(score);
+                    return Number.isFinite(score) ? score : null;
+                };
+
+                const hasClipScore = (task) => {
+                    return getClipScore(task) !== null;
+                };
+
+                const getVisionScore = (task) => {
+                    const raw = task?.metrics?.vision_score ?? task?.details?.vision_score;
+                    const score = Number(raw);
+                    return Number.isFinite(score) ? score : null;
+                };
+
+                const hasVisionScore = (task) => {
+                    return getVisionScore(task) !== null;
                 };
 
                 const formatClipScore = (raw) => {
@@ -958,11 +1043,12 @@
                     narrativeMetrics,
                     selectedAssetTask, batchStylingGuidance,
                     logMode, selectedAssetFilter, filteredLogs,
+                    queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
-                    hasClipScore, formatClipScore, extractUrls, selectAsset, taskLabel
+                    getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, extractUrls, selectAsset, taskLabel
                 };
 
             }
