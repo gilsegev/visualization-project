@@ -12,6 +12,7 @@ import { TemplateStampingService } from '../services/template-stamping.service';
 import { BrowserService } from '../browser.service';
 import { LocalClipService } from '../services/local-clip.service';
 import { StoryImageStrategy } from './story-image.strategy';
+import { QueryOptimizer } from '../services/query-optimizer';
 
 @Injectable()
 export class SourcedImageStrategy extends BaseImageStrategy {
@@ -21,6 +22,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
     private readonly disableClip: boolean;
     private readonly disableVision: boolean;
     private readonly degradedVisionThreshold: number;
+    private readonly queryOptimizer: QueryOptimizer;
 
     constructor(
         private readonly configService: ConfigService,
@@ -51,6 +53,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 'X-Title': 'Visualization Project Sourced Image'
             }
         }) : null;
+        this.queryOptimizer = new QueryOptimizer(this.openai);
     }
 
     protected async performGeneration(task: ImageTask): Promise<ImageGenerationResult> {
@@ -75,7 +78,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const dims = this.resolveDimensions(task);
             const exportScale = this.resolveExportScale(imageSpecs);
             const sourceUrl = String(imageSpecs?.source?.assetUrl || '').trim();
-            const orientation = dims.width >= dims.height ? 'landscape' : 'portrait';
+            const orientation = 'landscape';
             const normalizedBrief = this.normalizeQuery(brief, 12);
             const signalTokens = normalizedBrief.split(' ').filter(Boolean);
             const querySignals = {
@@ -86,10 +89,11 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const queryConfig = {
                 provider: 'unsplash',
                 orientation,
-                per_page: 8,
+                per_page: 10,
                 content_filter: 'high',
+                order_by: 'relevant',
                 max_queries: 5,
-                candidate_cap: 8,
+                candidate_cap: 10,
             };
 
             this.observability.emitLog('info', 'Phase 1/6: CLIP scorer enabled for semantic scoring', 'SourcedImage', task.id);
@@ -101,11 +105,15 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             }
 
             const queryStart = Date.now();
-            const queries = sourceUrl ? ['provided-source'] : await this.buildSearchQueries(brief, task.id);
+            const expanded = sourceUrl
+                ? { queries: ['provided-source'], mode: 'heuristic' as const }
+                : await this.queryOptimizer.expandQuery(brief, 1900, () => this.expandQueriesHeuristic(brief));
+            const queries = expanded.queries;
             phaseMs.query_expansion_ms = Date.now() - queryStart;
-            this.observability.emitLog('info', `Phase 2/6: Query expansion complete (${queries.length} queries)`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Phase 2/6: Query expansion complete (${queries.length} queries, mode=${expanded.mode})`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Expanded queries: ${queries.join(' | ')}`, 'SourcedImage', task.id);
             this.observability.emitLog('info', `Query signals: normalized="${querySignals.normalized_brief}" domain="${querySignals.domain_terms}" scene="${querySignals.scene_terms}"`, 'SourcedImage', task.id);
-            this.observability.emitLog('info', `Unsplash query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Unsplash query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} order_by=${queryConfig.order_by} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
 
             const retrievalStart = Date.now();
             const candidates = await this.fetchUnsplashCandidates(queries, dims.width, dims.height, task.id);
@@ -314,7 +322,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             throw new Error('UNSPLASH_ACCESS_KEY is missing. Set it in .env to enable sourced_image retrieval.');
         }
 
-        const orientation = width >= height ? 'landscape' : 'portrait';
+        const orientation = 'landscape';
         const out: Array<{ provider: string; imageUrl: string; query: string }> = [];
         const seen = new Set<string>();
         const limitedQueries = queries.slice(0, 5);
@@ -324,7 +332,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 const res = await this.withTimeout(
                     axios.get('https://api.unsplash.com/search/photos', {
                         timeout: 8000,
-                        params: { query: q, orientation, per_page: 8, content_filter: 'high' },
+                        params: { query: q, orientation, per_page: 10, content_filter: 'high', order_by: 'relevant' },
                         headers: { Authorization: `Client-ID ${key}` },
                     }),
                     10000,
@@ -352,7 +360,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 out.push({ provider: 'unsplash', imageUrl: url, query: chunk.q });
             }
         }
-        if (out.length > 0) return out.slice(0, 8);
+        if (out.length > 0) return out.slice(0, 10);
 
         const broadQueries = this.buildBroadQueries(limitedQueries);
         if (!broadQueries.length) return [];
@@ -363,7 +371,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 const res = await this.withTimeout(
                     axios.get('https://api.unsplash.com/search/photos', {
                         timeout: 8000,
-                        params: { query: q, per_page: 8, content_filter: 'high' },
+                        params: { query: q, orientation: 'landscape', per_page: 10, content_filter: 'high', order_by: 'relevant' },
                         headers: { Authorization: `Client-ID ${key}` },
                     }),
                     10000,
@@ -385,7 +393,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 out.push({ provider: 'unsplash', imageUrl: url, query: chunk.q });
             }
         }
-        return out.slice(0, 8);
+        return out.slice(0, 10);
     }
 
     private getUnsplashAccessKey(): string {
@@ -412,46 +420,6 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             `${domain} lake shore`,
         ];
         return this.uniqueQueries(queries);
-    }
-
-    private async buildSearchQueries(brief: string, taskId: string): Promise<string[]> {
-        if (!this.openai) {
-            return this.expandQueriesHeuristic(brief);
-        }
-        try {
-            const model = this.configService.get<string>('OPENROUTER_MODEL') || 'google/gemini-2.0-flash-001';
-            const response = await this.withTimeout(
-                this.openai.chat.completions.create({
-                    model,
-                    temperature: 0.2,
-                    max_tokens: 220,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'Generate 3 to 5 concise Unsplash queries for one educational image brief. Return JSON only: {"queries":["..."]}.'
-                        },
-                        {
-                            role: 'user',
-                            content: `Brief: ${brief}`
-                        }
-                    ]
-                }),
-                25000,
-                'Query expansion timeout'
-            );
-            const raw = String(response.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(raw || '{}');
-            const queries = Array.isArray(parsed?.queries)
-                ? parsed.queries.map((q: any) => String(q).trim()).filter(Boolean).slice(0, 5)
-                : [];
-            const normalizedLlm = this.uniqueQueries(queries.map((q) => this.normalizeQuery(q, 10)));
-            const heuristic = this.expandQueriesHeuristic(brief);
-            const merged = this.uniqueQueries([...normalizedLlm, ...heuristic]);
-            return merged.length ? merged : this.expandQueriesHeuristic(brief);
-        } catch (error) {
-            this.observability.emitLog('warn', `Query expansion LLM failed; using heuristic fallback (${error?.message || error})`, 'SourcedImage', taskId);
-            return this.expandQueriesHeuristic(brief);
-        }
     }
 
     private normalizeQuery(input: string, maxWords = 10): string {
