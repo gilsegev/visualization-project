@@ -1,5 +1,17 @@
 # Changelog
 
+## [V2-QUERY-OPT-4] - 2026-02-22
+
+### Changed
+- **Domain Hardening**: Added primary-domain inference and high-collision noun protection (`tackle`, `cell`, `strike`, `lead`) so Pixabay queries stay domain-locked.
+- **Tiered Pixabay Waterfall**: Added 3-tier fallback retrieval (`domain+subject+setting` -> `domain+subject` -> `domain+subject+literal`) with CLIP + vision acceptance per tier.
+- **Smart Vision Thresholds**: Vision gate threshold is now dynamic by CLIP confidence (`>0.90 => 40`, `<0.70 => 75`, otherwise `60`).
+- **Negative Sports Classifier**: Vision gate now hard-rejects sports/rugby scenes for fishing-domain tasks (forces vision score `0`).
+- **Observability**: Added tier retry logs and threshold-aware vision logs for easier diagnosis of query collisions.
+
+### Verified
+- `npm run build` passes.
+
 ## [V2-QUERY-OPT-3] - 2026-02-22
 
 ### Changed
