@@ -1,5 +1,15 @@
 # Changelog
 
+## [V2-QUERY-OPT-3] - 2026-02-22
+
+### Changed
+- **Isolated CLIP Scoring**: Phase 3/6 now scores each candidate image against the specific expanded query that produced it (not the original task brief).
+- **CLIP Text Normalization**: Added strict normalization before CLIP scoring (lowercase + punctuation removal + whitespace collapse).
+- **Query Plan Subject Enforcement**: Query optimizer now guarantees non-empty `subject`; falls back to the most frequent noun in lesson title when LLM omits subject.
+
+### Verified
+- `npm run build` passes.
+
 ## [V2-QUERY-OPT-2] - 2026-02-22
 
 ### Changed

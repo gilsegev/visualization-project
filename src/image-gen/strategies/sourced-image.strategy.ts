@@ -115,7 +115,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     brief,
                     1900,
                     () => this.expandQueriesHeuristic(brief),
-                    { withQuality: sourceProvider !== 'pixabay' }
+                    { withQuality: sourceProvider !== 'pixabay', lessonTitle: String((task as any)?.metadata?.lesson_title || '') }
                 );
             let queries = expanded.queries;
             if (sourceProvider === 'pixabay') {
@@ -188,8 +188,9 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 for (let idx = 0; idx < Math.min(candidates.length, 5); idx++) {
                     const c = candidates[idx];
                     try {
+                        const clipTarget = this.normalizeClipText(c.query || brief);
                         const clipScore = await this.withTimeout(
-                            this.clipService.scoreImageAgainstBrief(c.imageUrl, brief),
+                            this.clipService.scoreImageAgainstBrief(c.imageUrl, clipTarget),
                             12000,
                             'CLIP scoring timeout',
                         );
@@ -236,7 +237,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                                 const rc = retryCandidates[i];
                                 try {
                                     const rScore = await this.withTimeout(
-                                        this.clipService.scoreImageAgainstBrief(rc.imageUrl, brief),
+                                        this.clipService.scoreImageAgainstBrief(rc.imageUrl, this.normalizeClipText(rc.query || nounOnly || brief)),
                                         12000,
                                         'CLIP scoring timeout',
                                     );
@@ -665,6 +666,14 @@ export class SourcedImageStrategy extends BaseImageStrategy {
     private resolveSourceProvider(): 'unsplash' | 'pixabay' {
         const raw = String(this.configService.get<string>('SOURCED_IMAGE_PROVIDER') || 'unsplash').toLowerCase().trim();
         return raw === 'pixabay' ? 'pixabay' : 'unsplash';
+    }
+
+    private normalizeClipText(input: string): string {
+        return String(input || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     private extractCoreNoun(plan: any, brief: string): string {

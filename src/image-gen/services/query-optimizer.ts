@@ -9,7 +9,7 @@ export class QueryOptimizer {
         brief: string,
         timeoutMs: number,
         fallback: () => string[],
-        options?: { withQuality?: boolean },
+        options?: { withQuality?: boolean; lessonTitle?: string },
     ): Promise<{ queries: string[]; mode: 'llm' | 'heuristic'; plan?: { subject?: string; state?: string; setting?: string; required_terms?: string[]; core_noun?: string; aesthetic_tag?: string } }> {
         const withQuality = options?.withQuality !== false;
         if (!this.openai) return { queries: this.applyQuality(fallback(), withQuality), mode: 'heuristic' };
@@ -36,6 +36,8 @@ export class QueryOptimizer {
             const parsed = JSON.parse(jsonText || '{}');
             const coreNoun = this.normalize(parsed?.core_noun || '').split(' ').slice(0, 2).join(' ').trim();
             const aestheticTag = this.normalize(parsed?.aesthetic_tag || '').split(' ').slice(0, 1).join(' ').trim();
+            const fallbackSubject = this.mostFrequentNoun(options?.lessonTitle || '');
+            const resolvedSubject = this.normalize(parsed?.subject || coreNoun || fallbackSubject || 'subject').split(' ').slice(0, 2).join(' ').trim();
             const requiredTerms = Array.isArray(parsed?.required_terms)
                 ? parsed.required_terms.map((t: string) => this.normalize(t)).filter(Boolean).slice(0, 5)
                 : [];
@@ -54,7 +56,7 @@ export class QueryOptimizer {
                 queries: this.applyQuality(q, withQuality),
                 mode: 'llm',
                 plan: {
-                    subject: this.normalize(parsed?.subject || ''),
+                    subject: resolvedSubject || 'subject',
                     state: this.normalize(parsed?.state || ''),
                     setting: this.normalize(parsed?.setting || ''),
                     required_terms: requiredTerms,
@@ -90,6 +92,27 @@ export class QueryOptimizer {
 
     private unique(input: string[]): string[] {
         return [...new Set(input.map((v) => this.normalize(v)).filter(Boolean))];
+    }
+
+    private mostFrequentNoun(input: string): string {
+        const stop = new Set([
+            'the', 'and', 'for', 'with', 'from', 'into', 'over', 'under', 'your', 'this', 'that', 'these', 'those',
+            'lesson', 'visual', 'guide', 'introduction', 'advanced', 'basics', 'fundamentals'
+        ]);
+        const words = this.normalize(input)
+            .split(' ')
+            .filter((w) => w.length > 2 && !stop.has(w));
+        const freq = new Map<string, number>();
+        for (const w of words) freq.set(w, (freq.get(w) || 0) + 1);
+        let best = '';
+        let count = 0;
+        for (const [word, c] of freq.entries()) {
+            if (c > count) {
+                best = word;
+                count = c;
+            }
+        }
+        return best;
     }
 
     private normalize(input: string): string {
