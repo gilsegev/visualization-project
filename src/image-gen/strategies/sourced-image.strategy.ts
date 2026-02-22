@@ -111,7 +111,12 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const queryStart = Date.now();
             const expanded = sourceUrl
                 ? { queries: ['provided-source'], mode: 'heuristic' as const }
-                : await this.queryOptimizer.expandQuery(brief, 1900, () => this.expandQueriesHeuristic(brief));
+                : await this.queryOptimizer.expandQuery(
+                    brief,
+                    1900,
+                    () => this.expandQueriesHeuristic(brief),
+                    { withQuality: sourceProvider !== 'pixabay' }
+                );
             let queries = expanded.queries;
             if (sourceProvider === 'pixabay') {
                 queries = this.optimizePixabayQueries(queries, brief);
@@ -145,7 +150,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             this.observability.emitLog('info', `${sourceProvider} query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} order_by=${queryConfig.order_by} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
 
             const retrievalStart = Date.now();
-            const candidates = await this.fetchProviderCandidates(sourceProvider, queries, dims.width, dims.height, task.id);
+            let candidates = await this.fetchProviderCandidates(sourceProvider, queries, dims.width, dims.height, task.id);
             phaseMs.retrieval_ms = Date.now() - retrievalStart;
             const sourcedCandidates = candidates.map((c) => ({ query: c.query, image_url: c.imageUrl }));
             if (sourcedCandidates.length) {
@@ -177,10 +182,10 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 clipTopScore = 0;
                 this.observability.emitLog('info', 'Phase 3/6: CLIP disabled; selecting top retrieved candidate', 'SourcedImage', task.id);
             } else {
-                this.observability.emitLog('info', `Phase 3/6: CLIP scoring ${candidates.length} candidates`, 'SourcedImage', task.id);
+                this.observability.emitLog('info', `Phase 3/6: CLIP scoring ${Math.min(candidates.length, 5)} candidates`, 'SourcedImage', task.id);
                 const clipStart = Date.now();
                 const scored: Array<{ provider: string; imageUrl: string; query: string; clipScore: number }> = [];
-                for (let idx = 0; idx < candidates.length; idx++) {
+                for (let idx = 0; idx < Math.min(candidates.length, 5); idx++) {
                     const c = candidates[idx];
                     try {
                         const clipScore = await this.withTimeout(
@@ -214,6 +219,51 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     scored.sort((a, b) => b.clipScore - a.clipScore);
                     best = scored[0];
                     clipTopScore = Number(best?.clipScore || 0);
+                    const clipAvg = scored.reduce((sum, x) => sum + x.clipScore, 0) / scored.length;
+                    this.observability.emitLog(
+                        'info',
+                        `CLIP summary: avg=${clipAvg.toFixed(3)} max=${clipTopScore.toFixed(3)} min=${Math.min(...scored.map((x) => x.clipScore)).toFixed(3)}`,
+                        'SourcedImage',
+                        task.id
+                    );
+                    if (sourceProvider === 'pixabay' && clipAvg < 0.6) {
+                        const nounOnly = this.extractCoreNoun((expanded as any)?.plan, brief);
+                        if (nounOnly && !queries.includes(nounOnly)) {
+                            this.observability.emitLog('warn', `CLIP avg ${clipAvg.toFixed(3)} < 0.600; retrying with core noun query="${nounOnly}"`, 'SourcedImage', task.id);
+                            const retryCandidates = await this.fetchPixabayCandidates([nounOnly], dims.width, dims.height, task.id);
+                            const retryScored: Array<{ provider: string; imageUrl: string; query: string; clipScore: number }> = [];
+                            for (let i = 0; i < Math.min(retryCandidates.length, 5); i++) {
+                                const rc = retryCandidates[i];
+                                try {
+                                    const rScore = await this.withTimeout(
+                                        this.clipService.scoreImageAgainstBrief(rc.imageUrl, brief),
+                                        12000,
+                                        'CLIP scoring timeout',
+                                    );
+                                    retryScored.push({ ...rc, clipScore: rScore });
+                                } catch {
+                                    // skip failed candidate
+                                }
+                            }
+                            if (retryScored.length) {
+                                retryScored.sort((a, b) => b.clipScore - a.clipScore);
+                                const retryAvg = retryScored.reduce((sum, x) => sum + x.clipScore, 0) / retryScored.length;
+                                const retryTop = retryScored[0].clipScore;
+                                this.observability.emitLog(
+                                    'info',
+                                    `CLIP retry summary: avg=${retryAvg.toFixed(3)} max=${retryTop.toFixed(3)} min=${Math.min(...retryScored.map((x) => x.clipScore)).toFixed(3)}`,
+                                    'SourcedImage',
+                                    task.id
+                                );
+                                if (retryTop > clipTopScore) {
+                                    candidates = retryCandidates;
+                                    best = retryScored[0];
+                                    clipTopScore = retryTop;
+                                    queries = this.uniqueQueries([nounOnly, ...queries]).slice(0, 5);
+                                }
+                            }
+                        }
+                    }
                 }
                 if (!clipDegradedMode && (!best || best.clipScore < 0.75)) {
                     this.observability.emitLog(
@@ -617,6 +667,13 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         return raw === 'pixabay' ? 'pixabay' : 'unsplash';
     }
 
+    private extractCoreNoun(plan: any, brief: string): string {
+        const fromPlan = String(plan?.core_noun || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+        if (fromPlan) return fromPlan.split(' ').slice(0, 2).join(' ');
+        const fallback = this.normalizeQuery(brief, 2);
+        return fallback || '';
+    }
+
     private getUnsplashAccessKey(): string {
         const candidates = [
             this.configService.get<string>('UNSPLASH_ACCESS_KEY'),
@@ -679,16 +736,14 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         const compactFromExpanded = baseQueries
             .map((q) => this.toPixabayQuery(q))
             .filter(Boolean);
-        const seed = this.normalizeQuery(brief, 10);
+        const seed = this.normalizeQuery(brief, 6);
         const seedTokens = seed.split(' ').filter(Boolean);
-        const domain = this.pickDomainTerms(seedTokens);
-        const scene = this.pickSceneTerms(seedTokens);
+        const noun = this.pickDomainTerms(seedTokens).split(' ').slice(0, 2).join(' ').trim();
+        const tag = this.pickSceneTerms(seedTokens).split(' ').slice(0, 1).join(' ').trim();
         const variants = [
-            `${domain} ${scene}`.trim(),
-            `${domain}`.trim(),
-            `${scene}`.trim(),
-            `${domain} outdoor`.trim(),
-            seed,
+            `${noun} ${tag}`.trim(),
+            `${noun}`.trim(),
+            seed.split(' ').slice(0, 3).join(' ').trim(),
         ].map((q) => this.toPixabayQuery(q));
         return this.uniqueQueries([...compactFromExpanded, ...variants]).slice(0, 5);
     }

@@ -1,5 +1,25 @@
 # Changelog
 
+## [V2-QUERY-OPT-2] - 2026-02-22
+
+### Changed
+- **Minimalist Search Broker**: Switched LLM query expansion to a compact extractor that targets a dominant object + aesthetic tag.
+  - New LLM output contract includes `core_noun`, `aesthetic_tag`, and short 2-3 word query variants.
+  - Added provider-aware quality injection toggle so Pixabay runs compact keyword queries.
+
+- **Pixabay Query Strategy**: Tightened Pixabay query shaping for higher precision.
+  - Simplified generated variants to short noun-led terms.
+  - Enforced short keyword phrasing through normalization for Pixabay calls.
+
+- **CLIP Guard + Retry Loop**: Added an adaptive retry when retrieval quality drops.
+  - CLIP now scores top-5 candidates and logs summary stats (`avg`, `max`, `min`).
+  - If `CLIP avg < 0.6` on Pixabay, pipeline retries with a noun-only query and keeps the better top score.
+  - Ranking remains max-CLIP winner selection from candidate pool.
+
+### Verified
+- `npm run build` passes.
+- Manual `/generate/source-debug` call returns scored results after changes.
+
 ## [V2-VERSUS-PREMIUM] - 2026-02-13
 
 ### Added
