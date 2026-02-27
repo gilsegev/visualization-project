@@ -31,12 +31,18 @@ async function getClassifier() {
 function buildNegativeLabels(brief) {
   const lower = String(brief || '').toLowerCase();
   const negatives = [...DEFAULT_NEGATIVE_LABELS];
+  const isFishing = /\b(angler|fish|fishing|hook|lake|river|boat|dock|shore)\b/.test(lower);
+  const isReleaseScene = /\b(release|releasing|catch and release|wet hands|handling)\b/.test(lower);
 
   // Domain-specific hard negatives to reduce semantic near-miss matches.
-  if (/\b(angler|fish|fishing|release|hook|lake|river|boat)\b/.test(lower)) {
+  if (isFishing) {
     negatives.push('an alligator or crocodile in a swamp');
-    negatives.push('fishing rods and gear only, with no person releasing a fish');
-    negatives.push('a person holding an unrelated object outdoors');
+    negatives.push('an indoor scene unrelated to fishing activity');
+    negatives.push('a city street scene with no water and no fishing gear');
+    if (isReleaseScene) {
+      negatives.push('fishing rods and gear only, with no person releasing a fish');
+      negatives.push('a person holding an unrelated object outdoors');
+    }
   }
   if (/\b(ddr|ram|memory|motherboard|pc|computer|cpu|gpu)\b/.test(lower)) {
     negatives.push('an animal outdoors');

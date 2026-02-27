@@ -1,5 +1,20 @@
 # Changelog
 
+## [V2-QUERY-OPT-5] - 2026-02-27
+
+### Fixed
+- **CLIP Fishing Negative Bias**: Scoped release-specific hard negatives in the CLIP scorer to release/handling scenes only. Non-release fishing scenes (for example, dock/rules checks) no longer get penalized by release-only negatives.
+
+### Changed
+- **Provider-Aware CLIP Threshold**: Added configurable `SOURCED_IMAGE_CLIP_THRESHOLD` and defaulted to a lower threshold for Pixabay (`0.65`) versus Unsplash (`0.75`) to reflect source quality variance.
+- **Deeper CLIP Candidate Sampling**: Increased Pixabay CLIP sample depth from top-5 to top-8 in both primary scoring and tier fallback passes, reducing misses caused by strict rank-1-only sampling across queries.
+- **Tier Threshold Unification**: Tiered Pixabay retries now use the same active CLIP threshold (config/default) rather than a hard-coded `0.75`.
+- **Query Domain Anchoring**: Added domain-anchor enforcement for optimized Pixabay queries to avoid weak/ambiguous terms drifting away from task domain intent.
+
+### Verified
+- `npm run build` passes.
+- Manual `POST /generate/source-debug` checks show improved CLIP distribution on fishing dock/rules scenarios after scorer and sampling fixes.
+
 ## [V2-QUERY-OPT-4] - 2026-02-22
 
 ### Changed
