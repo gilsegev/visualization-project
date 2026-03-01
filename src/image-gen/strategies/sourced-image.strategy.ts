@@ -17,7 +17,6 @@ import { QueryOptimizer } from '../services/query-optimizer';
 
 @Injectable()
 export class SourcedImageStrategy extends BaseImageStrategy {
-    private readonly defaultSourceProvider: 'unsplash' | 'pixabay';
     private readonly openai: OpenAI | null;
     private readonly queue = pLimit(1); // Keep CLIP/vision calls serialized to avoid provider/runtime instability.
     private readonly taskTimeoutMs: number;
@@ -55,7 +54,6 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 'X-Title': 'Visualization Project Sourced Image'
             }
         }) : null;
-        this.defaultSourceProvider = this.resolveSourceProvider();
         this.queryOptimizer = new QueryOptimizer(this.openai);
     }
 
@@ -89,7 +87,17 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             const sourceUrl = String(imageSpecs?.source?.assetUrl || '').trim();
             const orientation = 'landscape';
             const normalizedBrief = this.normalizeQuery(brief, 12);
-            const sourceProvider = this.defaultSourceProvider;
+            const sourceProviders = this.resolveSourceProviders();
+            const sourceProviderLabel = sourceProviders.join('+');
+            if (!sourceProviders.length) {
+                this.observability.emitLog('warn', 'No sourced-image providers configured (set PIXABAY_API_KEY and/or UNSPLASH_ACCESS_KEY). Falling back to story generator.', 'SourcedImage', task.id);
+                return this.fallbackToStory(task, { sourced_fallback_reason: 'missing_source_keys' }, {
+                    brief,
+                    queries: [],
+                    candidates: [],
+                    queryConfig: { providers: [] },
+                });
+            }
             const signalTokens = normalizedBrief.split(' ').filter(Boolean);
             const querySignals = {
                 normalized_brief: normalizedBrief,
@@ -97,11 +105,11 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 scene_terms: this.pickSceneTerms(signalTokens),
             };
             let queryConfig: Record<string, any> = {
-                provider: sourceProvider,
+                providers: sourceProviders,
                 orientation,
                 per_page: 10,
                 content_filter: 'high',
-                order_by: sourceProvider === 'pixabay' ? 'popular' : 'relevant',
+                order_by: 'mixed',
                 max_queries: 5,
                 candidate_cap: 10,
             };
@@ -123,15 +131,10 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     () => this.expandQueriesHeuristic(brief),
                     { withQuality: false, lessonTitle: String((task as any)?.metadata?.lesson_title || '') }
                 );
-            let queries = expanded.queries;
-            if (sourceProvider === 'pixabay') {
-                queries = this.optimizePixabayQueries(queries, brief);
-            }
+            const unsplashQueries = this.uniqueQueries(expanded.queries).slice(0, 5);
+            const pixabayQueries = this.optimizePixabayQueries(expanded.queries, brief);
+            let queries = this.uniqueQueries([...pixabayQueries, ...unsplashQueries]).slice(0, 5);
             const primaryDomain = this.resolvePrimaryDomain(task, brief);
-            const tierQueries = sourceProvider === 'pixabay'
-                ? this.buildTieredPixabayQueries(primaryDomain, (expanded as any)?.plan, brief, queries)
-                : [queries];
-            queries = tierQueries[0];
             const evaluationBrief = this.buildEvaluationBrief(brief, (expanded as any)?.plan, queries);
             const clipTarget = this.normalizeClipText(evaluationBrief);
             phaseMs.query_expansion_ms = Date.now() - queryStart;
@@ -145,32 +148,21 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     task.id
                 );
             }
-            this.observability.emitLog('info', `Expanded queries: ${queries.join(' | ')}`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Expanded queries (unsplash): ${unsplashQueries.join(' | ')}`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Expanded queries (pixabay): ${pixabayQueries.join(' | ')}`, 'SourcedImage', task.id);
             this.observability.emitLog('info', `Validation brief: ${evaluationBrief}`, 'SourcedImage', task.id);
-            this.observability.emitLog('info', `Domain hardening: domain="${primaryDomain}" tiers=${tierQueries.length}`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `Domain hardening: domain="${primaryDomain}" providers=${sourceProviderLabel}`, 'SourcedImage', task.id);
             this.observability.emitLog('info', `Query signals: normalized="${querySignals.normalized_brief}" domain="${querySignals.domain_terms}" scene="${querySignals.scene_terms}"`, 'SourcedImage', task.id);
-            if (sourceProvider === 'pixabay') {
-                const inferredCategory = this.inferPixabayCategory(queries.join(' '));
-                const minDims = this.resolvePixabayMinDimensions(dims.width, dims.height);
-                queryConfig = {
-                    ...queryConfig,
-                    lang: 'en',
-                    image_type: 'photo',
-                    safesearch: true,
-                    category: inferredCategory || undefined,
-                    min_width: minDims.min_width,
-                    min_height: minDims.min_height,
-                };
-            }
-            this.observability.emitLog('info', `${sourceProvider} query config: orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} content_filter=${queryConfig.content_filter} order_by=${queryConfig.order_by} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
+            this.observability.emitLog('info', `sourced query config: providers=${sourceProviderLabel} orientation=${queryConfig.orientation} per_page=${queryConfig.per_page} max_queries=${queryConfig.max_queries} candidate_cap=${queryConfig.candidate_cap}`, 'SourcedImage', task.id);
 
             const retrievalStart = Date.now();
-            let candidates = await this.fetchProviderCandidates(sourceProvider, queries, dims.width, dims.height, task.id);
+            let candidates = await this.fetchCombinedCandidates(unsplashQueries, pixabayQueries, dims.width, dims.height, task.id);
             phaseMs.retrieval_ms = Date.now() - retrievalStart;
-            const sourcedCandidates = candidates.map((c) => ({ query: c.query, image_url: c.imageUrl }));
+            const sourcedCandidates = candidates.map((c) => ({ provider: c.provider, query: c.query, image_url: c.imageUrl }));
             if (sourcedCandidates.length) {
-                const queryCounts = sourcedCandidates.reduce((acc: Record<string, number>, c) => {
-                    acc[c.query] = (acc[c.query] || 0) + 1;
+                const queryCounts = sourcedCandidates.reduce((acc: Record<string, number>, c: any) => {
+                    const key = `${c.provider}:${c.query}`;
+                    acc[key] = (acc[key] || 0) + 1;
                     return acc;
                 }, {});
                 const compact = Object.entries(queryCounts).map(([q, count]) => `"${q}"=${count}`).join(' ; ');
@@ -187,228 +179,100 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 });
             }
 
-            let best: { provider: string; imageUrl: string; query: string; clipScore: number } | undefined;
-            let clipDegradedMode = false;
-            let clipTopScore = 0;
             const configuredClipThreshold = Number(this.configService.get<string>('SOURCED_IMAGE_CLIP_THRESHOLD') || '');
-            let clipThreshold = Number.isFinite(configuredClipThreshold)
+            const clipThreshold = Number.isFinite(configuredClipThreshold)
                 ? Math.max(0, Math.min(1, configuredClipThreshold))
-                : (sourceProvider === 'pixabay' ? 0.65 : 0.75);
-            if (this.disableClip) {
-                phaseMs.clip_scoring_ms = 0;
-                best = { ...candidates[0], clipScore: 0 };
-                clipTopScore = 0;
-                this.observability.emitLog('info', 'Phase 3/6: CLIP disabled; selecting top retrieved candidate', 'SourcedImage', task.id);
-            } else {
-                const clipSampleCount = Math.min(candidates.length, 5);
-                this.observability.emitLog('info', `Phase 3/6: CLIP scoring ${clipSampleCount} candidates`, 'SourcedImage', task.id);
-                const clipStart = Date.now();
-                const scored: Array<{ provider: string; imageUrl: string; query: string; clipScore: number }> = [];
-                for (let idx = 0; idx < clipSampleCount; idx++) {
-                    const c = candidates[idx];
-                    try {
-                        const clip = await this.withTimeout(
-                            this.scoreClipCandidate(c.imageUrl, c.query, clipTarget),
-                            12000,
-                            'CLIP scoring timeout',
-                        );
-                        const clipScore = clip.final;
-                        scored.push({ ...c, clipScore });
-                        this.observability.emitLog(
-                            'info',
-                            `CLIP candidate ${idx + 1}/${candidates.length} | query="${c.query}" clip=${clipScore.toFixed(3)} q_clip=${clip.query.toFixed(3)} b_clip=${clip.brief.toFixed(3)} url=${c.imageUrl}`,
-                            'SourcedImage',
-                            task.id
-                        );
-                    } catch (error) {
-                        this.observability.emitLog('warn', `CLIP scoring failed for candidate: ${error?.message || error}`, 'SourcedImage', task.id);
+                : 0.65;
+            const configuredClipWeight = Number(this.configService.get<string>('SOURCED_IMAGE_COMPOSITE_CLIP_WEIGHT') || 0.7);
+            const clipWeight = Number.isFinite(configuredClipWeight) ? Math.max(0.1, Math.min(0.9, configuredClipWeight)) : 0.7;
+            const visionWeight = 1 - clipWeight;
+
+            const clipStart = Date.now();
+            const visionStart = Date.now();
+            const scoringLimit = pLimit(3);
+            const scoreTargets = candidates.slice(0, 10);
+            this.observability.emitLog('info', `Phase 3/6: CLIP+Vision scoring ${scoreTargets.length} candidates across ${sourceProviderLabel}`, 'SourcedImage', task.id);
+            const scoredCandidates = await Promise.all(
+                scoreTargets.map((c, idx) => scoringLimit(async () => {
+                    let clipScore = this.disableClip ? 0.5 : 0;
+                    let clipQ = clipScore;
+                    let clipB = clipScore;
+                    if (!this.disableClip) {
+                        try {
+                            const clip = await this.withTimeout(this.scoreClipCandidate(c.imageUrl, c.query, clipTarget), 12000, 'CLIP scoring timeout');
+                            clipScore = clip.final;
+                            clipQ = clip.query;
+                            clipB = clip.brief;
+                        } catch (error) {
+                            this.observability.emitLog('warn', `CLIP scoring failed for candidate ${idx + 1}: ${error?.message || error}`, 'SourcedImage', task.id);
+                            clipScore = 0;
+                            clipQ = 0;
+                            clipB = 0;
+                        }
                     }
-                }
-                phaseMs.clip_scoring_ms = Date.now() - clipStart;
-                if (!scored.length) {
-                    clipDegradedMode = true;
-                    best = { ...candidates[0], clipScore: 0 };
-                    clipTopScore = 0;
-                    this.observability.emitLog(
-                        'warn',
-                        'CLIP scorer unavailable for all candidates (check CLIP_SCORER_URL / start:clip-scorer); using retrieved sourced candidates with vision-only ranking',
-                        'SourcedImage',
-                        task.id
-                    );
-                } else {
-                    scored.sort((a, b) => b.clipScore - a.clipScore);
-                    best = scored[0];
-                    clipTopScore = Number(best?.clipScore || 0);
-                    const clipAvg = scored.reduce((sum, x) => sum + x.clipScore, 0) / scored.length;
+                    const visionBrief = this.buildVisionBrief(evaluationBrief, c.query);
+                    const vision = this.disableVision
+                        ? { score: 75, reason: 'Vision gate disabled by config.' }
+                        : await this.visionGradeCandidate(c.imageUrl, visionBrief, task, primaryDomain);
+                    const visionThreshold = this.disableVision ? 0 : this.resolveVisionThreshold(clipScore);
+                    const clipPass = this.disableClip || clipScore >= clipThreshold;
+                    const visionPass = this.disableVision || vision.score >= visionThreshold;
+                    const weightedScore = ((clipScore * clipWeight) + ((vision.score / 100) * visionWeight));
+                    const isMatch = clipPass && visionPass;
                     this.observability.emitLog(
                         'info',
-                        `CLIP summary: avg=${clipAvg.toFixed(3)} max=${clipTopScore.toFixed(3)} min=${Math.min(...scored.map((x) => x.clipScore)).toFixed(3)}`,
+                        `Candidate ${idx + 1}/${scoreTargets.length} | provider=${c.provider} query="${c.query}" clip=${clipScore.toFixed(3)} q_clip=${clipQ.toFixed(3)} b_clip=${clipB.toFixed(3)} vision=${vision.score} weighted=${weightedScore.toFixed(3)} match=${isMatch ? 'yes' : 'no'} url=${c.imageUrl}`,
                         'SourcedImage',
                         task.id
                     );
-                    if (sourceProvider === 'pixabay' && clipAvg < 0.6) {
-                        const nounOnly = this.extractCoreNoun((expanded as any)?.plan, brief);
-                        if (nounOnly && !queries.includes(nounOnly)) {
-                            this.observability.emitLog('warn', `CLIP avg ${clipAvg.toFixed(3)} < 0.600; retrying with core noun query="${nounOnly}"`, 'SourcedImage', task.id);
-                            const retryCandidates = await this.fetchPixabayCandidates([nounOnly], dims.width, dims.height, task.id);
-                            const retryScored: Array<{ provider: string; imageUrl: string; query: string; clipScore: number }> = [];
-                            for (let i = 0; i < Math.min(retryCandidates.length, 5); i++) {
-                                const rc = retryCandidates[i];
-                                try {
-                                    const rScore = await this.withTimeout(
-                                        this.scoreClipCandidate(rc.imageUrl, rc.query, clipTarget).then((x) => x.final),
-                                        12000,
-                                        'CLIP scoring timeout',
-                                    );
-                                    retryScored.push({ ...rc, clipScore: rScore });
-                                } catch {
-                                    // skip failed candidate
-                                }
-                            }
-                            if (retryScored.length) {
-                                retryScored.sort((a, b) => b.clipScore - a.clipScore);
-                                const retryAvg = retryScored.reduce((sum, x) => sum + x.clipScore, 0) / retryScored.length;
-                                const retryTop = retryScored[0].clipScore;
-                                this.observability.emitLog(
-                                    'info',
-                                    `CLIP retry summary: avg=${retryAvg.toFixed(3)} max=${retryTop.toFixed(3)} min=${Math.min(...retryScored.map((x) => x.clipScore)).toFixed(3)}`,
-                                    'SourcedImage',
-                                    task.id
-                                );
-                                if (retryTop > clipTopScore) {
-                                    candidates = retryCandidates;
-                                    best = retryScored[0];
-                                    clipTopScore = retryTop;
-                                    queries = this.uniqueQueries([nounOnly, ...queries]).slice(0, 5);
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!clipDegradedMode && (!best || best.clipScore < clipThreshold)) {
-                    if (sourceProvider === 'pixabay' && tierQueries.length > 1) {
-                        const tierRetry = await this.retryPixabayTiers(task, evaluationBrief, dims, tierQueries.slice(1), primaryDomain, queryConfig, clipThreshold);
-                        if (tierRetry?.best) {
-                            best = tierRetry.best;
-                            clipTopScore = tierRetry.clipTopScore;
-                            queries = tierRetry.queries;
-                            candidates = tierRetry.candidates;
-                            this.observability.emitLog('info', `Tiered fallback accepted candidate from ${tierRetry.tierLabel} (clip=${clipTopScore.toFixed(3)})`, 'SourcedImage', task.id);
-                        }
-                    }
-                }
-                if (!clipDegradedMode && (!best || best.clipScore < clipThreshold)) {
-                    this.observability.emitLog(
-                        'warn',
-                        `All sourced candidates below CLIP threshold (top=${clipTopScore.toFixed(3)} threshold=${clipThreshold.toFixed(2)}); falling back to story generator`,
-                        'SourcedImage',
-                        task.id
-                    );
-                    return this.fallbackToStory(task, {
-                        clip_score: Number(clipTopScore.toFixed(4)),
-                        clip_threshold: clipThreshold,
-                        clip_degraded_mode: false,
-                        sourced_fallback_reason: 'clip_below_threshold',
-                        validation_brief: evaluationBrief,
-                    }, {
-                        brief,
-                        queries,
-                        candidates: sourcedCandidates,
-                        queryConfig,
-                    });
-                }
+                    return {
+                        ...c,
+                        clipScore,
+                        visionScore: vision.score,
+                        visionReason: vision.reason,
+                        weightedScore,
+                        isMatch,
+                    };
+                }))
+            );
+            phaseMs.clip_scoring_ms = Date.now() - clipStart;
+            phaseMs.vision_gate_ms = Date.now() - visionStart;
+
+            const matched = scoredCandidates.filter((x) => x.isMatch);
+            if (!matched.length) {
+                const topWeighted = scoredCandidates.sort((a, b) => b.weightedScore - a.weightedScore)[0];
+                this.observability.emitLog(
+                    'warn',
+                    `No sourced candidates passed combined thresholds (clip>=${clipThreshold.toFixed(2)}); top weighted=${topWeighted?.weightedScore?.toFixed(3) || 'n/a'}. Falling back to story generator`,
+                    'SourcedImage',
+                    task.id
+                );
+                return this.fallbackToStory(task, {
+                    clip_score: Number((topWeighted?.clipScore || 0).toFixed(4)),
+                    vision_score: Number(topWeighted?.visionScore || 0),
+                    weighted_score: Number((topWeighted?.weightedScore || 0).toFixed(4)),
+                    clip_threshold: clipThreshold,
+                    sourced_fallback_reason: 'no_combined_match',
+                    validation_brief: evaluationBrief,
+                }, {
+                    brief,
+                    queries: this.uniqueQueries([...pixabayQueries, ...unsplashQueries]).slice(0, 10),
+                    candidates: sourcedCandidates,
+                    queryConfig,
+                });
             }
 
-            let visionGate: { score: number; reason: string };
-            if (this.disableVision) {
-                phaseMs.vision_gate_ms = 0;
-                visionGate = { score: 75, reason: 'Vision gate disabled by config.' };
-                this.observability.emitLog('info', 'Phase 4/6: Vision gate disabled by config', 'SourcedImage', task.id);
-            } else {
-                if (clipDegradedMode) {
-                    const visionStart = Date.now();
-                    const visionPool = candidates.slice(0, Math.min(5, candidates.length));
-                    this.observability.emitLog('warn', `Phase 4/6: CLIP unavailable; vision-ranking ${visionPool.length} candidates`, 'SourcedImage', task.id);
-                    let bestVision = -1;
-                    let bestVisionReason = 'Vision ranking unavailable';
-                    let bestByVision = best;
-                    for (let idx = 0; idx < visionPool.length; idx++) {
-                        const c = visionPool[idx];
-                        const visionBrief = this.buildVisionBrief(evaluationBrief, c.query);
-                        const v = await this.visionGradeCandidate(c.imageUrl, visionBrief, task, primaryDomain);
-                        this.observability.emitLog(
-                            'info',
-                            `Vision candidate ${idx + 1}/${visionPool.length} | query="${c.query}" vision=${v.score} url=${c.imageUrl}`,
-                            'SourcedImage',
-                            task.id
-                        );
-                        if (v.score > bestVision) {
-                            bestVision = v.score;
-                            bestVisionReason = v.reason;
-                            bestByVision = { ...c, clipScore: 0 };
-                        }
-                    }
-                    phaseMs.vision_gate_ms = Date.now() - visionStart;
-                    best = bestByVision;
-                    visionGate = { score: bestVision, reason: bestVisionReason };
-                    if (visionGate.score < this.degradedVisionThreshold) {
-                        this.observability.emitLog('warn', `Vision ranking top score ${visionGate.score} < ${this.degradedVisionThreshold}; falling back to story generation`, 'SourcedImage', task.id);
-                        return this.fallbackToStory(task, {
-                            clip_score: 0,
-                            clip_degraded_mode: true,
-                            vision_score: visionGate.score,
-                            sourced_fallback_reason: 'clip_down_and_vision_low',
-                            validation_brief: evaluationBrief,
-                        }, {
-                            brief,
-                            queries,
-                            candidates: sourcedCandidates,
-                            queryConfig,
-                        });
-                    }
-                    this.observability.emitLog('info', `Vision ranking selected sourced candidate (score=${visionGate.score})`, 'SourcedImage', task.id);
-                } else {
-                    const visionThreshold = this.resolveVisionThreshold(best.clipScore);
-                    this.observability.emitLog('info', `Phase 4/6: Vision aesthetic gate on top candidate (clip=${best.clipScore.toFixed(3)} threshold=${visionThreshold})`, 'SourcedImage', task.id);
-                    const visionStart = Date.now();
-                    const visionBrief = this.buildVisionBrief(evaluationBrief, best.query);
-                    visionGate = await this.visionGradeCandidate(best.imageUrl, visionBrief, task, primaryDomain);
-                    this.observability.emitLog(
-                        'info',
-                        `Vision gate score | query="${best.query}" clip=${best.clipScore.toFixed(3)} vision=${visionGate.score} url=${best.imageUrl}`,
-                        'SourcedImage',
-                        task.id
-                    );
-                    phaseMs.vision_gate_ms = Date.now() - visionStart;
-                    if (visionGate.score < visionThreshold) {
-                        if (sourceProvider === 'pixabay' && tierQueries.length > 1) {
-                            const tierRetry = await this.retryPixabayTiers(task, evaluationBrief, dims, tierQueries.slice(1), primaryDomain, queryConfig, clipThreshold);
-                            if (tierRetry?.best) {
-                                const retryVisionBrief = this.buildVisionBrief(evaluationBrief, tierRetry.best.query);
-                                const retryVision = await this.visionGradeCandidate(tierRetry.best.imageUrl, retryVisionBrief, task, primaryDomain);
-                                const retryThreshold = this.resolveVisionThreshold(tierRetry.best.clipScore);
-                                if (retryVision.score >= retryThreshold) {
-                                    best = tierRetry.best;
-                                    candidates = tierRetry.candidates;
-                                    queries = tierRetry.queries;
-                                    clipTopScore = tierRetry.clipTopScore;
-                                    visionGate = retryVision;
-                                    this.observability.emitLog('info', `Tiered fallback passed vision from ${tierRetry.tierLabel} (clip=${clipTopScore.toFixed(3)} vision=${visionGate.score})`, 'SourcedImage', task.id);
-                                }
-                            }
-                        }
-                    }
-                    if (visionGate.score < visionThreshold) {
-                        this.observability.emitLog('warn', `Vision gate score ${visionGate.score} < ${visionThreshold}; falling back to story generation`, 'SourcedImage', task.id);
-                        return this.fallbackToStory(task, { validation_brief: evaluationBrief }, {
-                            brief,
-                            queries,
-                            candidates: sourcedCandidates,
-                            queryConfig,
-                        });
-                    }
-                }
+            const selected = matched.sort((a, b) => b.weightedScore - a.weightedScore)[0];
+            if (matched.length > 1) {
+                this.observability.emitLog(
+                    'info',
+                    `Multiple matched candidates (${matched.length}); selecting highest weighted score=${selected.weightedScore.toFixed(3)}`,
+                    'SourcedImage',
+                    task.id
+                );
             }
+            const best = { provider: selected.provider, imageUrl: selected.imageUrl, query: selected.query, clipScore: selected.clipScore };
+            const visionGate = { score: selected.visionScore, reason: selected.visionReason };
 
             const started = Date.now();
             const imageBinary = await axios.get(best.imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
@@ -466,8 +330,9 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     metrics: {
                         total_ms: elapsedMs.toFixed(2),
                         clip_score: Number(best.clipScore.toFixed(4)),
-                        clip_degraded_mode: clipDegradedMode,
+                        clip_degraded_mode: false,
                         vision_score: visionGate.score,
+                        weighted_score: Number(selected.weightedScore.toFixed(4)),
                         query_expansion_ms: phaseMs.query_expansion_ms.toFixed(2),
                         retrieval_ms: phaseMs.retrieval_ms.toFixed(2),
                         clip_scoring_ms: phaseMs.clip_scoring_ms.toFixed(2),
@@ -494,23 +359,41 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         });
     }
 
-    private async fetchProviderCandidates(
-        provider: 'unsplash' | 'pixabay',
-        queries: string[],
+    private async fetchCombinedCandidates(
+        unsplashQueries: string[],
+        pixabayQueries: string[],
         width: number,
         height: number,
         taskId?: string,
     ): Promise<Array<{ provider: string; imageUrl: string; query: string }>> {
-        if (provider === 'pixabay') {
-            return this.fetchPixabayCandidates(queries, width, height, taskId);
-        }
-        return this.fetchUnsplashCandidates(queries, width, height, taskId);
+        const providers = this.resolveSourceProviders();
+        const unsplashPromise = providers.includes('unsplash')
+            ? this.fetchUnsplashCandidates(unsplashQueries, taskId).catch((error) => {
+                this.observability.emitLog('warn', `Unsplash fetch failed: ${error?.message || error}`, 'SourcedImage', taskId);
+                return [];
+            })
+            : Promise.resolve([]);
+        const pixabayPromise = providers.includes('pixabay')
+            ? this.fetchPixabayCandidates(pixabayQueries, width, height, taskId).catch((error) => {
+                this.observability.emitLog('warn', `Pixabay fetch failed: ${error?.message || error}`, 'SourcedImage', taskId);
+                return [];
+            })
+            : Promise.resolve([]);
+        const [u, p] = await Promise.all([unsplashPromise, pixabayPromise]);
+        const unsplashTop = u.filter((x) => x.provider === 'unsplash').slice(0, 5);
+        const pixabayTop = p.filter((x) => x.provider === 'pixabay').slice(0, 5);
+        const combined = [...unsplashTop, ...pixabayTop].slice(0, 10);
+        this.observability.emitLog(
+            'info',
+            `Parallel source fetch: unsplash=${unsplashTop.length} pixabay=${pixabayTop.length} total=${combined.length}`,
+            'SourcedImage',
+            taskId
+        );
+        return combined;
     }
 
     private async fetchUnsplashCandidates(
         queries: string[],
-        width: number,
-        height: number,
         taskId?: string,
     ): Promise<Array<{ provider: string; imageUrl: string; query: string }>> {
         const key = this.getUnsplashAccessKey();
@@ -720,9 +603,13 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         return out.slice(0, 10);
     }
 
-    private resolveSourceProvider(): 'unsplash' | 'pixabay' {
-        const raw = String(this.configService.get<string>('SOURCED_IMAGE_PROVIDER') || 'unsplash').toLowerCase().trim();
-        return raw === 'pixabay' ? 'pixabay' : 'unsplash';
+    private resolveSourceProviders(): Array<'unsplash' | 'pixabay'> {
+        const providers: Array<'unsplash' | 'pixabay'> = [];
+        const unsplashKey = this.getUnsplashAccessKey();
+        const pixabayKey = this.getPixabayAccessKey();
+        if (unsplashKey) providers.push('unsplash');
+        if (pixabayKey) providers.push('pixabay');
+        return providers;
     }
 
     private resolvePrimaryDomain(task: ImageTask, brief: string): string {
@@ -1189,7 +1076,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         sourcedArtifacts?: {
             brief: string;
             queries: string[];
-            candidates: Array<{ query: string; image_url: string }>;
+            candidates: Array<{ provider?: string; query: string; image_url: string }>;
             queryConfig?: Record<string, any>;
         }
     ): Promise<ImageGenerationResult> {
@@ -1225,7 +1112,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         data: {
             brief: string;
             queries: string[];
-            candidates: Array<{ query: string; image_url: string }>;
+            candidates: Array<{ provider?: string; query: string; image_url: string }>;
             queryConfig?: Record<string, any>;
         },
         taskId?: string,
@@ -1241,7 +1128,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 ...data.queries.map((q, i) => `  ${i + 1}. ${q}`),
                 `query_config: orientation=${queryConfig.orientation || 'n/a'} per_page=${queryConfig.per_page || 'n/a'} content_filter=${queryConfig.content_filter || 'n/a'} order_by=${queryConfig.order_by || 'n/a'}`,
                 `candidates (${data.candidates.length}):`,
-                ...data.candidates.map((c, i) => `  ${i + 1}. query="${c.query}" url="${c.image_url}"`),
+                ...data.candidates.map((c, i) => `  ${i + 1}. provider="${c.provider || 'unknown'}" query="${c.query}" url="${c.image_url}"`),
             ];
             const txt = lines.join('\n');
             await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'sourced-search-log.txt'), Buffer.from(txt, 'utf8'));
