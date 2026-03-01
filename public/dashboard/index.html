@@ -119,7 +119,7 @@
                 <div class="flex-1 flex flex-col min-h-0 bg-black">
                     <!-- Tabs -->
                     <div class="flex border-b border-slate-700 bg-surface">
-                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET']" :key="mode"
+                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'QUERY LAB']" :key="mode"
                             @click="logMode = mode"
                             class="flex-1 px-2 py-2 text-[10px] font-mono font-bold transition-colors border-b-2"
                             :class="logMode === mode ? 'border-neon text-neon bg-neon/5' : 'border-transparent text-slate-500 hover:text-slate-300'">
@@ -141,29 +141,7 @@
                             </option>
                         </select>
 
-                        <div class="mt-2 rounded border border-slate-700 bg-black/40 p-2">
-                            <div class="text-[10px] text-slate-500 font-mono">PIXABAY QUERY LAB (TEMP)</div>
-                            <div class="mt-1 flex gap-1">
-                                <input v-model="queryLabInput"
-                                    class="flex-1 bg-black border border-slate-700 text-xs text-slate-200 px-2 py-1 rounded font-mono focus:border-neon outline-none"
-                                    placeholder="e.g. dawn light tackle box lures" />
-                                <button @click="runQueryLab" :disabled="queryLabLoading"
-                                    class="text-[10px] px-2 py-1 rounded border border-neon/40 text-neon hover:bg-neon/10 disabled:opacity-50 disabled:cursor-not-allowed font-mono">
-                                    {{ queryLabLoading ? 'RUNNING...' : 'TEST' }}
-                                </button>
-                            </div>
-                            <div v-if="queryLabError" class="mt-1 text-[10px] text-danger font-mono">{{ queryLabError }}</div>
-                            <div v-if="queryLabResults?.length" class="mt-2 max-h-[26vh] overflow-y-auto matrix-scroll border border-slate-800 rounded p-1">
-                                <div v-for="item in queryLabResults" :key="`ql-${item.index}`" class="mb-1 border-b border-slate-800 pb-1 text-[10px] font-mono">
-                                    <div class="text-slate-300">#{{ item.index }} clip=<span class="text-neon">{{ item.clip_score ?? 'n/a' }}</span> vision=<span class="text-sky-300">{{ item.vision_score ?? 'n/a' }}</span></div>
-                                    <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">{{ item.image_url }}</a>
-                                    <div v-if="item.vision_reason" class="text-slate-500 mt-0.5 break-words">vision: {{ item.vision_reason }}</div>
-                                    <div v-if="item.clip_error" class="text-warning mt-0.5 break-words">clip: {{ item.clip_error }}</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[45vh] overflow-y-auto matrix-scroll">
+                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[30vh] overflow-y-auto matrix-scroll">
                             <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
                             <div class="mt-1 text-[11px] font-mono text-slate-300">
                                 <div>
@@ -198,6 +176,10 @@
                                     <span class="text-slate-500">Selected Query:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
                                 </div>
+                                <div v-if="getValidationBrief(selectedAssetTask)" class="mt-1">
+                                    <span class="text-slate-500 block">Validation Brief:</span>
+                                    <div class="ml-2 text-slate-200 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedAssetTask) }}</div>
+                                </div>
                                 <div v-if="selectedAssetTask?.details?.sourced_query_signals" class="mt-1">
                                     <span class="text-slate-500 block">Query Phrases:</span>
                                     <div class="ml-2 text-slate-300">normalized: {{ selectedAssetTask.details.sourced_query_signals.normalized_brief }}</div>
@@ -218,20 +200,52 @@
                                         - {{ query }}
                                     </div>
                                 </div>
-                                <div v-if="selectedAssetTask?.details?.sourced_candidates?.length" class="mt-1">
-                                    <span class="text-slate-500 block">Sourced Candidates:</span>
-                                    <div v-for="(candidate, cIdx) in selectedAssetTask.details.sourced_candidates" :key="`asset-c-${cIdx}`" class="ml-2">
-                                        <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
-                                            {{ candidate?.image_url }}
-                                        </a>
+                                <details v-if="selectedAssetTask?.details?.sourced_candidates?.length" class="mt-1">
+                                    <summary class="text-slate-500 cursor-pointer select-none">
+                                        Sourced Candidates ({{ selectedAssetTask.details.sourced_candidates.length }})
+                                    </summary>
+                                    <div class="ml-2 mt-1 max-h-28 overflow-y-auto matrix-scroll border border-slate-800 rounded p-1 bg-black/50 space-y-1">
+                                        <div v-for="(candidate, cIdx) in selectedAssetTask.details.sourced_candidates" :key="`asset-c-${cIdx}`" class="text-[10px] leading-tight">
+                                            <div class="text-slate-400">
+                                                #{{ cIdx + 1 }}
+                                                <span v-if="candidate?.provider" class="uppercase">{{ candidate.provider }}</span>
+                                                <span v-if="candidate?.query">| {{ candidate.query }}</span>
+                                            </div>
+                                            <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
+                                                {{ candidate?.image_url }}
+                                            </a>
+                                        </div>
                                     </div>
-                                </div>
+                                </details>
                                 <div v-if="selectedAssetFilter === '__styling__' && selectedAssetTask?.details?.styling_guidance" class="mt-1">
                                     <span class="text-slate-500 block">Styling:</span>
                                     <pre class="ml-2 text-slate-300 whitespace-pre-wrap break-words">{{ JSON.stringify(selectedAssetTask.details.styling_guidance, null, 2) }}</pre>
                                 </div>
                             </div>
                         </div>
+                    </div>
+
+                    <div v-if="logMode === 'VERBOSE' && selectedAssetTask && getValidationBrief(selectedAssetTask)" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 font-mono">VERBOSE CONTEXT (SELECTED ASSET)</div>
+                        <div class="mt-1 text-[11px] font-mono">
+                            <span class="text-slate-500">Validation Brief:</span>
+                            <div class="text-slate-200 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedAssetTask) }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Query Lab Controls -->
+                    <div v-if="logMode === 'QUERY LAB'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 font-mono">PIXABAY QUERY LAB</div>
+                        <div class="mt-1 flex gap-1">
+                            <input v-model="queryLabInput"
+                                class="flex-1 bg-black border border-slate-700 text-xs text-slate-200 px-2 py-1 rounded font-mono focus:border-neon outline-none"
+                                placeholder="e.g. dawn light tackle box lures" />
+                            <button @click="runQueryLab" :disabled="queryLabLoading"
+                                class="text-[10px] px-2 py-1 rounded border border-neon/40 text-neon hover:bg-neon/10 disabled:opacity-50 disabled:cursor-not-allowed font-mono">
+                                {{ queryLabLoading ? 'RUNNING...' : 'TEST' }}
+                            </button>
+                        </div>
+                        <div v-if="queryLabError" class="mt-1 text-[10px] text-danger font-mono">{{ queryLabError }}</div>
                     </div>
 
                     <!-- Log Stream -->
@@ -246,7 +260,14 @@
                                 class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700">CLEAR</button>
                         </div>
 
-                        <div v-if="filteredLogs.length === 0" class="text-center text-slate-600 mt-10 italic">
+                        <div v-if="logMode === 'QUERY LAB' && queryLabHistory.length" class="space-y-1">
+                            <div v-for="(h, idx) in queryLabHistory" :key="`ql-h-${idx}`"
+                                class="text-[10px] text-slate-300 border-l-2 border-neon/40 pl-2 py-1">
+                                query="{{ h.query }}" | clip avg={{ h.clip_avg }} max={{ h.clip_max }} min={{ h.clip_min }} | vision avg={{ h.vision_avg }} max={{ h.vision_max }} min={{ h.vision_min }}
+                            </div>
+                        </div>
+
+                        <div v-if="filteredLogs.length === 0 && !(logMode === 'QUERY LAB' && queryLabHistory.length)" class="text-center text-slate-600 mt-10 italic">
                             No logs to display...
                         </div>
 
@@ -289,7 +310,50 @@
 
             <!-- Right Panel: Visualizer (70%) -->
             <section class="flex-1 flex flex-col bg-obsidian relative overflow-y-auto p-8">
-                <div class="max-w-7xl mx-auto w-full space-y-12">
+                <div v-if="logMode === 'QUERY LAB'" class="max-w-7xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <div>
+                            <div class="text-xs text-neon font-mono uppercase tracking-widest mb-1">Query Lab</div>
+                            <h2 class="text-2xl font-bold text-white">Pixabay Retrieval + CLIP/Vision Scoring</h2>
+                        </div>
+                        <div class="text-xs font-mono text-slate-400">
+                            Query: <span class="text-slate-200">{{ queryLabInput || '-' }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="queryLabLoading" class="text-slate-400 font-mono text-sm">Running query...</div>
+                    <div v-else-if="!queryLabResults.length" class="text-center py-20 opacity-40">
+                        <h3 class="text-xl font-bold text-slate-400">No Query Results Yet</h3>
+                        <p class="text-slate-500">Enter a query in Query Lab and press TEST.</p>
+                    </div>
+                    <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <div v-for="item in queryLabResults" :key="`query-card-${item.index}`"
+                            class="bg-surface rounded-lg border border-slate-700 overflow-hidden shadow-lg">
+                            <div class="px-3 py-2 border-b border-slate-700/50 bg-surface-highlight/30 flex justify-between items-center text-xs font-mono">
+                                <span class="text-slate-300">Result #{{ item.index }}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-neon/15 border border-neon/30 text-neon">
+                                        CLIP {{ formatQueryScore(item.clip_score, 3) }}
+                                    </span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-500 text-slate-200">
+                                        VISION {{ formatQueryScore(item.vision_score, 0) }}
+                                    </span>
+                                </div>
+                            </div>
+                            <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="block bg-black/20 p-2">
+                                <img :src="item.image_url" class="w-full h-44 object-cover rounded border border-slate-700" />
+                            </a>
+                            <div class="p-3 text-xs font-mono space-y-1">
+                                <div><span class="text-slate-500">query:</span> <span class="text-slate-200">{{ item.query }}</span></div>
+                                <div v-if="item.vision_reason" class="text-slate-400 break-words">vision: {{ item.vision_reason }}</div>
+                                <div v-if="item.clip_error" class="text-warning break-words">clip: {{ item.clip_error }}</div>
+                                <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all block">{{ item.image_url }}</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="max-w-7xl mx-auto w-full space-y-12">
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
                         <div class="bg-surface border border-slate-700 rounded-lg p-3">
                             <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Hero</div>
@@ -564,6 +628,10 @@
                             Selected Query:
                             <span class="text-slate-200 ml-1">{{ selectedTask.details.source_query }}</span>
                         </div>
+                        <div v-if="getValidationBrief(selectedTask)" class="text-sm text-slate-400 font-mono mt-1">
+                            Validation Brief:
+                            <span class="text-slate-200 ml-1 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedTask) }}</span>
+                        </div>
                         <div v-if="selectedTask.details?.sourced_query_signals" class="mt-2">
                             <div class="text-xs text-slate-500 font-mono uppercase mb-1">Query Phrases</div>
                             <div class="text-xs text-slate-300 font-mono">normalized: {{ selectedTask.details.sourced_query_signals.normalized_brief }}</div>
@@ -615,6 +683,7 @@
                 const queryLabLoading = ref(false);
                 const queryLabError = ref('');
                 const queryLabResults = ref([]);
+                const queryLabHistory = ref([]);
 
                 const logs = ref([]);
                 const tasks = ref({}); // Map: taskId -> task
@@ -625,6 +694,10 @@
                 const filteredLogs = computed(() => {
                     if (logMode.value === 'VERBOSE') {
                         return logs.value;
+                    }
+
+                    if (logMode.value === 'QUERY LAB') {
+                        return [];
                     }
 
                     if (logMode.value === 'BY ASSET') {
@@ -859,6 +932,32 @@
                             return;
                         }
                         queryLabResults.value = Array.isArray(data?.results) ? data.results : [];
+                        const clipVals = queryLabResults.value
+                            .map((r) => Number(r?.clip_score))
+                            .filter((v) => Number.isFinite(v));
+                        const visionVals = queryLabResults.value
+                            .map((r) => Number(r?.vision_score))
+                            .filter((v) => Number.isFinite(v));
+                        const summarize = (vals, digits = 3) => {
+                            if (!vals.length) return { avg: 'n/a', max: 'n/a', min: 'n/a' };
+                            const sum = vals.reduce((a, b) => a + b, 0);
+                            const avg = (sum / vals.length).toFixed(digits);
+                            const max = Math.max(...vals).toFixed(digits);
+                            const min = Math.min(...vals).toFixed(digits);
+                            return { avg, max, min };
+                        };
+                        const clipStats = summarize(clipVals, 3);
+                        const visionStats = summarize(visionVals, 0);
+                        queryLabHistory.value.unshift({
+                            query: q,
+                            clip_avg: clipStats.avg,
+                            clip_max: clipStats.max,
+                            clip_min: clipStats.min,
+                            vision_avg: visionStats.avg,
+                            vision_max: visionStats.max,
+                            vision_min: visionStats.min,
+                        });
+                        if (queryLabHistory.value.length > 50) queryLabHistory.value = queryLabHistory.value.slice(0, 50);
                         addLog('success', `Query Lab complete: ${queryLabResults.value.length} results`, 'Frontend');
                     } catch (e) {
                         queryLabError.value = e?.message || String(e);
@@ -930,6 +1029,21 @@
                     const score = Number(raw);
                     if (!Number.isFinite(score)) return 'n/a';
                     return score.toFixed(3);
+                };
+
+                const getValidationBrief = (task) => {
+                    if (!task) return '';
+                    const fromDetails = String(task?.details?.validation_brief || '').trim();
+                    if (fromDetails) return fromDetails;
+                    const fromMetrics = String(task?.metrics?.validation_brief || '').trim();
+                    if (fromMetrics) return fromMetrics;
+                    return '';
+                };
+
+                const formatQueryScore = (raw, digits = 3) => {
+                    const score = Number(raw);
+                    if (!Number.isFinite(score)) return 'n/a';
+                    return score.toFixed(digits);
                 };
 
                 const extractUrls = (text) => {
@@ -1044,11 +1158,14 @@
                     selectedAssetTask, batchStylingGuidance,
                     logMode, selectedAssetFilter, filteredLogs,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
+                    queryLabHistory,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
-                    getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, extractUrls, selectAsset, taskLabel
+                    getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, formatQueryScore,
+                    getValidationBrief,
+                    extractUrls, selectAsset, taskLabel
                 };
 
             }
