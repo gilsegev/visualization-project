@@ -5,17 +5,20 @@ import * as pLimit from 'p-limit';
 import { performance } from 'perf_hooks';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { buildCustomThemeForPayload, resolveStyleSelection } from './style-registry.config';
+import { PostgresStorageService } from '../storage/postgres-storage.service';
 
 @Injectable()
 export class ImageOrchestratorService {
     private readonly logger = new Logger(ImageOrchestratorService.name);
     private readonly manifestTaskConcurrency: number;
     private readonly manifestTaskTimeoutMs: number;
+    private readonly durableQueueEnabled: boolean;
 
     constructor(
         private readonly imageRouter: ImageRouterService,
         private readonly strategyFactory: ImageStrategyFactory,
         private readonly observability: ObservabilityGateway,
+        private readonly storage: PostgresStorageService,
     ) {
         const configuredConcurrency = Number(process.env.MANIFEST_TASK_CONCURRENCY || 8);
         this.manifestTaskConcurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
@@ -25,6 +28,7 @@ export class ImageOrchestratorService {
         this.manifestTaskTimeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0
             ? configuredTimeout
             : 120000;
+        this.durableQueueEnabled = String(process.env.DURABLE_QUEUE_ENABLED || 'true').toLowerCase() === 'true';
     }
 
     private stopSignal = false;
@@ -425,6 +429,18 @@ export class ImageOrchestratorService {
                 stage: 'Queued for Generation'
             });
         });
+
+        if (this.durableQueueEnabled && this.storage.isEnabled()) {
+            await this.storage.enqueueDurableTasks(batchId, courseTitle, tasks);
+            this.observability.emitLog('info', `Durable queue enqueued ${tasks.length} tasks (batch=${batchId})`, 'Orchestrator', undefined, batchId);
+            return {
+                message: 'Batch queued',
+                mode: 'durable_queue',
+                batchId,
+                taskCount: tasks.length,
+                course: courseTitle,
+            };
+        }
 
         // Execution Loop
         const limit = pLimit(this.manifestTaskConcurrency);
