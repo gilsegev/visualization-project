@@ -562,7 +562,8 @@ export class ImageOrchestratorService {
             failed: failedCount,
             durationSeconds: parseFloat(duration),
             startedAt: batchStartedAt.toISOString(),
-            endedAt: new Date().toISOString()
+            endedAt: new Date().toISOString(),
+            courseTitle
         });
 
         return {

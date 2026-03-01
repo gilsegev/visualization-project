@@ -1,6 +1,7 @@
 import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { PostgresStorageService } from '../storage/postgres-storage.service';
 
 @WebSocketGateway({
     cors: {
@@ -12,6 +13,8 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     server: Server;
 
     private readonly logger = new Logger(ObservabilityGateway.name);
+
+    constructor(private readonly storage: PostgresStorageService) { }
 
     handleConnection(client: Socket) {
         this.logger.log(`Client connected: ${client.id}`);
@@ -49,6 +52,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
         };
     }) {
         if (this.server) this.server.emit('task_progress', data);
+        void this.storage.upsertTaskProgress(data);
 
         if (data.status === 'failed') {
             const fs = require('fs');
@@ -65,6 +69,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      * Emit a generic log message to the dashboard
      */
     emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string, batchId?: string) {
+        const timestamp = new Date().toISOString();
         if (this.server) {
             this.server.emit('system_log', {
                 level,
@@ -72,9 +77,10 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
                 context,
                 taskId,
                 batchId,
-                timestamp: new Date().toISOString()
+                timestamp
             });
         }
+        void this.storage.insertSystemLog({ level, message, context, taskId, batchId, timestamp });
 
         if (level === 'error' || level === 'warn') {
             const fs = require('fs');
@@ -101,6 +107,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     emitBatchInitialized(tasks: Record<string, any>) {
         this.logger.log(`Emitting batch_initialized with ${Object.keys(tasks).length} tasks`);
         if (this.server) this.server.emit('batch_initialized', tasks);
+        void this.storage.upsertBatchInitialized(tasks);
     }
 
     emitBatchFinalized(data: {
@@ -111,8 +118,10 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
         durationSeconds: number;
         startedAt: string;
         endedAt: string;
+        courseTitle?: string;
     }) {
         if (this.server) this.server.emit('batch_finalized', data);
+        void this.storage.upsertBatchFinalized(data);
     }
 
     @SubscribeMessage('open_folder')
