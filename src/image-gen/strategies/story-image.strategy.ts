@@ -56,7 +56,11 @@ export class StoryImageStrategy extends BaseImageStrategy {
             const paletteLocked = Boolean(constraints.paletteLockToCourseStyleGuide);
             const noBakedInText = Boolean(constraints.noBakedInText);
             const customTheme = (task as any)?.metadata?.custom_theme;
-            const styleGuide = String(customTheme?.image_style_suffix || 'Wellness illustration, simplified faceless silhouettes').trim();
+            const styleGuide = String(
+                (task as any)?.metadata?.story_style_suffix
+                || customTheme?.image_style_suffix
+                || 'Wellness illustration, simplified faceless silhouettes'
+            ).trim();
 
             const paletteHexes = this.asStringList((task as any)?.metadata?.course_palette_hexes)
                 .filter(v => /^#[0-9a-f]{3,8}$/i.test(v));

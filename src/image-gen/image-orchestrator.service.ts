@@ -4,6 +4,7 @@ import { ImageStrategyFactory } from './image-strategy.factory';
 import * as pLimit from 'p-limit';
 import { performance } from 'perf_hooks';
 import { ObservabilityGateway } from '../observability/observability.gateway';
+import { buildCustomThemeForPayload, resolveStyleProfileForManifest } from './style-registry.config';
 
 @Injectable()
 export class ImageOrchestratorService {
@@ -267,9 +268,17 @@ export class ImageOrchestratorService {
 
         const globalStyle = manifest.course?.globalStyleGuide || {};
         const designPhilosophy = manifest.course?.designPhilosophy || 'Professional';
+        const styleProfile = resolveStyleProfileForManifest(manifest);
         const coursePaletteHexes = Object.values(globalStyle.colorPalette || {})
             .map(v => String(v).trim())
             .filter(v => /^#[0-9a-f]{3,8}$/i.test(v));
+        this.observability.emitLog(
+            'info',
+            `Style profile selected: ${styleProfile.id} (infographic=${styleProfile.assets.infographics.theme_id}, chart=${styleProfile.assets.charts.chart_theme_id})`,
+            'Orchestrator',
+            undefined,
+            batchId
+        );
 
         // 1. Parse Manifest into Tasks
         const tasks: any[] = [];
@@ -288,7 +297,8 @@ export class ImageOrchestratorService {
                     : `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}.`;
 
                 // Support for specific theme overrides
-                const themeId = viz.metadata?.theme_id || viz.theme_id;
+                const themeId = viz.metadata?.theme_id || viz.theme_id || styleProfile.assets.infographics.theme_id;
+                const chartThemeId = viz.metadata?.chart_theme_id || viz.chart_theme_id || styleProfile.assets.charts.chart_theme_id;
 
                 const primaryFont = globalStyle.typography?.fontFamily?.[0] || 'Inter';
                 const headingSize = this.parsePtRangeToCss(globalStyle.typography?.heading, '1.8rem');
@@ -300,7 +310,10 @@ export class ImageOrchestratorService {
                 const taskType = this.resolveManifestTaskType(viz);
                 const taskPayload = this.buildManifestPayloadForTask(viz, taskType);
                 const stylingGuidance = {
+                    style_profile_id: styleProfile.id,
+                    style_assets: styleProfile.assets,
                     theme_id: themeId || null,
+                    chart_theme_id: chartThemeId || null,
                     design_philosophy: designPhilosophy || null,
                     color_palette: globalStyle.colorPalette || null,
                     typography: globalStyle.typography || null,
@@ -308,6 +321,13 @@ export class ImageOrchestratorService {
                     viz_style: viz.style || viz.styleGuide || viz.visualStyle || null,
                     dimensions: viz.dimensions || null,
                 };
+
+                const resolvedCustomTheme = buildCustomThemeForPayload(
+                    styleProfile,
+                    globalStyle,
+                    designPhilosophy,
+                    themeId
+                );
 
                 tasks.push({
                     id: `viz-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -325,27 +345,22 @@ export class ImageOrchestratorService {
                         dimensions: viz.dimensions,
                         template_type: this.resolveTemplateTypeForRouting(viz),
                         theme_id: themeId, // Pass through for strategy
+                        chart_theme_id: chartThemeId,
+                        style_profile_id: styleProfile.id,
+                        story_style_suffix: styleProfile.assets.generated_images.image_style_suffix,
+                        sourced_style_suffix: styleProfile.assets.sourced_images.image_style_suffix,
                         task_type: taskType,
                         styling_guidance: stylingGuidance,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,
                         target_audience: manifest.course?.targetAudience,
                         course_palette_hexes: coursePaletteHexes,
-                        // Only inject custom_theme if a global guide is provided AND no specific themeId is set
-                        custom_theme: (manifest.course?.globalStyleGuide && !themeId) ? {
-                            id: 'manifest_theme',
-                            name: 'Manifest Theme',
-                            primary_accent: globalStyle.colorPalette?.mutedTeal || '#5B9A8B',
-                            secondary_accent: globalStyle.colorPalette?.softCoral || globalStyle.colorPalette?.deepNavy || '#E8A598',
-                            background_main: globalStyle.colorPalette?.creamWhite || globalStyle.colorPalette?.warmSand || '#FAF9F6',
-                            text_main: globalStyle.colorPalette?.slateGrey || '#1A365D',
-                            text_secondary: globalStyle.colorPalette?.slateGrey || '#4A5568',
-                            font_family: fontImport,
-                            font_name: primaryFont,
-                            font_size_heading: headingSize,
-                            font_size_body: bodySize,
-                            glass_color: 'rgba(255, 255, 255, 0.72)',
-                            image_style_suffix: `${designPhilosophy}, flat vector style, geometric organic shapes, simplified silhouettes`
-                        } : undefined
+                        custom_theme: {
+                            ...resolvedCustomTheme,
+                            font_family: resolvedCustomTheme.font_family || fontImport,
+                            font_name: resolvedCustomTheme.font_name || primaryFont,
+                            font_size_heading: resolvedCustomTheme.font_size_heading || headingSize,
+                            font_size_body: resolvedCustomTheme.font_size_body || bodySize,
+                        }
                     }
                 });
             });
@@ -467,16 +482,33 @@ export class ImageOrchestratorService {
                             output_dir: result?.payload?.output_dir,
                             image_prompts: result?.payload?.image_prompts,
                             blueprint_prompt: result?.payload?.blueprint_prompt,
-                        source_query: result?.payload?.source_query,
-                        sourced_queries: result?.payload?.sourced_queries,
-                        sourced_candidates: result?.payload?.sourced_candidates,
-                        sourced_query_signals: result?.payload?.sourced_query_signals,
-                        sourced_query_config: result?.payload?.sourced_query_config,
-                        styling_guidance: task?.metadata?.styling_guidance
-                    }
-                };
+                            source_provider: result?.payload?.source_provider,
+                            source_query: result?.payload?.source_query,
+                            sourced_queries: result?.payload?.sourced_queries,
+                            sourced_candidates: result?.payload?.sourced_candidates,
+                            sourced_query_signals: result?.payload?.sourced_query_signals,
+                            sourced_query_config: result?.payload?.sourced_query_config,
+                            clip_score: result?.payload?.metrics?.clip_score,
+                            vision_score: result?.payload?.metrics?.vision_score,
+                            styling_guidance: task?.metadata?.styling_guidance
+                        }
+                    };
 
                     this.observability.emitProgress(finalResult as any);
+                    if (result?.payload?.source_type === 'sourced_image' || result?.payload?.source_type === 'sourced_image_fallback_story') {
+                        const provider = result?.payload?.source_provider || 'unknown';
+                        const clip = result?.payload?.metrics?.clip_score;
+                        const vision = result?.payload?.metrics?.vision_score;
+                        const clipLabel = Number.isFinite(Number(clip)) ? Number(clip).toFixed(3) : 'n/a';
+                        const visionLabel = Number.isFinite(Number(vision)) ? Number(vision).toString() : 'n/a';
+                        this.observability.emitLog(
+                            'info',
+                            `Sourced scoring summary | provider=${provider} clip=${clipLabel} vision=${visionLabel}`,
+                            'Orchestrator',
+                            task.id,
+                            batchId
+                        );
+                    }
                     return finalResult;
 
                 } catch (error) {

@@ -1023,7 +1023,11 @@ export class SourcedImageStrategy extends BaseImageStrategy {
     }
 
     private async visionGradeCandidate(imageUrl: string, brief: string, task: ImageTask, primaryDomain = ''): Promise<{ score: number; reason: string }> {
-        const style = String((task as any)?.metadata?.custom_theme?.image_style_suffix || '').trim();
+        const style = String(
+            (task as any)?.metadata?.sourced_style_suffix
+            || (task as any)?.metadata?.custom_theme?.image_style_suffix
+            || ''
+        ).trim();
         if (!this.openai) {
             return { score: 75, reason: 'OPENROUTER_API_KEY unavailable; vision gate bypassed with neutral pass score.' };
         }
