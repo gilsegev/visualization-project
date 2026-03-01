@@ -22,7 +22,7 @@ export class QueryOptimizer {
                     messages: [
                         {
                             role: 'system',
-                            content: 'You are a visual keyword extractor. Identify the single most visually dominant object for the concept and one high-value aesthetic tag (example: sunlight, minimal, macro). Return strict JSON only: {"core_noun":"...","aesthetic_tag":"...","queries":["..."]}. Rules: 1) Output exactly 5 short queries. 2) Each query is 2 or 3 words only. 3) Most queries must include core_noun. 4) Avoid generic phrases.'
+                            content: 'You optimize stock-photo search terms for semantic match. Return strict JSON only: {"core_noun":"...","aesthetic_tag":"...","queries":["..."]}. Rules: 1) Output exactly 5 queries. 2) Each query must be 2-4 words, lowercase. 3) Include core_noun in at least 2 queries. 4) Include at least 2 action+object queries (e.g., install motherboard, holding fish, open tackle box). 5) Use concrete visible nouns/actions from the brief (objects, setting, action). 6) Avoid generic words and quality/style fillers (e.g. high-quality, curated, professional, minimalist). 7) Do not use person-only nouns as core_noun when a concrete object exists (bad: angler, person; good: fish, tackle box, rules sign). 8) No punctuation, no commas, no camera jargon unless explicitly required.'
                         },
                         { role: 'user', content: brief }
                     ]
@@ -34,26 +34,30 @@ export class QueryOptimizer {
             const raw = String(response.choices?.[0]?.message?.content || '');
             const jsonText = raw.replace(/```json|```/g, '').trim();
             const parsed = JSON.parse(jsonText || '{}');
-            const coreNoun = this.normalize(parsed?.core_noun || '').split(' ').slice(0, 2).join(' ').trim();
+            const coreNoun = this.resolveCoreNoun(parsed?.core_noun, brief);
             const aestheticTag = this.normalize(parsed?.aesthetic_tag || '').split(' ').slice(0, 1).join(' ').trim();
-            const fallbackSubject = this.mostFrequentNoun(options?.lessonTitle || '');
+            const fallbackSubject = this.mostFrequentNoun(`${brief} ${options?.lessonTitle || ''}`);
             const resolvedSubject = this.normalize(parsed?.subject || coreNoun || fallbackSubject || 'subject').split(' ').slice(0, 2).join(' ').trim();
             const requiredTerms = Array.isArray(parsed?.required_terms)
                 ? parsed.required_terms.map((t: string) => this.normalize(t)).filter(Boolean).slice(0, 5)
                 : [];
             const directQueries = Array.isArray(parsed?.queries)
-                ? parsed.queries.map((q: string) => this.normalize(q)).filter(Boolean).map((q: string) => q.split(' ').slice(0, 3).join(' ')).slice(0, 5)
+                ? parsed.queries.map((q: string) => this.normalize(q)).filter(Boolean).map((q: string) => q.split(' ').slice(0, 4).join(' ')).slice(0, 5)
                 : [];
-            const seedFromRequired = requiredTerms.join(' ').trim();
+            const requiredSeed = requiredTerms.slice(0, 2).join(' ').trim();
             const q = this.unique([
                 ...directQueries,
-                seedFromRequired,
+                `${coreNoun} ${requiredSeed}`.trim(),
                 `${coreNoun} ${aestheticTag}`.trim(),
                 `${coreNoun}`.trim(),
-            ]).filter(Boolean).slice(0, 5);
-            if (!q.length) throw new Error('empty keyword expansion');
+            ])
+                .map((s: string) => s.split(' ').slice(0, 4).join(' ').trim())
+                .filter((s: string) => s.split(' ').filter(Boolean).length >= 2)
+                .slice(0, 5);
+            const anchored = this.enforceCoreNoun(q, coreNoun).slice(0, 5);
+            if (!anchored.length) throw new Error('empty keyword expansion');
             return {
-                queries: this.applyQuality(q, withQuality),
+                queries: this.applyQuality(anchored, withQuality),
                 mode: 'llm',
                 plan: {
                     subject: resolvedSubject || 'subject',
@@ -94,6 +98,20 @@ export class QueryOptimizer {
         return [...new Set(input.map((v) => this.normalize(v)).filter(Boolean))];
     }
 
+    private enforceCoreNoun(queries: string[], coreNoun: string): string[] {
+        const anchor = this.normalize(coreNoun).split(' ').slice(0, 2).join(' ').trim();
+        if (!anchor) return queries;
+        const minAnchored = Math.min(2, queries.length);
+        let anchoredCount = queries.filter((q) => q.includes(anchor)).length;
+        const out = [...queries];
+        for (let i = 0; i < out.length && anchoredCount < minAnchored; i++) {
+            if (out[i].includes(anchor)) continue;
+            out[i] = `${anchor} ${out[i]}`.split(' ').filter(Boolean).slice(0, 4).join(' ');
+            anchoredCount++;
+        }
+        return this.unique(out);
+    }
+
     private mostFrequentNoun(input: string): string {
         const stop = new Set([
             'the', 'and', 'for', 'with', 'from', 'into', 'over', 'under', 'your', 'this', 'that', 'these', 'those',
@@ -113,6 +131,16 @@ export class QueryOptimizer {
             }
         }
         return best;
+    }
+
+    private resolveCoreNoun(candidate: any, brief: string): string {
+        const generic = new Set(['angler', 'fisherman', 'person', 'people', 'man', 'woman', 'user']);
+        const raw = this.normalize(String(candidate || '')).split(' ').slice(0, 2).join(' ').trim();
+        if (raw && !generic.has(raw.split(' ')[0])) return raw;
+        const concrete = this.normalize(brief)
+            .split(' ')
+            .find((w) => ['fish', 'tackle', 'lure', 'bait', 'dock', 'sign', 'rules', 'license', 'pc', 'motherboard', 'memory'].includes(w));
+        return (concrete || raw || '').trim();
     }
 
     private normalize(input: string): string {
