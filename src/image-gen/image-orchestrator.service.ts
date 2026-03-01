@@ -4,7 +4,7 @@ import { ImageStrategyFactory } from './image-strategy.factory';
 import * as pLimit from 'p-limit';
 import { performance } from 'perf_hooks';
 import { ObservabilityGateway } from '../observability/observability.gateway';
-import { buildCustomThemeForPayload, resolveStyleProfileForManifest } from './style-registry.config';
+import { buildCustomThemeForPayload, resolveStyleSelection } from './style-registry.config';
 
 @Injectable()
 export class ImageOrchestratorService {
@@ -268,13 +268,13 @@ export class ImageOrchestratorService {
 
         const globalStyle = manifest.course?.globalStyleGuide || {};
         const designPhilosophy = manifest.course?.designPhilosophy || 'Professional';
-        const styleProfile = resolveStyleProfileForManifest(manifest);
+        const defaultStyle = resolveStyleSelection(manifest, {});
         const coursePaletteHexes = Object.values(globalStyle.colorPalette || {})
             .map(v => String(v).trim())
             .filter(v => /^#[0-9a-f]{3,8}$/i.test(v));
         this.observability.emitLog(
             'info',
-            `Style profile selected: ${styleProfile.id} (infographic=${styleProfile.assets.infographics.theme_id}, chart=${styleProfile.assets.charts.chart_theme_id})`,
+            `Style profile selected: ${defaultStyle.profile.id} (infographic=${defaultStyle.infographicThemeId}, chart=${defaultStyle.chartThemeId})`,
             'Orchestrator',
             undefined,
             batchId
@@ -296,9 +296,10 @@ export class ImageOrchestratorService {
                     ? `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}. Context: ${vizContext}`
                     : `Create a ${viz.type} for the lesson "${lesson.title}": ${vizDescription}.`;
 
-                // Support for specific theme overrides
-                const themeId = viz.metadata?.theme_id || viz.theme_id || styleProfile.assets.infographics.theme_id;
-                const chartThemeId = viz.metadata?.chart_theme_id || viz.chart_theme_id || styleProfile.assets.charts.chart_theme_id;
+                const styleSelection = resolveStyleSelection(manifest, viz);
+                const styleProfile = styleSelection.profile;
+                const themeId = styleSelection.infographicThemeId;
+                const chartThemeId = styleSelection.chartThemeId;
 
                 const primaryFont = globalStyle.typography?.fontFamily?.[0] || 'Inter';
                 const headingSize = this.parsePtRangeToCss(globalStyle.typography?.heading, '1.8rem');
@@ -314,6 +315,8 @@ export class ImageOrchestratorService {
                     style_assets: styleProfile.assets,
                     theme_id: themeId || null,
                     chart_theme_id: chartThemeId || null,
+                    course_styling: manifest.course?.styling || null,
+                    viz_styling: viz.styling || null,
                     design_philosophy: designPhilosophy || null,
                     color_palette: globalStyle.colorPalette || null,
                     typography: globalStyle.typography || null,
@@ -347,8 +350,8 @@ export class ImageOrchestratorService {
                         theme_id: themeId, // Pass through for strategy
                         chart_theme_id: chartThemeId,
                         style_profile_id: styleProfile.id,
-                        story_style_suffix: styleProfile.assets.generated_images.image_style_suffix,
-                        sourced_style_suffix: styleProfile.assets.sourced_images.image_style_suffix,
+                        story_style_suffix: styleSelection.generatedImageStyleSuffix,
+                        sourced_style_suffix: styleSelection.sourcedImageStyleSuffix,
                         task_type: taskType,
                         styling_guidance: stylingGuidance,
                         original_instruction: `Description: ${vizDescription}${vizContext ? ` | Context: ${vizContext}` : ''}`,

@@ -12,6 +12,14 @@ export interface StyleProfile {
   };
 }
 
+export interface StyleSelection {
+  profile: StyleProfile;
+  infographicThemeId: string;
+  chartThemeId: string;
+  generatedImageStyleSuffix: string;
+  sourcedImageStyleSuffix: string;
+}
+
 export const STYLE_REGISTRY: Record<string, StyleProfile> = {
   harbor_mist_system: {
     id: 'harbor_mist_system',
@@ -104,6 +112,15 @@ export const STYLE_REGISTRY: Record<string, StyleProfile> = {
 };
 
 export function resolveStyleProfileForManifest(manifest: any): StyleProfile {
+  const requestedProfileId = String(
+    manifest?.course?.styling?.system?.profile_id
+    || manifest?.course?.styling?.profile_id
+    || ''
+  ).trim();
+  if (requestedProfileId && STYLE_REGISTRY[requestedProfileId]) {
+    return STYLE_REGISTRY[requestedProfileId];
+  }
+
   const course = manifest?.course || {};
   const guide = course?.globalStyleGuide || {};
   const lessonTitles = Array.isArray(manifest?.lessons)
@@ -130,6 +147,42 @@ export function resolveStyleProfileForManifest(manifest: any): StyleProfile {
   return best;
 }
 
+export function resolveStyleSelection(manifest: any, viz: any): StyleSelection {
+  const profile = resolveStyleProfileForManifest(manifest);
+  const courseStyling = manifest?.course?.styling?.system || manifest?.course?.styling || {};
+  const vizStyling = viz?.styling || {};
+
+  const infographicThemeId =
+    String(vizStyling?.infographic_theme_id || '').trim()
+    || String(viz?.metadata?.theme_id || viz?.theme_id || '').trim()
+    || String(courseStyling?.infographic_theme_id || '').trim()
+    || profile.assets.infographics.theme_id;
+
+  const chartThemeId =
+    String(vizStyling?.chart_theme_id || '').trim()
+    || String(viz?.metadata?.chart_theme_id || viz?.chart_theme_id || '').trim()
+    || String(courseStyling?.chart_theme_id || '').trim()
+    || profile.assets.charts.chart_theme_id;
+
+  const generatedImageStyleSuffix =
+    String(vizStyling?.generated_image_style_suffix || '').trim()
+    || String(courseStyling?.generated_image_style_suffix || '').trim()
+    || profile.assets.generated_images.image_style_suffix;
+
+  const sourcedImageStyleSuffix =
+    String(vizStyling?.sourced_image_style_suffix || '').trim()
+    || String(courseStyling?.sourced_image_style_suffix || '').trim()
+    || profile.assets.sourced_images.image_style_suffix;
+
+  return {
+    profile,
+    infographicThemeId,
+    chartThemeId,
+    generatedImageStyleSuffix,
+    sourcedImageStyleSuffix,
+  };
+}
+
 export function buildCustomThemeForPayload(
   profile: StyleProfile,
   globalStyle: any,
@@ -142,16 +195,62 @@ export function buildCustomThemeForPayload(
   const palette = Object.values(paletteObj)
     .map((v) => String(v).trim())
     .filter((v) => /^#[0-9a-f]{3,8}$/i.test(v));
+  const colorKeys = Object.fromEntries(
+    Object.entries(paletteObj || {}).map(([k, v]) => [String(k).toLowerCase(), String(v).trim()])
+  ) as Record<string, string>;
   const typo = globalStyle?.typography || {};
   const primaryFont = typo?.fontFamily?.[0] || base.font_name || 'Inter';
 
+  const pickByKey = (keys: string[]): string | null => {
+    for (const [k, v] of Object.entries(colorKeys)) {
+      if (!/^#[0-9a-f]{3,8}$/i.test(v)) continue;
+      if (keys.some((needle) => k.includes(needle))) return v;
+    }
+    return null;
+  };
+
+  const backgroundCandidate = pickByKey(['background', 'bg', 'midnight', 'ink', 'deep', 'navy', 'black', 'charcoal']);
+  const textCandidate = pickByKey(['text', 'softtext', 'paper', 'white', 'light', 'ivory']);
+  const primaryCandidate = pickByKey(['primary', 'accent', 'neon', 'signal', 'teal', 'blue', 'cyan']);
+  const secondaryCandidate = pickByKey(['secondary', 'warm', 'orange', 'amber', 'gold', 'coral', 'pink']);
+
+  const background = backgroundCandidate || base.background_main;
+  let textMain = textCandidate || base.text_main;
+  const primaryAccent = primaryCandidate || palette[0] || base.primary_accent;
+  const secondaryAccent = secondaryCandidate || palette[1] || base.secondary_accent || base.primary_accent;
+
+  const luminance = (hex: string): number => {
+    const normalized = String(hex || '').replace('#', '').trim();
+    if (!/^[0-9a-f]{3,8}$/i.test(normalized)) return 0.5;
+    const full = normalized.length === 3
+      ? normalized.split('').map((c) => c + c).join('')
+      : normalized.slice(0, 6);
+    const r = parseInt(full.slice(0, 2), 16) / 255;
+    const g = parseInt(full.slice(2, 4), 16) / 255;
+    const b = parseInt(full.slice(4, 6), 16) / 255;
+    const f = (x: number) => (x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4));
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  };
+
+  const contrastRatio = (a: string, b: string): number => {
+    const la = luminance(a);
+    const lb = luminance(b);
+    const [L1, L2] = la > lb ? [la, lb] : [lb, la];
+    return (L1 + 0.05) / (L2 + 0.05);
+  };
+
+  // Ensure readable body text regardless of payload palette choices.
+  if (contrastRatio(background, textMain) < 4.5) {
+    textMain = luminance(background) < 0.35 ? '#EAF2FF' : '#1A2433';
+  }
+
   return {
     ...base,
-    primary_accent: palette[0] || base.primary_accent,
-    secondary_accent: palette[1] || base.secondary_accent || base.primary_accent,
-    background_main: palette[4] || base.background_main,
-    text_main: palette[5] || base.text_main,
-    text_secondary: base.text_secondary || base.text_main,
+    primary_accent: primaryAccent,
+    secondary_accent: secondaryAccent,
+    background_main: background,
+    text_main: textMain,
+    text_secondary: base.text_secondary || textMain,
     font_name: primaryFont,
     font_family: /^https?:\/\//i.test(primaryFont)
       ? primaryFont

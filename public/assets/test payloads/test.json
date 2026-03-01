@@ -1,0 +1,476 @@
+﻿{
+    "course":  {
+                   "title":  "Mindfulness \u0026 Stress Management",
+                   "targetAudience":  "General public seeking mental well-being; varied educational backgrounds; ages 20-60; non-clinical",
+                   "designPhilosophy":  "Warm, approachable, calming. Non-clinical, non-childish, non-corporate. Like a well-designed wellness book from an independent bookshop.",
+                   "learningScienceRationale":  [
+                                                    {
+                                                        "principle":  "Dual Coding Theory",
+                                                        "theorist":  "Paivio",
+                                                        "description":  "Pair verbal and visual encoding to strengthen memory retention."
+                                                    },
+                                                    {
+                                                        "principle":  "Cognitive Load Theory",
+                                                        "theorist":  "Sweller",
+                                                        "description":  "Use structured diagrams to reduce working memory load and offload spatial reasoning."
+                                                    },
+                                                    {
+                                                        "principle":  "Signaling Principle",
+                                                        "theorist":  "Mayer",
+                                                        "description":  "Use arrows, color groupings, and sequences to guide attention and reduce extraneous processing."
+                                                    }
+                                                ],
+                   "globalStyleGuide":  {
+                                            "colorPalette":  {
+                                                                 "mutedTeal":  "#5B9A8B",
+                                                                 "warmSand":  "#F5E6D3",
+                                                                 "softCoral":  "#E8A598",
+                                                                 "slateGrey":  "#4A5568",
+                                                                 "creamWhite":  "#FAF9F6",
+                                                                 "deepNavy":  "#1A365D",
+                                                                 "gold":  "#D4A574"
+                                                             },
+                                            "typography":  {
+                                                               "fontFamily":  [
+                                                                                  "Inter",
+                                                                                  "Source Sans Pro"
+                                                                              ],
+                                                               "heading":  "18-22pt bold",
+                                                               "body":  "12-14pt regular",
+                                                               "decorativeFontsAllowed":  false
+                                                           },
+                                            "layout":  {
+                                                           "whitespace":  "Generous",
+                                                           "clutter":  "None",
+                                                           "principle":  "Every element must earn its place"
+                                                       },
+                                            "illustrationStyle":  {
+                                                                      "design":  "Flat with subtle gradients",
+                                                                      "shapes":  "Geometric but organic",
+                                                                      "humanFigures":  "Simplified silhouettes; no faces; universal"
+                                                                  },
+                                            "mood":  "Calm, grounded, professional"
+                                        },
+                   "styling":  {
+                                   "version":  "2026-03-ux-contrast-v1",
+                                   "system":  {
+                                                  "profile_id":  "tidepool_contrast_system",
+                                                  "infographic_theme_id":  "tidepool_contrast",
+                                                  "chart_theme_id":  "chart_tidepool",
+                                                  "generated_image_style_suffix":  "calm wellness illustration, soft contrast, clear figure-ground separation, text-free symbolism",
+                                                  "sourced_image_style_suffix":  "gentle lifestyle photo, calm mood, natural tones, respectful human-centered framing"
+                                              },
+                                   "accessibility":  {
+                                                         "min_contrast_ratio":  4.5,
+                                                         "enforce_per_panel_text_contrast":  true,
+                                                         "avoid_light_text_on_light_cards":  true
+                                                     }
+                               }
+               },
+    "lessons":  [
+                    {
+                        "lessonId":  "lesson-1",
+                        "title":  "Recognizing the Stress Syndrome and Its Impact",
+                        "description":  "Biological stress pathways and multi-domain stress effects.",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "1.1",
+                                                   "title":  "The Stress Response: Two Pathways",
+                                                   "type":  "vertical_flowchart",
+                                                   "dimensions":  {
+                                                                      "width":  800,
+                                                                      "height":  1100,
+                                                                      "orientation":  "portrait"
+                                                                  },
+                                                   "placement":  "Full-width or half-page print",
+                                                   "purpose":  "Visualize SAM vs HPA stress pathways and chronic activation risk.",
+                                                   "structure":  {
+                                                                     "topSection":  {
+                                                                                        "label":  "STRESSOR",
+                                                                                        "nextNode":  "HYPOTHALAMUS"
+                                                                                    },
+                                                                     "branches":  [
+                                                                                      {
+                                                                                          "name":  "SAM AXIS",
+                                                                                          "timeframe":  "Seconds to Minutes",
+                                                                                          "sequence":  [
+                                                                                                           "Sympathetic Nervous System activates",
+                                                                                                           "Adrenal Medulla releases Norepinephrine \u0026 Epinephrine"
+                                                                                                       ],
+                                                                                          "effects":  [
+                                                                                                          "Heart rate increases",
+                                                                                                          "Blood pressure rises",
+                                                                                                          "Blood redirected to muscles"
+                                                                                                      ]
+                                                                                      },
+                                                                                      {
+                                                                                          "name":  "HPA AXIS",
+                                                                                          "timeframe":  "Minutes to Hours",
+                                                                                          "sequence":  [
+                                                                                                           "Hypothalamus releases CRH",
+                                                                                                           "Pituitary gland releases ACTH",
+                                                                                                           "Adrenal Cortex secretes Cortisol"
+                                                                                                       ],
+                                                                                          "effects":  [
+                                                                                                          "Sustained energy mobilization",
+                                                                                                          "Immune modulation",
+                                                                                                          "Metabolic changes"
+                                                                                                      ]
+                                                                                      }
+                                                                                  ],
+                                                                     "convergenceNote":  "When activation becomes chronic, these protective responses turn harmful.",
+                                                                     "footerNote":  "Acute stress activates both pathways. Chronic stress keeps them running."
+                                                                 },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_tidepool"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.2",
+                                                   "title":  "The Four Domains of Stress -- Body Map",
+                                                   "type":  "annotated_silhouette",
+                                                   "dimensions":  {
+                                                                      "width":  1000,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "purpose":  "Organize stress symptoms into body, action, thinking, and feeling domains.",
+                                                   "domains":  [
+                                                                   {
+                                                                       "name":  "BODY",
+                                                                       "category":  "Physiological",
+                                                                       "symptoms":  [
+                                                                                        "Elevated heart rate \u0026 blood pressure",
+                                                                                        "Digestive disruption (IBS, nausea)",
+                                                                                        "Muscle tension \u0026 headaches",
+                                                                                        "Weakened immune response",
+                                                                                        "Shallow, rapid breathing"
+                                                                                    ]
+                                                                   },
+                                                                   {
+                                                                       "name":  "ACTIONS",
+                                                                       "category":  "Behavioral",
+                                                                       "symptoms":  [
+                                                                                        "Sleep disruption",
+                                                                                        "Appetite changes (over- or under-eating)",
+                                                                                        "Social withdrawal",
+                                                                                        "Increased irritability",
+                                                                                        "Procrastination"
+                                                                                    ]
+                                                                   },
+                                                                   {
+                                                                       "name":  "THINKING",
+                                                                       "category":  "Cognitive",
+                                                                       "symptoms":  [
+                                                                                        "Difficulty concentrating",
+                                                                                        "Memory lapses",
+                                                                                        "Impaired decision-making",
+                                                                                        "Reduced mental flexibility",
+                                                                                        "Rumination \u0026 racing thoughts"
+                                                                                    ]
+                                                                   },
+                                                                   {
+                                                                       "name":  "FEELINGS",
+                                                                       "category":  "Emotional",
+                                                                       "symptoms":  [
+                                                                                        "Heightened anxiety \u0026 worry",
+                                                                                        "Mood swings",
+                                                                                        "Feeling overwhelmed",
+                                                                                        "Low mood or hopelessness",
+                                                                                        "Difficulty relaxing"
+                                                                                    ]
+                                                                   }
+                                                               ],
+                                                   "footer":  "Stress affects the whole person. These symptoms often appear together and reinforce each other.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               }
+                                           ]
+                    },
+                    {
+                        "lessonId":  "lesson-2",
+                        "title":  "Practicing Deep Breathing for Immediate Calm",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "2.1",
+                                                   "title":  "Fight-or-Flight vs. Rest-and-Digest",
+                                                   "type":  "split_panel_comparison",
+                                                   "dimensions":  {
+                                                                      "width":  1100,
+                                                                      "height":  700,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "panels":  [
+                                                                  {
+                                                                      "side":  "left",
+                                                                      "system":  "Sympathetic",
+                                                                      "label":  "Fight or Flight",
+                                                                      "characteristics":  [
+                                                                                              "Heart rate: Elevated",
+                                                                                              "Breathing: Rapid, shallow",
+                                                                                              "Muscles: Tense",
+                                                                                              "Digestion: Suppressed",
+                                                                                              "Cortisol: High",
+                                                                                              "Focus: Scattered, hypervigilant"
+                                                                                          ]
+                                                                  },
+                                                                  {
+                                                                      "side":  "right",
+                                                                      "system":  "Parasympathetic",
+                                                                      "label":  "Rest and Digest",
+                                                                      "characteristics":  [
+                                                                                              "Heart rate: Steady",
+                                                                                              "Breathing: Slow, deep",
+                                                                                              "Muscles: Relaxed",
+                                                                                              "Digestion: Active",
+                                                                                              "Cortisol: Normalized",
+                                                                                              "Focus: Present, calm"
+                                                                                          ]
+                                                                  }
+                                                              ],
+                                                   "bridgeElement":  "DEEP BREATHING",
+                                                   "bottomNote":  "You cannot be in fight-or-flight and rest-and-digest at the same time. Slow, deep breathing activates the vagus nerve and shifts your body toward calm.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "2.2",
+                                                   "title":  "The Breathing Cycle -- A Guided Visual",
+                                                   "type":  "circular_flow",
+                                                   "dimensions":  {
+                                                                      "width":  900,
+                                                                      "height":  900,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "inhale":  {
+                                                                  "count":  4,
+                                                                  "instruction":  "Breathe in through your nose. Feel your belly rise."
+                                                              },
+                                                   "exhale":  {
+                                                                  "count":  6,
+                                                                  "instruction":  "Breathe out through your mouth. Feel your belly fall."
+                                                              },
+                                                   "centerText":  {
+                                                                      "primary":  "Repeat for 5 minutes",
+                                                                      "secondary":  "6-10 breaths per minute"
+                                                                  },
+                                                   "steps":  [
+                                                                 "Find a comfortable position. Sit or lie down. Relax your shoulders.",
+                                                                 "Notice your natural breath. Don\u0027t change it yet. Just observe.",
+                                                                 "Place one hand on belly, one on chest. Focus on belly movement.",
+                                                                 "If you feel light-headed, reduce effort. Comfort over performance."
+                                                             ],
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               }
+                                           ]
+                    },
+                    {
+                        "lessonId":  "lesson-3",
+                        "title":  "Introduction to Cognitive Behavioral Therapy (CBT) Principles",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "3.1",
+                                                   "title":  "The CBT Triangle in Action",
+                                                   "type":  "annotated_triangle",
+                                                   "dimensions":  {
+                                                                      "width":  1000,
+                                                                      "height":  1000,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "vertices":  [
+                                                                    {
+                                                                        "name":  "THOUGHTS",
+                                                                        "subtitle":  "What you tell yourself"
+                                                                    },
+                                                                    {
+                                                                        "name":  "FEELINGS",
+                                                                        "subtitle":  "What you experience emotionally"
+                                                                    },
+                                                                    {
+                                                                        "name":  "BEHAVIORS",
+                                                                        "subtitle":  "What you do"
+                                                                    }
+                                                                ],
+                                                   "relationships":  [
+                                                                         "Thoughts shape feelings; feelings trigger thoughts",
+                                                                         "Feelings drive actions; actions affect feelings",
+                                                                         "Actions reinforce or challenge thoughts"
+                                                                     ],
+                                                   "scenarios":  {
+                                                                     "unhelpfulCycle":  {
+                                                                                            "thought":  "I got a low grade. I\u0027m not smart enough.",
+                                                                                            "feeling":  "Sadness. Hopelessness.",
+                                                                                            "behavior":  "Stop studying. Avoid academic tasks."
+                                                                                        },
+                                                                     "reframedCycle":  {
+                                                                                           "thought":  "The exam was hard. I can improve my strategy.",
+                                                                                           "feeling":  "Motivation. Determination.",
+                                                                                           "behavior":  "Seek help. Modify study approach."
+                                                                                       }
+                                                                 },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "3.2",
+                                                   "title":  "Common Cognitive Distortions -- A Reference Guide",
+                                                   "type":  "grid_reference_card",
+                                                   "dimensions":  {
+                                                                      "width":  1050,
+                                                                      "height":  650,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "distortions":  [
+                                                                       {
+                                                                           "name":  "All-or-Nothing Thinking",
+                                                                           "definition":  "Seeing everything in black and white, with no middle ground.",
+                                                                           "example":  "I got a B+, not an A. I\u0027m a total failure."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Catastrophizing",
+                                                                           "definition":  "Jumping to the worst possible outcome.",
+                                                                           "example":  "This headache must mean something is seriously wrong with me."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Overgeneralization",
+                                                                           "definition":  "One bad event becomes a never-ending pattern.",
+                                                                           "example":  "One bad date means I\u0027ll never find a partner."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Mental Filter",
+                                                                           "definition":  "Fixating on negatives while filtering out positives.",
+                                                                           "example":  "9 people smiled at my talk, but I can only think about the 1 who yawned."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Mind Reading",
+                                                                           "definition":  "Assuming you know what others think -- usually the worst.",
+                                                                           "example":  "She didn\u0027t say hello, so she must dislike me."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Disqualifying the Positive",
+                                                                           "definition":  "Dismissing good things as flukes or irrelevant.",
+                                                                           "example":  "They only praised my work to be polite."
+                                                                       },
+                                                                       {
+                                                                           "name":  "Personalization",
+                                                                           "definition":  "Blaming yourself for things outside your control.",
+                                                                           "example":  "The party was quiet -- it must be my fault."
+                                                                       }
+                                                                   ],
+                                                   "summaryNote":  "Everyone experiences these from time to time. The goal isn\u0027t to never have distorted thoughts -- it\u0027s to notice them and ask: \u0027Is this thought a fact, or a habit?\u0027",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               }
+                                           ]
+                    },
+                    {
+                        "lessonId":  "lesson-4",
+                        "title":  "Developing Healthy Coping Mechanisms",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "4.1",
+                                                   "title":  "The Coping Trade-Off -- Short-Term Relief vs. Long-Term Growth",
+                                                   "type":  "diverging_trajectory",
+                                                   "dimensions":  {
+                                                                      "width":  1100,
+                                                                      "height":  600,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "choicePoint":  "HOW YOU COPE",
+                                                   "paths":  [
+                                                                 {
+                                                                     "type":  "Unhealthy",
+                                                                     "trajectory":  "Immediate rise then steep decline",
+                                                                     "labels":  [
+                                                                                    "Temporary relief",
+                                                                                    "Feels better... for now",
+                                                                                    "Consequences accumulate"
+                                                                                ],
+                                                                     "outcomes":  [
+                                                                                      "Dependency risk",
+                                                                                      "Health decline",
+                                                                                      "Unresolved stress compounds",
+                                                                                      "Guilt and shame"
+                                                                                  ]
+                                                                 },
+                                                                 {
+                                                                     "type":  "Healthy",
+                                                                     "trajectory":  "Initial dip then steady upward growth",
+                                                                     "labels":  [
+                                                                                    "Requires effort",
+                                                                                    "Resilience builds over time"
+                                                                                ],
+                                                                     "outcomes":  [
+                                                                                      "Emotional regulation improves",
+                                                                                      "Physical health strengthens",
+                                                                                      "Relationships deepen",
+                                                                                      "Self-efficacy grows"
+                                                                                  ]
+                                                                 }
+                                                             ],
+                                                   "bottomNote":  "Unhealthy coping borrows from your future self. Healthy coping invests in them.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "4.2",
+                                                   "title":  "The Resilience Tree",
+                                                   "type":  "metaphorical_tree_diagram",
+                                                   "dimensions":  {
+                                                                      "width":  800,
+                                                                      "height":  1100,
+                                                                      "orientation":  "portrait"
+                                                                  },
+                                                   "roots":  [
+                                                                 "Social Support",
+                                                                 "Self-Compassion",
+                                                                 "Sense of Purpose",
+                                                                 "Past Experience",
+                                                                 "Basic Needs Met"
+                                                             ],
+                                                   "trunk":  {
+                                                                 "label":  "CORE RESILIENCE",
+                                                                 "elements":  [
+                                                                                  "Cognitive Flexibility",
+                                                                                  "Emotional Regulation",
+                                                                                  "Problem-Solving Skills"
+                                                                              ]
+                                                             },
+                                                   "branches":  [
+                                                                    "Better Stress Management",
+                                                                    "Stronger Relationships",
+                                                                    "Greater Self-Efficacy",
+                                                                    "Emotional Well-Being",
+                                                                    "Growth Through Adversity"
+                                                                ],
+                                                   "subtitle":  "Resilience isn\u0027t a fixed trait -- it\u0027s a living system you cultivate.",
+                                                   "footer":  "Strengthen the roots, and the tree withstands any storm.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "tidepool_contrast"
+                                                               }
+                                               }
+                                           ]
+                    }
+                ],
+    "production":  {
+                       "recommendedWorkflow":  [
+                                                   "Generate visual elements first",
+                                                   "Export at 2x resolution",
+                                                   "Overlay text manually in design tool",
+                                                   "Verify color consistency across all visuals"
+                                               ],
+                       "placementGuidelines":  [
+                                                   "Full-width placement",
+                                                   "Precede with introductory sentence",
+                                                   "Follow with referencing sentence",
+                                                   "Never orphan visual without narrative anchor"
+                                               ]
+                   }
+}

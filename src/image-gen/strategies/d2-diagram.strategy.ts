@@ -20,6 +20,7 @@ export class D2DiagramStrategy extends BaseImageStrategy {
     private readonly openai: OpenAI;
     private readonly d2Bin: string;
     private readonly renderTimeoutMs: number;
+    private readonly d2ConfiguredBin: string;
 
     constructor(
         private readonly configService: ConfigService,
@@ -28,7 +29,8 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         private readonly observability: ObservabilityGateway,
     ) {
         super();
-        this.d2Bin = this.configService.get<string>('D2_BIN') || 'd2';
+        this.d2ConfiguredBin = this.configService.get<string>('D2_BIN') || 'd2';
+        this.d2Bin = this.resolveD2Bin(this.d2ConfiguredBin);
         this.renderTimeoutMs = Math.max(1000, Number(this.configService.get<string>('D2_RENDER_TIMEOUT_MS') || 5000));
         const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
         this.openai = new OpenAI({
@@ -266,12 +268,39 @@ Constraints:
         } catch (error: any) {
             const code = String(error?.code || '').toUpperCase();
             if (code === 'ENOENT') {
-                this.observability.emitLog('warn', `D2 executable not found (D2_BIN=${this.d2Bin}); using fallback renderer`, 'D2Strategy', taskId);
+                this.observability.emitLog(
+                    'warn',
+                    `D2 executable not found (configured=${this.d2ConfiguredBin}, resolved=${this.d2Bin}). Install D2 or set D2_BIN to d2.exe path. Using fallback renderer.`,
+                    'D2Strategy',
+                    taskId
+                );
                 return false;
             }
             const stderr = String(error?.stderr || error?.message || '').trim();
             throw new Error(`D2 render failed: ${stderr || 'unknown error'}`);
         }
+    }
+
+    private resolveD2Bin(configured: string): string {
+        const raw = String(configured || 'd2').trim() || 'd2';
+        const candidates = [
+            raw,
+            path.join(process.cwd(), 'tools', 'd2', 'd2.exe'),
+            path.join(process.cwd(), 'bin', 'd2.exe'),
+            path.join(process.cwd(), 'd2.exe'),
+        ];
+        if (process.platform === 'win32') {
+            const pathDirs = String(process.env.PATH || '').split(';').filter(Boolean);
+            for (const d of pathDirs) candidates.push(path.join(d, 'd2.exe'));
+        }
+        for (const c of candidates) {
+            try {
+                if (!c) continue;
+                if (!c.includes(path.sep)) return c; // command form ("d2")
+                if (fs.existsSync(c)) return c;
+            } catch { /* ignore */ }
+        }
+        return raw;
     }
 
     private buildReviewHtml(theme: Theme, width: number, height: number): string {
@@ -417,13 +446,16 @@ html,body{margin:0;width:${width}px;height:${height}px;overflow:hidden;backgroun
             const ty = y + 34;
             const dy = y + 62;
             const midX = x + cardW / 2;
+            const fillColor = i % 2 === 0 ? c6 : c4;
+            const cardTitle = this.pickReadableTextColor(fillColor, text);
+            const cardBody = this.mixHex(cardTitle, fillColor, 0.30);
             const arrow = i < nodes.length - 1
                 ? `<line x1="${centerX}" y1="${y + cardH}" x2="${centerX}" y2="${y + cardH + gap - 8}" stroke="${stroke}" stroke-width="2.5"/><polygon points="${centerX - 6},${y + cardH + gap - 14} ${centerX + 6},${y + cardH + gap - 14} ${centerX},${y + cardH + gap - 4}" fill="${stroke}"/>`
                 : '';
             return `
-<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="14" fill="${i % 2 === 0 ? c6 : c4}" stroke="${stroke}" stroke-width="2.2" stroke-dasharray="4 2"/>
-<text x="${midX}" y="${ty}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${text}">${title}</text>
-<text x="${midX}" y="${dy}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${muted}" opacity="0.96">${desc}</text>
+<rect x="${x}" y="${y}" width="${cardW}" height="${cardH}" rx="14" fill="${fillColor}" stroke="${stroke}" stroke-width="2.2" stroke-dasharray="4 2"/>
+<text x="${midX}" y="${ty}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${cardTitle}">${title}</text>
+<text x="${midX}" y="${dy}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${cardBody}" opacity="0.98">${desc}</text>
 ${arrow}`;
         }).join('\n');
 
@@ -491,10 +523,12 @@ ${cards}
             const midX = x + w / 2;
             const titleText = this.escapeXml(this.truncate(title, 48));
             const descText = this.escapeXml(this.truncate(desc, 62));
+            const cardTitle = this.pickReadableTextColor(fill, text);
+            const cardBody = this.mixHex(cardTitle, fill, 0.30);
             return `
 <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="${fill}" stroke="${stroke}" stroke-width="2.2" stroke-dasharray="4 2"/>
-<text x="${midX}" y="${y + 34}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${text}">${titleText}</text>
-<text x="${midX}" y="${y + 60}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${muted}" opacity="0.96">${descText}</text>`;
+<text x="${midX}" y="${y + 34}" text-anchor="middle" font-family="${fontFamily}" font-size="19" font-weight="700" fill="${cardTitle}">${titleText}</text>
+<text x="${midX}" y="${y + 60}" text-anchor="middle" font-family="${fontFamily}" font-size="15" font-weight="500" fill="${cardBody}" opacity="0.98">${descText}</text>`;
         };
 
         const arrows: string[] = [];
@@ -648,6 +682,31 @@ ${cards.join('\n')}
             : normalized.slice(0, 6);
         const value = parseInt(full, 16);
         return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+    }
+
+    private pickReadableTextColor(backgroundHex: string, preferred: string): string {
+        const light = '#EAF2FF';
+        const dark = '#12233D';
+        const preferredRatio = this.contrastRatio(backgroundHex, preferred);
+        if (preferredRatio >= 4.5) return preferred;
+        const lightRatio = this.contrastRatio(backgroundHex, light);
+        const darkRatio = this.contrastRatio(backgroundHex, dark);
+        return lightRatio >= darkRatio ? light : dark;
+    }
+
+    private contrastRatio(a: string, b: string): number {
+        const la = this.relativeLuminance(a);
+        const lb = this.relativeLuminance(b);
+        const [L1, L2] = la > lb ? [la, lb] : [lb, la];
+        return (L1 + 0.05) / (L2 + 0.05);
+    }
+
+    private relativeLuminance(hex: string): number {
+        const { r, g, b } = this.hexToRgb(hex);
+        const norm = [r, g, b].map((v) => v / 255).map((v) => (
+            v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+        ));
+        return (0.2126 * norm[0]) + (0.7152 * norm[1]) + (0.0722 * norm[2]);
     }
 
     private escapeXml(input: string): string {
