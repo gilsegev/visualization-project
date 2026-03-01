@@ -2,21 +2,44 @@ import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDiscon
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
+import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
 
-@WebSocketGateway({
-    cors: {
-        origin: '*', // Allow all origins for simplicity in this local tool
-    },
-})
+@WebSocketGateway()
 export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
     private readonly logger = new Logger(ObservabilityGateway.name);
+    private readonly allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
 
     constructor(private readonly storage: PostgresStorageService) { }
 
-    handleConnection(client: Socket) {
+    async handleConnection(client: Socket) {
+        const origin = String(client.handshake?.headers?.origin || '').trim() || undefined;
+        if (!isAllowedOrigin(origin, this.allowedOrigins)) {
+            this.logger.warn(`Rejected socket from disallowed origin: ${origin}`);
+            client.emit('auth_error', { message: 'Origin not allowed' });
+            client.disconnect(true);
+            return;
+        }
+        if (this.storage.isEnabled()) {
+            const authKey = client.handshake?.auth?.apiKey;
+            const headerKey = client.handshake?.headers?.['x-api-key'];
+            const queryKey = client.handshake?.query?.apiKey;
+            const apiKey = String(authKey || headerKey || queryKey || '').trim();
+            if (!apiKey) {
+                client.emit('auth_error', { message: 'Missing API key' });
+                client.disconnect(true);
+                return;
+            }
+            const user = await this.storage.validateApiKey(apiKey);
+            if (!user) {
+                client.emit('auth_error', { message: 'Invalid API key' });
+                client.disconnect(true);
+                return;
+            }
+            (client.data as any).authUser = user;
+        }
         this.logger.log(`Client connected: ${client.id}`);
         client.emit('connection_ack', { message: 'Connected to Visualization Observability' });
     }
