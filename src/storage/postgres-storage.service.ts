@@ -356,6 +356,42 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    async terminateWorkerAndRecoverTask(workerId: string, reason: string): Promise<string | null> {
+        if (!this.pool || !workerId) return null;
+        const rows = await this.queryRows<{ current_task_id: string | null }>(
+            `SELECT current_task_id FROM worker_heartbeats WHERE worker_id = $1 LIMIT 1`,
+            [workerId]
+        );
+        const taskId = rows[0]?.current_task_id || null;
+        await this.query(
+            `UPDATE worker_heartbeats
+             SET status = 'TERMINATED',
+                 current_task_id = NULL,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('gc_reason', $2, 'gc_at', NOW()::text),
+                 updated_at = NOW()
+             WHERE worker_id = $1`,
+            [workerId, String(reason || 'orphan_worker_cleanup').slice(0, 300)]
+        );
+        if (taskId) {
+            await this.query(
+                `UPDATE tasks
+                 SET queue_status = 'queued',
+                     status = 'pending',
+                     stage = 'Queued (Worker GC)',
+                     lease_owner = NULL,
+                     lease_expires_at = NULL,
+                     last_heartbeat_at = NULL,
+                     available_at = NOW(),
+                     error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] Worker GC: ' || $2, 20000),
+                     updated_at = NOW()
+                 WHERE task_id = $1
+                   AND queue_status = 'processing'`,
+                [taskId, String(reason || 'orphan_worker_cleanup').slice(0, 300)]
+            );
+        }
+        return taskId;
+    }
+
     async recoverTimedOutWorkers(timeoutMs = 30000): Promise<{ workers: string[]; tasks: string[] }> {
         if (!this.pool) return { workers: [], tasks: [] };
         const timeoutSec = Math.max(5, Math.floor(timeoutMs / 1000));
