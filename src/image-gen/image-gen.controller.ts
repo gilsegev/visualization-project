@@ -1,11 +1,16 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import OpenAI from 'openai';
 import { ImageOrchestratorService } from './image-orchestrator.service';
 import { LocalClipService } from './services/local-clip.service';
+import { ApiKeyGuard } from '../auth/api-key.guard';
+import { AdminGuard } from '../auth/admin.guard';
+import { GenerateContentDto, GenerateManifestDto, SourceDebugDto } from './dto/image-gen-request.dto';
+import { enforceManifestLimits } from '../common/validation/payload-limits';
 
 @Controller('generate')
+@UseGuards(ApiKeyGuard)
 export class ImageGenController {
     private readonly openai: OpenAI | null;
 
@@ -26,38 +31,32 @@ export class ImageGenController {
     }
 
     @Post()
-    async generate(@Body('content') content: string) {
-        if (!content) {
-            return { error: 'Content is required in body' };
-        }
-
-        return this.orchestrator.generateCourse(content);
+    async generate(@Body() body: GenerateContentDto) {
+        return this.orchestrator.generateCourse(body.content);
     }
 
     @Post('manifest')
-    async generateFromManifest(@Body() manifest: any) {
-        if (!manifest || (!manifest.visualizations && !manifest.lessons)) {
-            return { error: 'Valid manifest with visualizations or lessons is required' };
-        }
+    async generateFromManifest(@Body() manifest: GenerateManifestDto, @Req() req: any) {
+        enforceManifestLimits(manifest);
+        const userId = Number(req?.authUser?.id);
+        const authContext = Number.isFinite(userId) ? { userId } : undefined;
         // Fire and forget for the API response, but the service now does the work
-        this.orchestrator.generateFromManifest(manifest).catch(err => {
+        this.orchestrator.generateFromManifest(manifest, authContext).catch(err => {
             console.error('Batch error:', err);
         });
         return { message: 'Batch started', taskCount: (manifest.lessons || manifest.course?.lessons || []).length };
     }
 
     @Post('stop')
+    @UseGuards(AdminGuard)
     async stopBatch() {
         this.orchestrator.stopBatch();
         return { message: 'Batch stop signal sent' };
     }
 
     @Post('source-debug')
-    async sourceDebug(@Body() body: any) {
+    async sourceDebug(@Body() body: SourceDebugDto) {
         const query = String(body?.query || '').trim();
-        if (!query) {
-            return { error: 'query is required' };
-        }
 
         const provider = String(this.configService.get<string>('SOURCED_IMAGE_PROVIDER') || 'pixabay').toLowerCase();
         if (provider !== 'pixabay') {
