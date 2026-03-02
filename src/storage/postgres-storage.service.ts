@@ -8,6 +8,7 @@ export type AuthUser = {
     email: string;
     name: string;
     role: string;
+    daily_quota: number | null;
 };
 
 export type QueueTaskRow = {
@@ -399,6 +400,78 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         return { workers, tasks: taskIds };
     }
 
+    async getUserDailyBudget(userId: number): Promise<{
+        dailyQuotaUsd: number | null;
+        estimatedUsd: number;
+        actualUsd: number;
+        taskCount: number;
+    }> {
+        if (!this.pool || !Number.isFinite(userId) || userId <= 0) {
+            return { dailyQuotaUsd: null, estimatedUsd: 0, actualUsd: 0, taskCount: 0 };
+        }
+        const rows = await this.queryRows<{ daily_quota: any; metadata: any }>(
+            `SELECT u.daily_quota, t.metadata
+             FROM users u
+             LEFT JOIN tasks t
+               ON t.user_id = u.id
+              AND t.created_at >= date_trunc('day', NOW())
+             WHERE u.id = $1`,
+            [Number(userId)]
+        );
+        if (!rows.length) return { dailyQuotaUsd: null, estimatedUsd: 0, actualUsd: 0, taskCount: 0 };
+        const dailyQuotaUsd = rows[0]?.daily_quota != null ? this.toUsd(rows[0].daily_quota) : null;
+        let estimatedUsd = 0;
+        let actualUsd = 0;
+        let taskCount = 0;
+        for (const row of rows) {
+            if (!row?.metadata || typeof row.metadata !== 'object') continue;
+            taskCount++;
+            const cost = row.metadata?.cost || {};
+            estimatedUsd += this.toUsd(cost?.estimated_usd ?? row.metadata?.metrics?.estimated_cost_usd);
+            actualUsd += this.toUsd(cost?.actual_usd ?? row.metadata?.metrics?.actual_cost_usd);
+        }
+        return { dailyQuotaUsd, estimatedUsd, actualUsd, taskCount };
+    }
+
+    async recordTaskCost(taskId: string, cost: { estimated_usd?: number; actual_usd?: number; provider?: string; model?: string; }): Promise<void> {
+        if (!this.pool || !taskId) return;
+        const payload: any = {};
+        if (Number.isFinite(cost?.estimated_usd)) payload.estimated_usd = Number(cost.estimated_usd).toFixed(6);
+        if (Number.isFinite(cost?.actual_usd)) payload.actual_usd = Number(cost.actual_usd).toFixed(6);
+        if (cost?.provider) payload.provider = String(cost.provider).slice(0, 120);
+        if (cost?.model) payload.model = String(cost.model).slice(0, 180);
+        payload.recorded_at = new Date().toISOString();
+        await this.query(
+            `UPDATE tasks
+             SET metadata = COALESCE(metadata, '{}'::jsonb)
+                 || jsonb_build_object(
+                    'cost',
+                    COALESCE(metadata->'cost', '{}'::jsonb) || $2::jsonb
+                 ),
+                 updated_at = NOW()
+             WHERE task_id = $1`,
+            [taskId, JSON.stringify(payload)]
+        );
+    }
+
+    async failDurableTaskImmediately(taskId: string, errorMessage: string): Promise<void> {
+        if (!this.pool || !taskId) return;
+        await this.query(
+            `UPDATE tasks
+             SET queue_status = 'failed',
+                 status = 'failed',
+                 stage = 'Failed',
+                 error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] ' || $2, 20000),
+                 lease_owner = NULL,
+                 lease_expires_at = NULL,
+                 last_heartbeat_at = NULL,
+                 available_at = NULL,
+                 updated_at = NOW()
+             WHERE task_id = $1`,
+            [taskId, String(errorMessage || 'Unknown error').slice(0, 2000)]
+        );
+    }
+
     async updateBatchRunProgress(batchId: string): Promise<void> {
         if (!this.pool || !batchId) return;
         const rows = await this.queryRows<{ total: number; completed: number; failed: number }>(
@@ -591,6 +664,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 email TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'viewer',
+                daily_quota NUMERIC(12,6) DEFAULT 25,
                 api_key_hash TEXT UNIQUE NOT NULL,
                 active BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -680,6 +754,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             CREATE INDEX IF NOT EXISTS idx_system_logs_batch_task ON system_logs(batch_id, task_id);
         `);
         await this.query(`
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_quota NUMERIC(12,6) DEFAULT 25;
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS user_id BIGINT;
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS queue_status TEXT DEFAULT 'queued';
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS payload JSONB;
@@ -695,6 +770,11 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS signature TEXT;
             ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS metadata JSONB;
         `);
+    }
+
+    private toUsd(value: any): number {
+        const amount = Number(value);
+        return Number.isFinite(amount) && amount > 0 ? amount : 0;
     }
 
     private async query(sql: string, params: any[] = []): Promise<void> {
@@ -732,7 +812,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         const hash = this.hashKey(apiKey);
         if (!hash) return null;
         const rows = await this.queryRows<AuthUser>(
-            `SELECT id, email, name, role
+            `SELECT id, email, name, role, daily_quota
              FROM users
              WHERE api_key_hash = $1 AND active = true
              LIMIT 1`,

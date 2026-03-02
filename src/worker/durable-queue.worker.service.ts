@@ -18,6 +18,10 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     private readonly janitorEveryMs = Math.max(30000, Number(process.env.DURABLE_QUEUE_JANITOR_EVERY_MS || 60000));
     private readonly workerHeartbeatMs = Math.max(2000, Number(process.env.WORKER_HEARTBEAT_MS || process.env.DURABLE_QUEUE_HEARTBEAT_MS || 10000));
     private readonly workerHost = hostname();
+    private readonly costStoryUsd = Math.max(0, Number(process.env.TASK_COST_STORY_IMAGE_USD || 0.02));
+    private readonly costSourcedUsd = Math.max(0, Number(process.env.TASK_COST_SOURCED_IMAGE_USD || 0.03));
+    private readonly costDataVizUsd = Math.max(0, Number(process.env.TASK_COST_DATA_VIZ_USD || 0.01));
+    private readonly costInfographicUsd = Math.max(0, Number(process.env.TASK_COST_INFOGRAPHIC_USD || 0.01));
 
     private running = false;
     private janitorTimer: NodeJS.Timeout | null = null;
@@ -79,6 +83,8 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         const taskId = String(row.task_id || task?.id || '').trim();
         const batchId = String(row.batch_id || task?.metadata?.batch_id || '').trim() || undefined;
         if (!taskId) return;
+        const userId = this.resolveUserId(task, row);
+        const estimatedCostUsd = this.estimateTaskCostUsd(task);
         this.currentTaskId = taskId;
         await this.storage.setWorkerCurrentTask(this.workerId, taskId);
 
@@ -92,10 +98,34 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         this.observability.emitLog('info', `Worker claimed task (attempt ${row.attempts}/${row.max_attempts})`, 'Worker', taskId, batchId);
 
         try {
+            if (userId) {
+                const budget = await this.storage.getUserDailyBudget(userId);
+                const projected = budget.estimatedUsd + budget.actualUsd + estimatedCostUsd;
+                if (Number.isFinite(budget.dailyQuotaUsd) && projected > Number(budget.dailyQuotaUsd)) {
+                    const quotaMsg = `Daily quota exceeded for user ${userId}: projected=$${projected.toFixed(4)} quota=$${Number(budget.dailyQuotaUsd).toFixed(4)}`;
+                    await this.storage.recordTaskCost(taskId, {
+                        estimated_usd: estimatedCostUsd,
+                        actual_usd: 0,
+                        provider: 'quota_guard',
+                        model: String(task?.type || 'unknown'),
+                    });
+                    await this.storage.failDurableTaskImmediately(taskId, quotaMsg);
+                    this.observability.emitProgress({
+                        taskId,
+                        batchId,
+                        status: 'failed',
+                        stage: 'Quota Exceeded',
+                        details: { error: quotaMsg, user_id: userId, estimated_cost_usd: estimatedCostUsd.toFixed(6) }
+                    } as any);
+                    this.observability.emitLog('warn', quotaMsg, 'Worker', taskId, batchId);
+                    return;
+                }
+            }
             const strategy = this.strategyFactory.getStrategy(task);
             const result: any = await this.withTimeout((strategy as any).performGeneration(task, 1), this.taskTimeoutMs, `Task timeout after ${this.taskTimeoutMs}ms`);
             const durationMs = performance.now() - perfStart;
             const endedAt = new Date();
+            const actualCostUsd = this.resolveActualCostUsd(result, estimatedCostUsd);
 
             await this.storage.completeDurableTask(taskId, result?.url || null, {
                 started_at: startedAt.toISOString(),
@@ -114,6 +144,12 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 vision_score: result?.payload?.metrics?.vision_score,
                 styling_guidance: task?.metadata?.styling_guidance,
             }, result?.payload?.metrics || {});
+            await this.storage.recordTaskCost(taskId, {
+                estimated_usd: estimatedCostUsd,
+                actual_usd: actualCostUsd,
+                provider: result?.payload?.source_provider || task?.type || 'worker',
+                model: result?.payload?.model || result?.payload?.metrics?.model || undefined,
+            });
 
             this.observability.emitProgress({
                 taskId,
@@ -140,9 +176,20 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 }
             } as any);
 
-            this.observability.emitLog('success', `Worker completed task in ${durationMs.toFixed(0)}ms`, 'Worker', taskId, batchId);
+            this.observability.emitLog(
+                'success',
+                `Worker completed task in ${durationMs.toFixed(0)}ms | est_cost_usd=${estimatedCostUsd.toFixed(6)} actual_cost_usd=${actualCostUsd.toFixed(6)}`,
+                'Worker',
+                taskId,
+                batchId
+            );
         } catch (error: any) {
             const message = String(error?.message || 'Unknown task failure');
+            await this.storage.recordTaskCost(taskId, {
+                estimated_usd: estimatedCostUsd,
+                actual_usd: 0,
+                provider: task?.type || 'worker',
+            });
             const disposition = await this.storage.failOrRequeueDurableTask(taskId, message, this.retryDelaySeconds);
             this.observability.emitProgress({
                 taskId,
@@ -201,5 +248,27 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
 
     private async sleep(ms: number): Promise<void> {
         await new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private resolveUserId(task: any, row: QueueTaskRow): number | null {
+        const raw = task?.metadata?.user_id ?? row?.metadata?.user_id;
+        const parsed = Number(raw);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+
+    private estimateTaskCostUsd(task: any): number {
+        const type = String(task?.type || task?.metadata?.task_type || '').toLowerCase();
+        if (type === 'sourced_image') return this.costSourcedUsd;
+        if (type === 'story_image') return this.costStoryUsd;
+        if (type === 'data_viz') return this.costDataVizUsd;
+        return this.costInfographicUsd;
+    }
+
+    private resolveActualCostUsd(result: any, fallback: number): number {
+        const fromActual = Number(result?.payload?.metrics?.actual_cost_usd);
+        if (Number.isFinite(fromActual) && fromActual >= 0) return fromActual;
+        const fromEstimated = Number(result?.payload?.metrics?.estimated_cost_usd);
+        if (Number.isFinite(fromEstimated) && fromEstimated >= 0) return fromEstimated;
+        return fallback;
     }
 }
