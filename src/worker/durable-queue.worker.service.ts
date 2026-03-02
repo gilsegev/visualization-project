@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { performance } from 'perf_hooks';
+import { hostname } from 'os';
 import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
 import { PostgresStorageService, QueueTaskRow } from '../storage/postgres-storage.service';
 import { ObservabilityGateway } from '../observability/observability.gateway';
@@ -15,9 +16,13 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     private readonly retryDelaySeconds = Math.max(5, Number(process.env.DURABLE_QUEUE_RETRY_DELAY_SECONDS || 30));
     private readonly taskTimeoutMs = Math.max(60000, Number(process.env.MANIFEST_TASK_TIMEOUT_MS || 120000));
     private readonly janitorEveryMs = Math.max(30000, Number(process.env.DURABLE_QUEUE_JANITOR_EVERY_MS || 60000));
+    private readonly workerHeartbeatMs = Math.max(2000, Number(process.env.WORKER_HEARTBEAT_MS || process.env.DURABLE_QUEUE_HEARTBEAT_MS || 10000));
+    private readonly workerHost = hostname();
 
     private running = false;
     private janitorTimer: NodeJS.Timeout | null = null;
+    private workerHeartbeatTimer: NodeJS.Timeout | null = null;
+    private currentTaskId: string | null = null;
 
     constructor(
         private readonly storage: PostgresStorageService,
@@ -25,7 +30,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         private readonly observability: ObservabilityGateway,
     ) {}
 
-    onModuleInit(): void {
+    async onModuleInit(): Promise<void> {
         const enabled = String(process.env.DURABLE_QUEUE_ENABLED || 'true').toLowerCase() === 'true';
         if (!enabled || !this.storage.isEnabled()) {
             this.logger.log('Durable queue worker disabled (DURABLE_QUEUE_ENABLED or POSTGRES_ENABLED false).');
@@ -33,13 +38,24 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         }
         this.running = true;
         this.logger.log(`Starting durable queue worker ${this.workerId}`);
+        await this.storage.upsertWorkerHeartbeat({
+            workerId: this.workerId,
+            pid: process.pid,
+            host: this.workerHost,
+            signature: 'viz-worker',
+            status: 'ACTIVE',
+            metadata: { started_at: new Date().toISOString() },
+        });
+        this.startWorkerHeartbeat();
         this.startJanitor();
         void this.loop();
     }
 
-    onModuleDestroy(): void {
+    async onModuleDestroy(): Promise<void> {
         this.running = false;
         if (this.janitorTimer) clearInterval(this.janitorTimer);
+        if (this.workerHeartbeatTimer) clearInterval(this.workerHeartbeatTimer);
+        await this.storage.markWorkerStatus(this.workerId, 'SHUTDOWN', { stopped_at: new Date().toISOString() });
     }
 
     private async loop(): Promise<void> {
@@ -63,6 +79,8 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         const taskId = String(row.task_id || task?.id || '').trim();
         const batchId = String(row.batch_id || task?.metadata?.batch_id || '').trim() || undefined;
         if (!taskId) return;
+        this.currentTaskId = taskId;
+        await this.storage.setWorkerCurrentTask(this.workerId, taskId);
 
         const heartbeat = setInterval(() => {
             void this.storage.heartbeatTask(taskId, this.workerId, this.leaseSeconds);
@@ -142,6 +160,8 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
             );
         } finally {
             clearInterval(heartbeat);
+            this.currentTaskId = null;
+            await this.storage.setWorkerCurrentTask(this.workerId, null);
             if (batchId) await this.storage.updateBatchRunProgress(batchId);
         }
     }
@@ -155,6 +175,12 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 }
             })();
         }, this.janitorEveryMs);
+    }
+
+    private startWorkerHeartbeat(): void {
+        this.workerHeartbeatTimer = setInterval(() => {
+            void this.storage.touchWorkerHeartbeat(this.workerId, this.currentTaskId);
+        }, this.workerHeartbeatMs);
     }
 
     private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {

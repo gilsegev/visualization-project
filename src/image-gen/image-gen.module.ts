@@ -17,13 +17,18 @@ import { SourcedImageStrategy } from './strategies/sourced-image.strategy';
 import { D2DiagramStrategy } from './strategies/d2-diagram.strategy';
 import { TemplateStampingService } from './services/template-stamping.service';
 import { LocalClipService } from './services/local-clip.service';
+import { WorkerHealthSupervisorService } from './services/worker-health-supervisor.service';
 import { BrowserService } from './browser.service';
 import { ObservabilityModule } from '../observability/observability.module';
+import { AuthModule } from '../auth/auth.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
     imports: [
         ConfigModule,
         ObservabilityModule,
+        AuthModule,
+        StorageModule,
     ],
     controllers: [ImageGenController],
     providers: [
@@ -43,6 +48,7 @@ import { ObservabilityModule } from '../observability/observability.module';
         D2DiagramStrategy,
         TemplateStampingService,
         LocalClipService,
+        WorkerHealthSupervisorService,
         BrowserService,
     ],
 })

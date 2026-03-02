@@ -21,6 +21,20 @@ export type QueueTaskRow = {
     details: any;
 };
 
+export type WorkerHeartbeatStatus = 'ACTIVE' | 'SHUTDOWN' | 'TERMINATED';
+
+export type WorkerHeartbeatRow = {
+    worker_id: string;
+    pid: number | null;
+    host: string | null;
+    signature: string | null;
+    status: WorkerHeartbeatStatus;
+    started_at: string;
+    last_seen_at: string;
+    current_task_id: string | null;
+    metadata: any;
+};
+
 @Injectable()
 export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PostgresStorageService.name);
@@ -99,6 +113,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 )
                 ON CONFLICT (task_id) DO UPDATE SET
                     batch_id = COALESCE(EXCLUDED.batch_id, tasks.batch_id),
+                    user_id = COALESCE(EXCLUDED.user_id, tasks.user_id),
                     queue_status = 'queued',
                     status = 'pending',
                     stage = 'Queued for Generation',
@@ -255,6 +270,135 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         return rows.length;
     }
 
+    async upsertWorkerHeartbeat(input: {
+        workerId: string;
+        pid?: number | null;
+        host?: string | null;
+        status?: 'ACTIVE' | 'SHUTDOWN' | 'TERMINATED';
+        signature?: string | null;
+        capabilities?: any;
+        currentTaskId?: string | null;
+        metadata?: any;
+    }): Promise<void> {
+        if (!this.pool || !input?.workerId) return;
+        await this.query(
+            `INSERT INTO worker_heartbeats (
+                worker_id, pid, host, status, signature, capabilities, current_task_id, metadata, started_at, last_seen_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, NOW(), NOW(), NOW()
+            )
+            ON CONFLICT (worker_id) DO UPDATE SET
+                pid = EXCLUDED.pid,
+                host = EXCLUDED.host,
+                status = EXCLUDED.status,
+                signature = EXCLUDED.signature,
+                capabilities = COALESCE(EXCLUDED.capabilities, worker_heartbeats.capabilities),
+                current_task_id = EXCLUDED.current_task_id,
+                metadata = COALESCE(worker_heartbeats.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+                last_seen_at = NOW(),
+                updated_at = NOW()`,
+            [
+                input.workerId,
+                input.pid || null,
+                input.host || null,
+                input.status || 'ACTIVE',
+                input.signature || null,
+                input.capabilities ? JSON.stringify(input.capabilities) : null,
+                input.currentTaskId || null,
+                input.metadata ? JSON.stringify(input.metadata) : null,
+            ]
+        );
+    }
+
+    async setWorkerCurrentTask(workerId: string, taskId: string | null): Promise<void> {
+        if (!this.pool || !workerId) return;
+        await this.query(
+            `UPDATE worker_heartbeats
+             SET current_task_id = $2,
+                 last_seen_at = NOW(),
+                 updated_at = NOW()
+             WHERE worker_id = $1`,
+            [workerId, taskId || null]
+        );
+    }
+
+    async touchWorkerHeartbeat(workerId: string, currentTaskId?: string | null): Promise<void> {
+        return this.setWorkerCurrentTask(workerId, currentTaskId || null);
+    }
+
+    async markWorkerStatus(workerId: string, status: 'ACTIVE' | 'SHUTDOWN' | 'TERMINATED', metadata?: any): Promise<void> {
+        if (!this.pool || !workerId) return;
+        await this.query(
+            `UPDATE worker_heartbeats
+             SET status = $2,
+                 current_task_id = CASE WHEN $2 = 'ACTIVE' THEN current_task_id ELSE NULL END,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || COALESCE($3::jsonb, '{}'::jsonb),
+                 last_seen_at = NOW(),
+                 updated_at = NOW()
+             WHERE worker_id = $1`,
+            [workerId, status, metadata ? JSON.stringify(metadata) : null]
+        );
+    }
+
+    async markWorkerHeartbeatStatus(workerId: string, status: WorkerHeartbeatStatus, metadata?: any): Promise<void> {
+        await this.markWorkerStatus(workerId, status, metadata);
+    }
+
+    async listActiveWorkerHeartbeats(host: string): Promise<WorkerHeartbeatRow[]> {
+        if (!this.pool) return [];
+        return this.queryRows<WorkerHeartbeatRow>(
+            `SELECT worker_id, pid, host, signature, status, started_at, last_seen_at, current_task_id, metadata
+             FROM worker_heartbeats
+             WHERE status = 'ACTIVE'
+               AND host = $1`,
+            [String(host || '').trim().slice(0, 255) || 'unknown-host']
+        );
+    }
+
+    async recoverTimedOutWorkers(timeoutMs = 30000): Promise<{ workers: string[]; tasks: string[] }> {
+        if (!this.pool) return { workers: [], tasks: [] };
+        const timeoutSec = Math.max(5, Math.floor(timeoutMs / 1000));
+        const staleWorkers = await this.queryRows<{ worker_id: string; current_task_id: string | null }>(
+            `SELECT worker_id, current_task_id
+             FROM worker_heartbeats
+             WHERE status = 'ACTIVE'
+               AND last_seen_at < NOW() - (($1::text || ' seconds')::interval)`,
+            [timeoutSec]
+        );
+        if (!staleWorkers.length) return { workers: [], tasks: [] };
+
+        const workers = staleWorkers.map((w) => w.worker_id);
+        const taskIds = staleWorkers.map((w) => w.current_task_id).filter(Boolean) as string[];
+
+        await this.query(
+            `UPDATE worker_heartbeats
+             SET status = 'TERMINATED',
+                 current_task_id = NULL,
+                 updated_at = NOW()
+             WHERE worker_id = ANY($1::text[])`,
+            [workers]
+        );
+
+        if (taskIds.length) {
+            await this.query(
+                `UPDATE tasks
+                 SET queue_status = 'queued',
+                     status = 'pending',
+                     stage = 'Queued (Worker Timeout)',
+                     lease_owner = NULL,
+                     lease_expires_at = NULL,
+                     last_heartbeat_at = NULL,
+                     available_at = NOW(),
+                     error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] Worker Timeout detected by supervisor', 20000),
+                     updated_at = NOW()
+                 WHERE task_id = ANY($1::text[])
+                   AND queue_status = 'processing'`,
+                [taskIds]
+            );
+        }
+        return { workers, tasks: taskIds };
+    }
+
     async updateBatchRunProgress(batchId: string): Promise<void> {
         if (!this.pool || !batchId) return;
         const rows = await this.queryRows<{ total: number; completed: number; failed: number }>(
@@ -342,10 +486,24 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ]
         );
         await this.query(
-            `INSERT INTO tasks (task_id, batch_id, status, stage, title, details, metadata, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, NOW())
+            `INSERT INTO tasks (task_id, batch_id, user_id, queue_status, status, stage, title, details, metadata, updated_at)
+             VALUES ($1, $2, $3,
+                CASE
+                    WHEN $4 = 'completed' THEN 'completed'
+                    WHEN $4 = 'failed' THEN 'failed'
+                    WHEN $4 = 'processing' THEN 'processing'
+                    ELSE 'queued'
+                END,
+                $4, $5, $6, $7::jsonb, $8::jsonb, NOW())
              ON CONFLICT (task_id) DO UPDATE SET
                 batch_id = COALESCE(EXCLUDED.batch_id, tasks.batch_id),
+                user_id = COALESCE(EXCLUDED.user_id, tasks.user_id),
+                queue_status = CASE
+                    WHEN EXCLUDED.status = 'completed' THEN 'completed'
+                    WHEN EXCLUDED.status = 'failed' THEN 'failed'
+                    WHEN EXCLUDED.status = 'processing' THEN 'processing'
+                    ELSE 'queued'
+                END,
                 status = EXCLUDED.status,
                 stage = EXCLUDED.stage,
                 title = COALESCE(EXCLUDED.title, tasks.title),
@@ -355,6 +513,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             [
                 taskId,
                 batchId,
+                metadata?.user_id ? Number(metadata.user_id) : null,
                 data.status || null,
                 data.stage || null,
                 title,
@@ -489,6 +648,19 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             );
+            CREATE TABLE IF NOT EXISTS worker_heartbeats (
+                worker_id TEXT PRIMARY KEY,
+                pid INTEGER,
+                host TEXT,
+                started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                signature TEXT,
+                capabilities JSONB,
+                current_task_id TEXT,
+                metadata JSONB,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
             CREATE TABLE IF NOT EXISTS system_logs (
                 id BIGSERIAL PRIMARY KEY,
                 created_at TIMESTAMPTZ NOT NULL,
@@ -502,6 +674,9 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             CREATE INDEX IF NOT EXISTS idx_tasks_batch_id ON tasks(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_queue_pull ON tasks(queue_status, available_at, updated_at);
             CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(queue_status, lease_expires_at);
+            CREATE INDEX IF NOT EXISTS idx_worker_heartbeats_status_seen ON worker_heartbeats(status, last_seen_at);
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_worker_heartbeats_current_task_id
+                ON worker_heartbeats(current_task_id) WHERE current_task_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_system_logs_batch_task ON system_logs(batch_id, task_id);
         `);
         await this.query(`
@@ -517,6 +692,8 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ;
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ DEFAULT NOW();
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+            ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS signature TEXT;
+            ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS metadata JSONB;
         `);
     }
 
