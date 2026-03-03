@@ -1010,6 +1010,22 @@
                     if (logs.value.length > 500) logs.value.shift();
                 };
 
+                const inferBatchIdFromDeltas = (taskDeltas, logDeltas) => {
+                    if (Array.isArray(taskDeltas)) {
+                        for (let i = taskDeltas.length - 1; i >= 0; i--) {
+                            const id = String(taskDeltas[i]?.batch_id || '').trim();
+                            if (id) return id;
+                        }
+                    }
+                    if (Array.isArray(logDeltas)) {
+                        for (let i = logDeltas.length - 1; i >= 0; i--) {
+                            const id = String(logDeltas[i]?.batch_id || '').trim();
+                            if (id) return id;
+                        }
+                    }
+                    return null;
+                };
+
                 const promptForApiKey = () => {
                     const cached = localStorage.getItem('obs_api_key') || '';
                     const entered = window.prompt('Enter API key for observability access:', cached);
@@ -1376,6 +1392,24 @@
                         };
                         const taskDeltas = Array.isArray(data?.recent?.task_deltas) ? data.recent.task_deltas : [];
                         const logDeltas = Array.isArray(data?.recent?.logs) ? data.recent.logs : [];
+
+                        // On refresh, avoid replaying stale historical batches unless there is active queued work.
+                        if (!currentBatchId.value) {
+                            const hasPending = Number(data?.queue?.pending || 0) > 0;
+                            if (!hasPending) return;
+
+                            const inferredBatchId = inferBatchIdFromDeltas(taskDeltas, logDeltas);
+                            if (inferredBatchId) {
+                                currentBatchId.value = inferredBatchId;
+                                tasks.value = {};
+                                logs.value = [];
+                                seenLogIds.clear();
+                                addLog('info', `Hydrating active batch ${inferredBatchId}`, 'System', null, inferredBatchId);
+                            } else {
+                                return;
+                            }
+                        }
+
                         for (const delta of taskDeltas) applyTaskDelta(delta);
                         for (const delta of logDeltas) applyLogDelta(delta);
                         if (logContainer.value) {
