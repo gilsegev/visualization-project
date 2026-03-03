@@ -4,8 +4,10 @@ WORKDIR /app
 
 ENV NODE_ENV=development
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+ARG D2_VERSION=0.7.1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+  curl \
   libglib2.0-0 \
   libnss3 \
   libnspr4 \
@@ -32,6 +34,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates \
   fonts-liberation \
   && rm -rf /var/lib/apt/lists/*
+
+# Install D2 CLI for flowchart/timeline/process_map rendering.
+RUN set -eux; \
+  arch="$(dpkg --print-architecture)"; \
+  case "$arch" in \
+    amd64) d2_arch='amd64' ;; \
+    arm64) d2_arch='arm64' ;; \
+    *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL -o /tmp/d2.tgz "https://github.com/terrastruct/d2/releases/download/v${D2_VERSION}/d2-v${D2_VERSION}-linux-${d2_arch}.tar.gz"; \
+  tar -xzf /tmp/d2.tgz -C /tmp; \
+  install -m 0755 "/tmp/d2-v${D2_VERSION}/bin/d2" /usr/local/bin/d2; \
+  d2 --version; \
+  rm -rf /tmp/d2.tgz "/tmp/d2-v${D2_VERSION}"
 
 COPY package*.json ./
 

@@ -49,6 +49,7 @@ services:
       INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
       IQC_URL: http://image-quality-control:4310
       CLIP_SCORER_URL: http://image-quality-control:4310
+      D2_BIN: ${D2_BIN:-d2}
       QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
@@ -84,6 +85,7 @@ services:
       INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
       IQC_URL: http://image-quality-control:4310
       CLIP_SCORER_URL: http://image-quality-control:4310
+      D2_BIN: ${D2_BIN:-d2}
       QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
