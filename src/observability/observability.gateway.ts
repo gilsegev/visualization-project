@@ -313,24 +313,70 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         const cp = require('child_process');
 
         const baseDir = path.resolve(process.cwd(), 'public', 'generated-images');
-        const fullPath = path.resolve(baseDir, relativePath);
+        const normalizedInput = String(relativePath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+        const fullPath = path.resolve(baseDir, normalizedInput);
 
         // Prevent malformed/escaped paths from shelling outside generated-images.
         if (!fullPath.startsWith(baseDir)) {
             this.logger.warn(`Rejected open_folder path outside base dir: ${relativePath}`);
+            client.emit('open_folder_result', {
+                ok: false,
+                openedLocally: false,
+                path: relativePath,
+                message: 'Path outside generated-images is not allowed.',
+            });
             return;
         }
 
         if (!fs.existsSync(fullPath)) {
             this.logger.warn(`Rejected open_folder missing path: ${fullPath}`);
+            client.emit('open_folder_result', {
+                ok: false,
+                openedLocally: false,
+                path: relativePath,
+                message: 'Requested output path does not exist.',
+            });
             return;
         }
 
-        this.logger.log(`Request to open folder: ${fullPath}`);
+        const stat = fs.statSync(fullPath);
+        const folderPath = stat.isDirectory() ? fullPath : path.dirname(fullPath);
+        const safeRelative = path.relative(baseDir, folderPath).replace(/\\/g, '/').replace(/^\/+/, '');
+        const browseUrl = `/generated-images/${safeRelative}/index.html`;
+        this.logger.log(`Request to open folder: ${folderPath}`);
 
-        // Use explorer with argv instead of cmd shell parsing to avoid quote/escape issues.
-        cp.execFile('explorer.exe', [fullPath], (err: any) => {
-            if (err) this.logger.error(`Failed to open folder: ${err.message}`);
+        // Local Windows: open in Explorer. Cloud/Linux: provide URL fallback for browser access.
+        if (process.platform === 'win32') {
+            // Use explorer with argv instead of cmd shell parsing to avoid quote/escape issues.
+            cp.execFile('explorer.exe', [folderPath], (err: any) => {
+                if (err) {
+                    this.logger.error(`Failed to open folder: ${err.message}`);
+                    client.emit('open_folder_result', {
+                        ok: false,
+                        openedLocally: false,
+                        path: safeRelative,
+                        url: browseUrl,
+                        message: 'Could not open local folder. Opened browser fallback URL.',
+                    });
+                    return;
+                }
+                client.emit('open_folder_result', {
+                    ok: true,
+                    openedLocally: true,
+                    path: safeRelative,
+                    url: browseUrl,
+                    message: 'Opened local folder in Explorer.',
+                });
+            });
+            return;
+        }
+
+        client.emit('open_folder_result', {
+            ok: true,
+            openedLocally: false,
+            path: safeRelative,
+            url: browseUrl,
+            message: 'Local folder open is unavailable in this environment. Use browser output URL.',
         });
     }
 }

@@ -1449,6 +1449,24 @@
                         );
                     });
 
+                    socket.on('open_folder_result', (data) => {
+                        const ok = !!data?.ok;
+                        const openedLocally = !!data?.openedLocally;
+                        const path = String(data?.path || '');
+                        const url = String(data?.url || '').trim();
+                        const message = String(data?.message || '');
+
+                        if (url && !openedLocally) {
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                        }
+
+                        addLog(
+                            ok ? 'success' : 'warn',
+                            message || (ok ? `Opened output for ${path}` : `Failed to open output for ${path}`),
+                            'System'
+                        );
+                    });
+
                     socket.on('live_stats', (data) => {
                         liveStats.value = {
                             queue: data?.queue || { pending: 0, completed: 0, failed: 0 },
