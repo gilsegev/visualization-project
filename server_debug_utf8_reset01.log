@@ -1,0 +1,66 @@
+﻿[dotenv@17.2.3] injecting env (0) from .env -- tip: ΓÜÖ∩╕Å  load multiple .env files with { path: ['.env.local', '.env'] }
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[NestFactory] [39m[32mStarting Nest application...[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mAppModule dependencies initialized[39m[38;5;3m +7ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigHostModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mServeStaticModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mConfigModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] CWD: D:\visualization  project[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InfographicStrategy] [39m[32m[DEBUG] GEMINI_API_KEY: Found[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mCoursesModule dependencies initialized[39m[38;5;3m +1ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[InstanceLoader] [39m[32mImageGenModule dependencies initialized[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mImageGenController {/generate}:[39m[38;5;3m +2ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/generate, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[RoutesResolver] [39m[32mCourseController {/courses}:[39m[38;5;3m +0ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[RouterExplorer] [39m[32mMapped {/courses/generate, POST} route[39m[38;5;3m +1ms[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton) - V2-RESET-01 Primitive Config...[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mInitializing BrowserService...[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[BrowserService] [39m[32mLaunching Playwright browser (Singleton) - V2-RESET-01 Primitive Config...[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:25 AM [32m    LOG[39m [38;5;3m[NestApplication] [39m[32mNest application successfully started[39m[38;5;3m +44ms[39m
+Application is running on: http://localhost:3000
+POST /generate
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:33 AM [32m    LOG[39m [38;5;3m[ImageOrchestratorService] [39m[32mStarting course generation for content length: 174[39m
+[32m[Nest] 14244  - [39m02/13/2026, 12:00:33 AM [32m    LOG[39m [38;5;3m[ImageRouterService] [39m[32mClassifying content: "Create a wellness hub radial infographic about stress relief. Center topic: Stress Relief. Items: Meditation, Exercise, Sleep, Diet, Mindfulness, Nature. Theme: nature_fresh."[39m
+node : [31m[Nest] 14244  
+- [39m02/13/2026, 
+12:00:34 AM [31m  
+ERROR[39m [38;5;3m[Image
+RouterService] 
+[39m[31mFailed to 
+classify or parse image 
+tasks[39m
+At line:1 char:1
++ node dist/src/main.js > 
+server_debug_manual.log 
+2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo        
+      : NotSpecified: (  
+  [31m[Nest] 142...mage   
+  tasks[39m:String) [    
+], RemoteException
+    + FullyQualifiedError 
+   Id : NativeCommandErr  
+  or
+ 
+[31m[Nest] 14244  - 
+[39m02/13/2026, 12:00:34 
+AM [31m  ERROR[39m [38;
+5;3m[ImageRouterService] 
+[39m[31mError: 
+[GoogleGenerativeAI 
+Error]: Error fetching 
+from https://generativelan
+guage.googleapis.com/v1bet
+a/models/gemini-2.0-flash:
+generateContent: [429 Too 
+Many Requests] Resource 
+exhausted. Please try 
+again later. Please refer 
+to https://cloud.google.co
+m/vertex-ai/generative-ai/
+docs/error-code-429 for 
+more details.[39m

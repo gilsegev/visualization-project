@@ -1,0 +1,23 @@
+{
+    "course": {
+        "title": "Logging Test Course",
+        "globalStyleGuide": {
+            "colorPalette": {
+                "mutedTeal": "#5B9A8B"
+            }
+        }
+    },
+    "lessons": [
+        {
+            "lessonId": "test-lesson-1",
+            "title": "Standard Lesson",
+            "visualizations": [
+                {
+                    "type": "infographic",
+                    "title": "Topic with Title but no Description",
+                    "context": "Verification of fallback logic"
+                }
+            ]
+        }
+    ]
+}

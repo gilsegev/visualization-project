@@ -297,7 +297,7 @@ export class InfographicStrategy extends BaseImageStrategy {
 
             try {
                 // Determine model from config or default to flux-schnell
-                const model = 'black-forest-labs/FLUX.1-schnell';
+                const model = this.configService.get<string>('SILICONFLOW_MODEL') || 'black-forest-labs/FLUX.1-schnell';
 
                 const response = await axios.post(
                     endpoint,

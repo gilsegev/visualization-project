@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Standardized Step Journey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* Theme Variables - Overridden by backend injection */
+            --bg-primary: #f8fafc;
+            --accent-primary: #00abe6;
+            --accent-secondary: #f8a41b;
+            --text-primary: #1e293b;
+            --text-secondary: #475569;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --font-main: 'Inter', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            width: 1200px;
+            height: 1200px;
+            font-family: var(--font-main);
+            overflow: hidden;
+            background-color: var(--bg-primary);
+            position: relative;
+        }
+
+        /* FULL PAGE BACKGROUND LAYER */
+        #page-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 1200px;
+            height: 1200px;
+            /* Explicit dimensions */
+            background-size: cover;
+            background-position: center;
+            opacity: 0.15;
+            /* Semi-transparent requirement */
+            z-index: 1;
+        }
+
+        #canvas {
+            position: relative;
+            width: 1200px;
+            height: 1200px;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 80px;
+        }
+
+        /* GLASS CARD THEME */
+        .step-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-radius: 35px;
+            border: 2.5px solid white;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .image-placeholder {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid white;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .image-placeholder img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* PROGRESSION LINE */
+        .connector-line {
+            position: absolute;
+            top: 280px;
+            left: 100px;
+            right: 100px;
+            height: 4px;
+            background: rgba(0, 0, 0, 0.05);
+            z-index: 5;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="page-bg"></div>
+
+    <div id="canvas">
+        <div class="text-center mb-16">
+            <h2 id="main-title" class="text-[32px] font-black tracking-[0.15em] mb-4 uppercase"
+                style="color: var(--text-primary)">JOURNEY
+                TITLE</h2>
+            <div id="subtitle" class="font-medium uppercase tracking-widest text-sm"
+                style="color: var(--text-primary); opacity: 0.6;">SUBTITLE TEXT</div>
+        </div>
+
+        <div class="relative w-full flex justify-between items-start" id="steps-container">
+            <div class="connector-line"></div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * TOUCH POINT 2: DATA INJECTION
+         */
+        const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
+        /**
+         * TOUCH POINT 3: RENDER ENGINE
+         */
+        function render(data) {
+            if (!data) return;
+
+            // 1. Setup Environment
+            if (data.background_url) {
+                document.getElementById('page-bg').style.backgroundImage = `url('${data.background_url}')`;
+            }
+
+            document.getElementById('main-title').innerText = data.center.title;
+            document.getElementById('subtitle').innerText = data.center.subtitle || "";
+
+            const container = document.getElementById('steps-container');
+            // Update container to center items vertically
+            container.classList.remove('items-start');
+            container.classList.add('items-center');
+
+            // Keep the connector line, clear the rest
+            const line = container.querySelector('.connector-line');
+            container.innerHTML = '';
+            // Hide original connector line as we use arrows now, or keep it as subtle background?
+            // User requested arrows "between boxes". The line might be redundant or visual noise.
+            // Let's hide it for cleaner look if we have arrows.
+            // container.appendChild(line); 
+
+            const items = data.items;
+            const rootStyles = getComputedStyle(document.documentElement);
+            const accent = rootStyles.getPropertyValue('--accent-primary').trim() || '#00abe6';
+            const secondary = rootStyles.getPropertyValue('--accent-secondary').trim() || '#f8a41b';
+            const textColor = rootStyles.getPropertyValue('--text-primary').trim() || '#1e293b';
+            const colors = [accent, secondary, textColor, accent, secondary];
+
+            items.forEach((item, index) => {
+                const color = colors[index % colors.length];
+                const stepWrapper = document.createElement('div');
+                // Use flex-1 to distribute width evenly, min-w-0 to allow shrinking for 6 items
+                stepWrapper.className = "relative flex flex-col items-center flex-1 min-w-0 z-20 px-2";
+
+                stepWrapper.innerHTML = `
+                    <div class="step-card w-full h-[400px] flex flex-col items-center px-4 py-8" style="border-color: ${color}">
+                        <div class="image-placeholder mb-4 w-[100px] h-[100px] shrink-0">
+                            <img src="${item.image_url}" alt="">
+                        </div>
+                        <div class="text-[10px] font-black mb-3 px-2 py-1 rounded-full text-white uppercase tracking-tighter" style="background-color: ${color}">
+                            Step 0${index + 1}
+                        </div>
+                        <h3 class="text-md font-bold mb-2 text-center leading-tight" style="color: var(--text-primary)">${item.title}</h3>
+                        <p class="text-[11px] leading-relaxed text-center font-medium line-clamp-5" style="color: var(--text-primary); opacity: 0.7;">${item.description}</p>
+                    </div>
+                `;
+                container.appendChild(stepWrapper);
+
+                // Add Arrow if not the last item
+                if (index < items.length - 1) {
+                    const arrow = document.createElement('div');
+                    // shrink-0 is critical so arrows don't disappear
+                    arrow.className = "flex items-center justify-center shrink-0 z-10 opacity-80 mx-1";
+                    arrow.innerHTML = `
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 12h14M12 5l7 7-7 7"/>
+                        </svg>
+                    `;
+                    container.appendChild(arrow);
+                }
+            });
+        }
+
+        if (DATA_PAYLOAD) {
+            try { render(DATA_PAYLOAD); } catch (e) { console.error("Step Render Failed", e); }
+        }
+    </script>
+</body>
+
+</html>

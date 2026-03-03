@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1200, initial-scale=1.0" />
+    <title>Smart-Fit Bento Engine</title>
+    <style>
+        :root {
+            /* Theme Variables - Overridden by backend injection */
+            --bg-primary: #F4EDE4;
+            --accent-primary: #5B9A8B;
+            --accent-secondary: #E8A598;
+            --text-primary: #1A365D;
+            --text-secondary: #4A5568;
+            --font-main: 'Inter', system-ui, sans-serif;
+            --glass-bg: rgba(255, 255, 255, 0.55);
+            --grid-bg: color-mix(in srgb, var(--bg-primary) 90%, #000 10%);
+            --font-size-heading: 34px;
+            --font-size-body: 19px;
+        }
+
+        /* DETERMINISTIC CANVAS */
+        html, body {
+            margin: 0; padding: 0;
+            width: 1200px; height: 1200px;
+            overflow: hidden;
+            font-family: var(--font-main);
+            background: var(--bg-color, var(--bg-primary));
+        }
+
+        #canvas {
+            position: relative; width: 1200px; height: 1200px;
+            background: linear-gradient(
+                180deg,
+                color-mix(in srgb, var(--bg-color, var(--bg-primary)) 92%, var(--accent-primary) 8%) 0%,
+                color-mix(in srgb, var(--bg-color, var(--bg-primary)) 96%, #000 4%) 100%
+            );
+            overflow: hidden;
+        }
+
+        #canvas::before {
+            content: ""; position: absolute; inset: 0;
+            background-image: var(--background-url, none);
+            background-size: cover; background-position: center;
+            opacity: 0.18; z-index: 1;
+        }
+
+        #canvas.story-mode::after {
+            content: "";
+            position: absolute;
+            inset: 18px;
+            border: 2px solid color-mix(in srgb, var(--accent-primary) 55%, white);
+            border-radius: 18px;
+            pointer-events: none;
+            z-index: 20;
+            box-shadow:
+                0 18px 30px rgba(0, 0, 0, 0.07),
+                inset 0 0 0 1px color-mix(in srgb, var(--accent-secondary) 30%, white);
+        }
+
+        #grid {
+            position: relative; z-index: 10;
+            display: grid; width: 100%; height: 100%;
+            padding: 48px; gap: 22px;
+            grid-template-columns: repeat(12, 1fr);
+            grid-auto-rows: minmax(0, 1fr);
+            box-sizing: border-box;
+            background: var(--grid-bg);
+        }
+
+        /* SMART CELL SYSTEM */
+        .cell {
+            position: relative; display: flex; flex-direction: column;
+            justify-content: flex-start; align-items: flex-start; text-align: left;
+            padding: 20px 20px 18px; border-radius: 22px;
+            background: color-mix(in srgb, var(--glass-bg) 70%, white 30%);
+            backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+            border: var(--border-width, 1px) var(--border-style, solid) var(--border-color, rgba(0,0,0,0.08));
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .cell::before {
+            content: "";
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+            opacity: 0.65;
+        }
+
+        /* 1. TITLE WRAPPING FIX */
+        .cell h2 {
+            font-size: var(--title-size, var(--font-size-heading));
+            font-weight: 800; margin: 0 0 10px 0;
+            color: var(--text-primary);
+            inline-size: 100%;
+            overflow-wrap: break-word; /* Fix for long titles */
+            line-height: 1.14;
+            letter-spacing: 0.01em;
+            display: -webkit-box;
+            -webkit-line-clamp: var(--title-lines, 2);
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* 2. ASPECT RATIO IMAGE FIX */
+        .cell img {
+            width: 100%; height: 100%;
+            object-fit: cover; /* Ensures image fills the span area */
+            border-radius: 12px;
+        }
+
+        .cell.full-bleed { padding: 0; }
+        .cell.full-bleed img { border-radius: 0; }
+        #canvas.story-mode .cell.full-bleed img {
+            object-fit: contain;
+            background: color-mix(in srgb, var(--bg-color, var(--bg-primary)) 94%, #000 6%);
+            border-radius: 14px;
+        }
+
+        .cell p {
+            margin: 0;
+            width: 100%;
+            font-size: var(--body-size, var(--font-size-body));
+            line-height: 1.35;
+            color: var(--text-secondary);
+            opacity: 0.94;
+            white-space: pre-line;
+            display: -webkit-box;
+            -webkit-line-clamp: var(--body-lines, 7);
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .cell.summary {
+            justify-content: center;
+            text-align: center;
+            align-items: center;
+            background: color-mix(in srgb, var(--glass-bg) 88%, var(--accent-primary));
+            padding: 28px 34px 24px;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .cell.summary h2 {
+            margin: 0;
+            -webkit-line-clamp: 1;
+            font-size: clamp(24px, 3vw, 42px);
+            line-height: 1.1;
+        }
+
+        .cell.summary p {
+            max-width: 90%;
+            margin: 0;
+            -webkit-line-clamp: 4;
+            line-height: 1.4;
+        }
+
+        .cell.summary::before {
+            display: none;
+        }
+
+        /* GRID UTILITIES (legacy support) */
+        .col-span-3 { grid-column: span 3; } .col-span-6 { grid-column: span 6; }
+        .row-span-6 { grid-row: span 6; } .row-span-12 { grid-row: span 12; }
+    </style>
+</head>
+<body>
+    <div id="canvas"><div id="grid"></div></div>
+
+    <script>
+        const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
+        function render(data) {
+            if (!data) return;
+            const canvas = document.getElementById('canvas');
+            if (data.background) {
+                const bg = data.background.color || getComputedStyle(document.documentElement).getPropertyValue('--bg-primary').trim();
+                canvas.style.setProperty('--bg-color', bg);
+                canvas.style.setProperty('--grid-bg', `color-mix(in srgb, ${bg} 90%, #000 10%)`);
+                if (data.background.image_url) canvas.style.setProperty('--background-url', `url('${data.background.image_url}')`);
+            }
+            if (data.story_mode) {
+                canvas.classList.add('story-mode');
+            }
+
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+
+            data.cells.forEach(cellData => {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+
+                // Support both schemas:
+                // 1) { col_span, row_span, content }
+                // 2) { layout: { col_span, row_span }, content }
+                const colSpan = cellData?.col_span || cellData?.layout?.col_span || 3;
+                const rowSpan = cellData?.row_span || cellData?.layout?.row_span || 3;
+                cell.style.gridColumn = `span ${Math.max(1, colSpan)}`;
+                cell.style.gridRow = `span ${Math.max(1, rowSpan)}`;
+
+                const contentType = cellData?.content?.type || 'text';
+                if (contentType === 'image_only') cell.classList.add('full-bleed');
+
+                // DYNAMIC DENSITY LOGIC: fit typography to each cell area and text volume.
+                const area = Math.max(1, colSpan * rowSpan);
+                const title = cellData?.content?.title || "";
+                const bodyText = cellData?.content?.text || '';
+                const textLoad = title.length + bodyText.length;
+
+                let titleSize = "32px";
+                let bodySize = "18px";
+                let bodyLines = "7";
+                let titleLines = "2";
+
+                if (area <= 8) {
+                    titleSize = "22px";
+                    bodySize = "13px";
+                    bodyLines = "6";
+                    titleLines = "2";
+                } else if (area <= 12) {
+                    titleSize = "26px";
+                    bodySize = "15px";
+                    bodyLines = "7";
+                    titleLines = "2";
+                }
+                if (textLoad > 220) {
+                    bodySize = `${Math.max(12, parseInt(bodySize, 10) - 1)}px`;
+                    bodyLines = `${Math.max(5, parseInt(bodyLines, 10) - 1)}`;
+                }
+
+                cell.style.setProperty('--title-size', titleSize);
+                cell.style.setProperty('--body-size', bodySize);
+                cell.style.setProperty('--body-lines', bodyLines);
+                cell.style.setProperty('--title-lines', titleLines);
+
+                if (/summary/i.test(title) || (colSpan >= 10 && rowSpan >= 2)) {
+                    cell.classList.add('summary');
+                    // Keep summary/callout anchored as a full-width bottom block.
+                    cell.style.gridColumn = '1 / -1';
+                }
+
+                let html = '';
+                switch (contentType) {
+                    case 'image_only': html = `<img src="${cellData?.content?.image_url || ''}">`; break;
+                    case 'title_text':
+                    case 'text': html = `<h2>${title}</h2><p>${cellData?.content?.text || ''}</p>`; break;
+                    case 'title_image': html = `<h2>${title}</h2><img src="${cellData?.content?.image_url || ''}">`; break;
+                    case 'title_image_text': html = `<h2>${title}</h2><img src="${cellData?.content?.image_url || ''}"><p>${cellData?.content?.text || ''}</p>`; break;
+                    default: html = `<p style="font-size: 26px;">${cellData?.content?.text || ''}</p>`;
+                }
+                cell.innerHTML = html;
+                grid.appendChild(cell);
+            });
+        }
+        if (DATA_PAYLOAD) render(DATA_PAYLOAD);
+    </script>
+</body>
+</html>

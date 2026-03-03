@@ -1,0 +1,252 @@
+﻿{
+    "course":  {
+                   "title":  "Dark Mode Style Test Course",
+                   "targetAudience":  "General adult learners",
+                   "designPhilosophy":  "Dark, high-contrast, readable, modern, cinematic, premium",
+                   "globalStyleGuide":  {
+                                            "colorPalette":  {
+                                                                 "midnight":  "#0B1220",
+                                                                 "ink":  "#111827",
+                                                                 "neonCyan":  "#37E3FF",
+                                                                 "signalBlue":  "#6F8CFF",
+                                                                 "warmAccent":  "#FF8A5B",
+                                                                 "softText":  "#E6F1FF",
+                                                                 "mutedText":  "#9BB3CC"
+                                                             },
+                                            "typography":  {
+                                                               "fontFamily":  [
+                                                                                  "IBM Plex Sans",
+                                                                                  "Manrope",
+                                                                                  "Inter"
+                                                                              ],
+                                                               "heading":  "20-24pt bold",
+                                                               "body":  "12-14pt regular",
+                                                               "decorativeFontsAllowed":  false
+                                                           },
+                                            "illustrationStyle":  {
+                                                                      "design":  "Dark UI-like infographics with bright accents and clear hierarchy",
+                                                                      "humanFigures":  "Optional; if used, keep realistic and non-distracting"
+                                                                  },
+                                            "mood":  "Focused, modern, confident"
+                                        },
+                   "styling":  {
+                                   "version":  "2026-03-ux-contrast-v1",
+                                   "system":  {
+                                                  "profile_id":  "midnight_contrast_system",
+                                                  "infographic_theme_id":  "midnight_contrast",
+                                                  "chart_theme_id":  "chart_midnight_neon",
+                                                  "generated_image_style_suffix":  "dark high-contrast educational illustration, luminous accents, strong figure-ground separation",
+                                                  "sourced_image_style_suffix":  "moody documentary photo, dark-toned but readable, clear subject separation, cinematic contrast"
+                                              },
+                                   "accessibility":  {
+                                                         "min_contrast_ratio":  4.5,
+                                                         "enforce_per_panel_text_contrast":  true,
+                                                         "avoid_light_text_on_light_cards":  true
+                                                     }
+                               }
+               },
+    "lessons":  [
+                    {
+                        "lessonId":  "lesson-dark-1",
+                        "title":  "Dark Mode Mixed Asset Test",
+                        "description":  "One chart, two infographics, and one sourced image under dark-mode styling.",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "d1",
+                                                   "title":  "Threat Surface Comparison",
+                                                   "type":  "split_panel_comparison",
+                                                   "dimensions":  {
+                                                                      "width":  1200,
+                                                                      "height":  1200,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "purpose":  "Compare external vs internal risk vectors clearly.",
+                                                   "metadata":  {
+                                                                    "theme_id":  "midnight_contrast"
+                                                                },
+                                                   "panels":  [
+                                                                  {
+                                                                      "side":  "left",
+                                                                      "label":  "EXTERNAL",
+                                                                      "characteristics":  [
+                                                                                              "Phishing and social engineering",
+                                                                                              "Credential stuffing",
+                                                                                              "Supply-chain vulnerabilities"
+                                                                                          ],
+                                                                      "useCases":  [
+                                                                                       "Internet-facing apps",
+                                                                                       "Remote workforce",
+                                                                                       "Third-party integrations"
+                                                                                   ],
+                                                                      "gearCallouts":  [
+                                                                                           "MFA",
+                                                                                           "Rate limiting",
+                                                                                           "Vendor due diligence"
+                                                                                       ]
+                                                                  },
+                                                                  {
+                                                                      "side":  "right",
+                                                                      "label":  "INTERNAL",
+                                                                      "characteristics":  [
+                                                                                              "Privilege misuse",
+                                                                                              "Misconfigured permissions",
+                                                                                              "Shadow tooling"
+                                                                                          ],
+                                                                      "useCases":  [
+                                                                                       "Shared admin access",
+                                                                                       "Fast-growing teams",
+                                                                                       "Multi-cloud operations"
+                                                                                   ],
+                                                                      "gearCallouts":  [
+                                                                                           "Least privilege",
+                                                                                           "Audit trails",
+                                                                                           "Policy guardrails"
+                                                                                       ]
+                                                                  }
+                                                              ],
+                                                   "bridgeElement":  "DEFENSE IN DEPTH",
+                                                   "bottomNote":  "Use layered controls and continuous visibility across both vectors.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "midnight_contrast"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "d2",
+                                                   "title":  "Incident Response Timeline",
+                                                   "type":  "timeline",
+                                                   "dimensions":  {
+                                                                      "width":  1100,
+                                                                      "height":  600,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "purpose":  "Show the key milestones from detection to recovery.",
+                                                   "metadata":  {
+                                                                    "theme_id":  "noir_signal"
+                                                                },
+                                                   "structure":  {
+                                                                     "milestones":  [
+                                                                                        {
+                                                                                            "year":  "T+0",
+                                                                                            "title":  "Detection",
+                                                                                            "detail":  "Alert triggered by anomaly monitoring."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "T+1h",
+                                                                                            "title":  "Triage",
+                                                                                            "detail":  "Assess blast radius and confirm severity."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "T+4h",
+                                                                                            "title":  "Containment",
+                                                                                            "detail":  "Isolate affected systems and rotate keys."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "T+24h",
+                                                                                            "title":  "Eradication",
+                                                                                            "detail":  "Patch root cause and remove persistence."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "T+72h",
+                                                                                            "title":  "Recovery",
+                                                                                            "detail":  "Restore services and monitor stability."
+                                                                                        }
+                                                                                    ],
+                                                                     "footerNote":  "Postmortem and preventive controls complete the cycle."
+                                                                 },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "midnight_contrast"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "d3",
+                                                   "title":  "Alerts by Severity",
+                                                   "type":  "bar_chart",
+                                                   "description":  "Distribution of security alerts by severity in the last 30 days.",
+                                                   "dimensions":  {
+                                                                      "width":  1024,
+                                                                      "height":  1024,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "chartType":  "bar",
+                                                   "format":  "static",
+                                                   "metadata":  {
+                                                                    "chart_theme_id":  "chart_midnight_neon"
+                                                                },
+                                                   "data":  {
+                                                                "labels":  [
+                                                                               "Low",
+                                                                               "Medium",
+                                                                               "High",
+                                                                               "Critical"
+                                                                           ],
+                                                                "values":  [
+                                                                               112,
+                                                                               68,
+                                                                               29,
+                                                                               9
+                                                                           ]
+                                                            },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_midnight_neon"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "d4",
+                                                   "title":  "Night SOC Monitoring Scene",
+                                                   "type":  "sourced_image",
+                                                   "dimensions":  {
+                                                                      "width":  1400,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "purpose":  "Provide a realistic dark-mode operational context image.",
+                                                   "imageSpecs":  {
+                                                                      "brief":  "Realistic photo of a cybersecurity analyst monitoring dashboards at night in a dim operations room, blue monitor glow, focused posture, no logos, no visible text overlays.",
+                                                                      "constraints":  {
+                                                                                          "paletteLockToCourseStyleGuide":  false,
+                                                                                          "noBakedInText":  true,
+                                                                                          "doNotInclude":  [
+                                                                                                               "watermarks",
+                                                                                                               "logos",
+                                                                                                               "readable UI text",
+                                                                                                               "cartoon style"
+                                                                                                           ]
+                                                                                      },
+                                                                      "rendering":  {
+                                                                                        "mode":  "raster",
+                                                                                        "export":  {
+                                                                                                       "format":  "png",
+                                                                                                       "scale":  2
+                                                                                                   },
+                                                                                        "generation":  {
+                                                                                                           "source":  "text_description",
+                                                                                                           "promptParts":  {
+                                                                                                                               "positive":  [
+                                                                                                                                                "realistic photo",
+                                                                                                                                                "night operations room",
+                                                                                                                                                "analyst at multi-monitor setup",
+                                                                                                                                                "blue ambient monitor light",
+                                                                                                                                                "focused professional posture",
+                                                                                                                                                "documentary style"
+                                                                                                                                            ],
+                                                                                                                               "negative":  [
+                                                                                                                                                "cartoon",
+                                                                                                                                                "illustration",
+                                                                                                                                                "watermark",
+                                                                                                                                                "brand logos",
+                                                                                                                                                "text overlay"
+                                                                                                                                            ]
+                                                                                                                           },
+                                                                                                           "seed":  null,
+                                                                                                           "variants":  1
+                                                                                                       }
+                                                                                    }
+                                                                  },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "midnight_contrast"
+                                                               }
+                                               }
+                                           ]
+                    }
+                ]
+}

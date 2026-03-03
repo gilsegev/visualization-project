@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generatedImagesRoot, resolveWithinGeneratedImages, sanitizeRelativePath } from '../common/path-safety.util';
 
 @Injectable()
 export class LocalStorageService {
     private readonly logger = new Logger(LocalStorageService.name);
-    private readonly uploadDir = path.join(process.cwd(), 'public', 'generated-images');
+    private readonly uploadDir = generatedImagesRoot();
 
     constructor() {
         this.ensureDirectoryExists();
@@ -19,12 +20,17 @@ export class LocalStorageService {
     }
 
     async upload(buffer: Buffer, fileName: string): Promise<string> {
-        const filePath = path.join(this.uploadDir, fileName);
+        const safeRelative = sanitizeRelativePath(fileName, 'file name');
+        const filePath = resolveWithinGeneratedImages(safeRelative);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         await fs.promises.writeFile(filePath, buffer);
         this.logger.log(`Saved file: ${filePath}`);
 
         // Return relative URL assuming static assets are served from 'public' root
-        return `/generated-images/${fileName}`;
+        return `/generated-images/${safeRelative}`;
     }
 
     // Alias for 'upload' or for saving buffers
@@ -33,14 +39,19 @@ export class LocalStorageService {
     }
 
     async uploadStream(stream: NodeJS.ReadableStream, fileName: string): Promise<string> {
-        const filePath = path.join(this.uploadDir, fileName);
+        const safeRelative = sanitizeRelativePath(fileName, 'file name');
+        const filePath = resolveWithinGeneratedImages(safeRelative);
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         const writer = fs.createWriteStream(filePath);
 
         return new Promise((resolve, reject) => {
             stream.pipe(writer);
             writer.on('finish', () => {
                 this.logger.log(`Saved file (stream): ${filePath}`);
-                resolve(`/generated-images/${fileName}`);
+                resolve(`/generated-images/${safeRelative}`);
             });
             writer.on('error', reject);
         });

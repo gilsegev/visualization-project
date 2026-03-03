@@ -1,0 +1,236 @@
+{
+  "course": {
+    "title": "Build Your First PC: Core Parts and Safe Assembly",
+    "targetAudience": "Beginner PC builders (ages 15+), hobbyists, first-time upgraders; safety-forward, non-commercial.",
+    "designPhilosophy": "Clear, practical, confidence-building. Use sourced, real photos to match what learners will actually see on their workbench.",
+    "globalStyleGuide": {
+      "colorPalette": {
+        "midnight": "#1A202C",
+        "steel": "#4A5568",
+        "coolGray": "#E2E8F0",
+        "accentBlue": "#2B6CB0",
+        "accentGreen": "#2F855A",
+        "warningAmber": "#D69E2E"
+      },
+      "typography": {
+        "fontFamily": ["Inter", "Source Sans Pro"],
+        "heading": "18-22pt bold",
+        "body": "12-14pt regular",
+        "decorativeFontsAllowed": false
+      },
+      "layout": {
+        "whitespace": "Generous",
+        "clutter": "None",
+        "principle": "Every element must earn its place"
+      },
+      "illustrationStyle": {
+        "design": "Photo-first for images; vector for infographics when needed",
+        "humanFigures": "Real people allowed; avoid identifiable faces when possible"
+      },
+      "mood": "Technical, clean, approachable"
+    }
+  },
+  "lessons": [
+    {
+      "lessonId": "lesson-1",
+      "title": "The Workbench: Parts, Placement, and Power",
+      "description": "Use realistic reference images to teach what parts look like and how they fit together.",
+      "visualizations": [
+        {
+          "visualizationId": "1.1",
+          "title": "Assembling a Desktop PC (Workbench Scene)",
+          "type": "sourced_image",
+          "dimensions": { "width": 1400, "height": 900, "orientation": "landscape" },
+          "placement": "Lesson opener / overview",
+          "purpose": "Show an authentic, real-world PC assembly setup (case on table, tools nearby) to anchor the lesson in reality.",
+          "imageSpecs": {
+            "brief": "A realistic photo showing a PC build in progress on a workbench/table, including a case and tools. Used as a sourced reference image (not generated).",
+            "scene": {
+              "setting": {
+                "location": "indoor workbench / table",
+                "timeOfDay": "daylight",
+                "props": ["PC case", "tools", "components on table"],
+                "backgroundComplexity": "medium"
+              },
+              "subjects": [
+                {
+                  "role": "main",
+                  "kind": "human",
+                  "count": 1,
+                  "pose": "working on PC case",
+                  "emotionCue": "focused",
+                  "wardrobe": "casual"
+                }
+              ],
+              "action": "PC assembly in progress"
+            },
+            "composition": {
+              "shotType": "wide",
+              "cameraAngle": "eye-level",
+              "framing": "rule-of-thirds",
+              "focus": "case + hands/tools",
+              "negativeSpace": "upper-right reserved for optional headline",
+              "edgeTreatment": "none (natural photo edges)"
+            },
+            "constraints": {
+              "noBakedInText": true,
+              "doNotInclude": ["watermarks", "added logos", "added text overlays"]
+            },
+            "accessibility": {
+              "altText": "A real photo of a desktop PC being assembled on a table with a case and tools visible."
+            },
+            "rendering": {
+              "mode": "raster",
+              "export": { "format": "png", "scale": 2 },
+              "generation": {
+                "source": "sourced",
+                "promptParts": { "positive": [], "negative": [] },
+                "seed": null,
+                "variants": 1
+              }
+            },
+            "source": {
+              "pageUrl": "https://commons.wikimedia.org/wiki/File:Assemble_a_Desktop_PC_-_Jan._2013.jpg",
+              "author": "Dave Dugdale",
+              "license": "CC BY-SA 2.0",
+              "attributionRequired": true
+            }
+          }
+        },
+        {
+          "visualizationId": "1.2",
+          "title": "Motherboard with RAM Installed (Reference Close-up)",
+          "type": "sourced_image",
+          "dimensions": { "width": 1400, "height": 900, "orientation": "landscape" },
+          "placement": "Inline near motherboard/RAM section",
+          "purpose": "Give learners a clear, real photo reference of a motherboard populated with RAM to support part identification and orientation.",
+          "imageSpecs": {
+            "brief": "A realistic close reference photo of a motherboard with RAM installed, used as a sourced image for identification (not generated).",
+            "scene": {
+              "setting": {
+                "location": "neutral surface / bench",
+                "timeOfDay": "neutral",
+                "props": ["motherboard", "RAM modules"],
+                "backgroundComplexity": "low"
+              },
+              "subjects": [
+                {
+                  "role": "main",
+                  "kind": "hardware",
+                  "count": 1,
+                  "pose": "top-down / angled close-up",
+                  "emotionCue": "n/a",
+                  "wardrobe": "n/a"
+                }
+              ],
+              "action": "static reference"
+            },
+            "composition": {
+              "shotType": "close",
+              "cameraAngle": "top-down or shallow angle",
+              "framing": "tight",
+              "focus": "DIMM slots + RAM modules",
+              "negativeSpace": "top-right reserved for callout",
+              "edgeTreatment": "none (natural photo edges)"
+            },
+            "constraints": {
+              "noBakedInText": true,
+              "doNotInclude": ["watermarks", "added logos", "added text overlays"]
+            },
+            "accessibility": {
+              "altText": "A real photo of a motherboard with DDR2 RAM installed, showing the RAM seated in the DIMM slots."
+            },
+            "rendering": {
+              "mode": "raster",
+              "export": { "format": "png", "scale": 2 },
+              "generation": {
+                "source": "sourced",
+                "promptParts": { "positive": [], "negative": [] },
+                "seed": null,
+                "variants": 1
+              }
+            },
+            "source": {
+              "pageUrl": "https://commons.wikimedia.org/wiki/File:Mainboard_with_DDR2-RAM.JPG",
+              "author": "Klaus Eifert",
+              "license": "CC BY-SA 3.0 (also available under GFDL 1.2+)",
+              "attributionRequired": true
+            }
+          }
+        },
+        {
+          "visualizationId": "1.3",
+          "title": "ATX Power Supply Unit (PSU) and Cables",
+          "type": "sourced_image",
+          "dimensions": { "width": 1400, "height": 900, "orientation": "landscape" },
+          "placement": "Inline near PSU/power section",
+          "purpose": "Show a real PSU and its cable bundle to help learners recognize connectors and understand cable management needs.",
+          "imageSpecs": {
+            "brief": "A realistic reference photo of an ATX power supply unit with its cables, used as a sourced image (not generated).",
+            "scene": {
+              "setting": {
+                "location": "tabletop",
+                "timeOfDay": "neutral",
+                "props": ["ATX PSU", "attached cables/connectors"],
+                "backgroundComplexity": "low"
+              },
+              "subjects": [
+                {
+                  "role": "main",
+                  "kind": "hardware",
+                  "count": 1,
+                  "pose": "angled close-up",
+                  "emotionCue": "n/a",
+                  "wardrobe": "n/a"
+                }
+              ],
+              "action": "static reference"
+            },
+            "composition": {
+              "shotType": "close",
+              "cameraAngle": "angled top-down",
+              "framing": "tight",
+              "focus": "PSU body + connectors",
+              "negativeSpace": "left side reserved for labels/callouts",
+              "edgeTreatment": "none (natural photo edges)"
+            },
+            "constraints": {
+              "noBakedInText": true,
+              "doNotInclude": ["watermarks", "added logos", "added text overlays"]
+            },
+            "accessibility": {
+              "altText": "A real photo of an ATX power supply unit with multiple power cables and connectors spread out on a table."
+            },
+            "rendering": {
+              "mode": "raster",
+              "export": { "format": "png", "scale": 2 },
+              "generation": {
+                "source": "sourced",
+                "promptParts": { "positive": [], "negative": [] },
+                "seed": null,
+                "variants": 1
+              }
+            },
+            "source": {
+              "pageUrl": "https://commons.wikimedia.org/wiki/File:Power_Supply_ATX-450PNF.jpg",
+              "author": "Victor Korniyenko",
+              "license": "CC BY-SA 3.0",
+              "attributionRequired": true
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "production": {
+    "recommendedWorkflow": [
+      "For sourced images: store both the pageUrl (for attribution) and the direct assetUrl (for retrieval).",
+      "Render/export at 2x resolution if resizing/cropping in your pipeline.",
+      "Avoid adding baked-in text onto the sourced image itself; overlay text in your layout step."
+    ],
+    "placementGuidelines": [
+      "Use sourced images as realistic anchors near procedural steps (parts identification, installation order).",
+      "Keep callouts in reserved negative space so photos remain readable."
+    ]
+  }
+}

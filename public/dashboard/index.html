@@ -1,0 +1,1176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualization Observability</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;800&display=swap"
+        rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        obsidian: '#0f172a',
+                        neon: '#0ea5e9',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                        surface: '#1e293b',
+                        'surface-highlight': '#334155'
+                    },
+                    animation: {
+                        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .matrix-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .matrix-scroll::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+
+        .matrix-scroll::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body class="bg-obsidian text-slate-200 font-sans h-screen overflow-hidden flex flex-col">
+    <div id="app" class="flex-1 flex flex-col h-full">
+        <!-- Header -->
+        <header class="bg-surface border-b border-slate-700 p-4 flex justify-between items-center shadow-lg z-10">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-neon/20 rounded-lg">
+                    <svg class="w-6 h-6 text-neon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                        </path>
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Visualization <span
+                        class="text-neon">Observability</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="px-3 py-1 bg-surface-highlight rounded border border-slate-600 text-xs font-mono">
+                    <span class="text-slate-400">BATCH:</span>
+                    <span class="text-white ml-2">{{ batch.completed }} / {{ batch.total }}</span>
+                </div>
+                <div
+                    class="flex items-center gap-2 px-3 py-1 rounded-full bg-surface border border-slate-700 text-xs font-mono">
+                    <div :class="`w-2 h-2 rounded-full ${isConnected ? 'bg-success animate-pulse' : 'bg-danger'}`">
+                    </div>
+                    {{ isConnected ? 'LIVE' : 'DISCONNECTED' }}
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex overflow-hidden">
+            <!-- Left Panel: Controls & Logs (30%) -->
+            <aside class="w-[30%] border-r border-slate-700 flex flex-col bg-surface/50 backdrop-blur-sm">
+                <!-- Drop Zone -->
+                <div class="p-6 border-b border-slate-700 transition-colors"
+                    :class="{'bg-neon/10 border-neon': isDragging, 'bg-surface/30': !isDragging}"
+                    @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false"
+                    @drop.prevent="handleDrop">
+                    <div class="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center group cursor-pointer hover:border-neon/50 transition"
+                        @click="$refs.fileInput.click()">
+                        <input type="file" ref="fileInput" class="hidden" accept=".json" @change="handleFileSelect">
+                        <svg class="w-8 h-8 text-slate-500 mx-auto mb-2 group-hover:text-neon transition" fill="none"
+                            stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
+                            </path>
+                        </svg>
+                        <p class="text-slate-400 text-sm font-medium">Upload <code
+                                class="text-neon">manifest.json</code>
+                        </p>
+                    </div>
+
+                    <div class="mt-4 text-center flex gap-2 justify-center">
+                        <button @click="stopBatch"
+                            class="text-[10px] text-warning hover:text-white transition-colors font-mono tracking-wider border border-warning/30 px-2 py-1 rounded hover:bg-warning/20">
+                            [ STOP GENERATION ]
+                        </button>
+                        <button @click="clearAll"
+                            class="text-[10px] text-slate-600 hover:text-danger transition-colors font-mono tracking-wider px-2 py-1">
+                            [ CLEAR DATA ]
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Live Logs -->
+                <div class="flex-1 flex flex-col min-h-0 bg-black">
+                    <!-- Tabs -->
+                    <div class="flex border-b border-slate-700 bg-surface">
+                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'QUERY LAB']" :key="mode"
+                            @click="logMode = mode"
+                            class="flex-1 px-2 py-2 text-[10px] font-mono font-bold transition-colors border-b-2"
+                            :class="logMode === mode ? 'border-neon text-neon bg-neon/5' : 'border-transparent text-slate-500 hover:text-slate-300'">
+                            {{ mode }}
+                        </button>
+                    </div>
+
+                    <!-- Filter Controls (for BY ASSET) -->
+                    <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 mb-1">Tasks Available: {{ Object.keys(tasks || {}).length
+                            }}
+                        </div>
+                        <select v-model="selectedAssetFilter"
+                            class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
+                            <option value="">Select an Asset...</option>
+                            <option v-if="batchStylingGuidance" value="__styling__">Styling (Batch Guidance)</option>
+                            <option v-for="task in (tasks || {})" :key="task?.taskId" :value="task?.taskId">
+                                {{ taskLabel(task) }} ({{ getStatusLabel(task) }})
+                            </option>
+                        </select>
+
+                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[30vh] overflow-y-auto matrix-scroll">
+                            <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
+                            <div class="mt-1 text-[11px] font-mono text-slate-300">
+                                <div>
+                                    <span class="text-slate-500">Status:</span>
+                                    <span class="ml-1" :class="getStatusTextClass(selectedAssetTask)">{{ getStatusLabel(selectedAssetTask) }}</span>
+                                </div>
+                                <div v-if="hasClipScore(selectedAssetTask)" class="mt-0.5">
+                                    <span class="text-neon">CLIP Score:</span>
+                                    <span class="ml-1 text-neon font-bold">{{ formatClipScore(getClipScore(selectedAssetTask)) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.clip_threshold !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">CLIP Threshold:</span>
+                                    <span class="ml-1 text-slate-200">{{ Number(selectedAssetTask.metrics?.clip_threshold).toFixed(2) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.sourced_fallback_reason" class="mt-0.5">
+                                    <span class="text-warning">Sourced Fallback:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.metrics?.sourced_fallback_reason }}</span>
+                                </div>
+                                <div v-if="hasVisionScore(selectedAssetTask)" class="mt-0.5">
+                                    <span class="text-slate-500">Vision Score:</span>
+                                    <span class="ml-1 text-slate-200">{{ getVisionScore(selectedAssetTask) }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.source_provider" class="mt-0.5">
+                                    <span class="text-slate-500">Provider:</span>
+                                    <span class="ml-1 text-slate-200 uppercase">{{ selectedAssetTask.details.source_provider }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.metrics?.total_ms !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">Total:</span>
+                                    <span class="ml-1 text-slate-200">{{ (Number(selectedAssetTask.metrics?.total_ms || 0) / 1000).toFixed(2) }}s</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.source_query" class="mt-0.5">
+                                    <span class="text-slate-500">Selected Query:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
+                                </div>
+                                <div v-if="getValidationBrief(selectedAssetTask)" class="mt-1">
+                                    <span class="text-slate-500 block">Validation Brief:</span>
+                                    <div class="ml-2 text-slate-200 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedAssetTask) }}</div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_query_signals" class="mt-1">
+                                    <span class="text-slate-500 block">Query Phrases:</span>
+                                    <div class="ml-2 text-slate-300">normalized: {{ selectedAssetTask.details.sourced_query_signals.normalized_brief }}</div>
+                                    <div class="ml-2 text-slate-300">domain: {{ selectedAssetTask.details.sourced_query_signals.domain_terms }}</div>
+                                    <div class="ml-2 text-slate-300">scene: {{ selectedAssetTask.details.sourced_query_signals.scene_terms }}</div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_query_config" class="mt-1">
+                                    <span class="text-slate-500 block">Source API Params:</span>
+                                    <div class="ml-2 text-slate-300">orientation: {{ selectedAssetTask.details.sourced_query_config.orientation }}</div>
+                                    <div class="ml-2 text-slate-300">per_page: {{ selectedAssetTask.details.sourced_query_config.per_page }}</div>
+                                    <div class="ml-2 text-slate-300">content_filter: {{ selectedAssetTask.details.sourced_query_config.content_filter }}</div>
+                                    <div class="ml-2 text-slate-300">max_queries: {{ selectedAssetTask.details.sourced_query_config.max_queries }}</div>
+                                    <div class="ml-2 text-slate-300">candidate_cap: {{ selectedAssetTask.details.sourced_query_config.candidate_cap }}</div>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.sourced_queries?.length" class="mt-1">
+                                    <span class="text-slate-500 block">Source Queries:</span>
+                                    <div v-for="(query, qIdx) in selectedAssetTask.details.sourced_queries" :key="`asset-q-${qIdx}`" class="ml-2 text-slate-300">
+                                        - {{ query }}
+                                    </div>
+                                </div>
+                                <details v-if="selectedAssetTask?.details?.sourced_candidates?.length" class="mt-1">
+                                    <summary class="text-slate-500 cursor-pointer select-none">
+                                        Sourced Candidates ({{ selectedAssetTask.details.sourced_candidates.length }})
+                                    </summary>
+                                    <div class="ml-2 mt-1 max-h-28 overflow-y-auto matrix-scroll border border-slate-800 rounded p-1 bg-black/50 space-y-1">
+                                        <div v-for="(candidate, cIdx) in selectedAssetTask.details.sourced_candidates" :key="`asset-c-${cIdx}`" class="text-[10px] leading-tight">
+                                            <div class="text-slate-400">
+                                                #{{ cIdx + 1 }}
+                                                <span v-if="candidate?.provider" class="uppercase">{{ candidate.provider }}</span>
+                                                <span v-if="candidate?.query">| {{ candidate.query }}</span>
+                                            </div>
+                                            <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
+                                                {{ candidate?.image_url }}
+                                            </a>
+                                        </div>
+                                    </div>
+                                </details>
+                                <div v-if="selectedAssetFilter === '__styling__' && selectedAssetTask?.details?.styling_guidance" class="mt-1">
+                                    <span class="text-slate-500 block">Styling:</span>
+                                    <pre class="ml-2 text-slate-300 whitespace-pre-wrap break-words">{{ JSON.stringify(selectedAssetTask.details.styling_guidance, null, 2) }}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="logMode === 'VERBOSE' && selectedAssetTask && getValidationBrief(selectedAssetTask)" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 font-mono">VERBOSE CONTEXT (SELECTED ASSET)</div>
+                        <div class="mt-1 text-[11px] font-mono">
+                            <span class="text-slate-500">Validation Brief:</span>
+                            <div class="text-slate-200 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedAssetTask) }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Query Lab Controls -->
+                    <div v-if="logMode === 'QUERY LAB'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="text-[10px] text-slate-500 font-mono">PIXABAY QUERY LAB</div>
+                        <div class="mt-1 flex gap-1">
+                            <input v-model="queryLabInput"
+                                class="flex-1 bg-black border border-slate-700 text-xs text-slate-200 px-2 py-1 rounded font-mono focus:border-neon outline-none"
+                                placeholder="e.g. dawn light tackle box lures" />
+                            <button @click="runQueryLab" :disabled="queryLabLoading"
+                                class="text-[10px] px-2 py-1 rounded border border-neon/40 text-neon hover:bg-neon/10 disabled:opacity-50 disabled:cursor-not-allowed font-mono">
+                                {{ queryLabLoading ? 'RUNNING...' : 'TEST' }}
+                            </button>
+                        </div>
+                        <div v-if="queryLabError" class="mt-1 text-[10px] text-danger font-mono">{{ queryLabError }}</div>
+                    </div>
+
+                    <!-- Log Stream -->
+                    <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-tight matrix-scroll relative"
+                        ref="logContainer">
+
+
+
+                        <!-- Clear Button overlay -->
+                        <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition">
+                            <button @click="logs = []"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700">CLEAR</button>
+                        </div>
+
+                        <div v-if="logMode === 'QUERY LAB' && queryLabHistory.length" class="space-y-1">
+                            <div v-for="(h, idx) in queryLabHistory" :key="`ql-h-${idx}`"
+                                class="text-[10px] text-slate-300 border-l-2 border-neon/40 pl-2 py-1">
+                                query="{{ h.query }}" | clip avg={{ h.clip_avg }} max={{ h.clip_max }} min={{ h.clip_min }} | vision avg={{ h.vision_avg }} max={{ h.vision_max }} min={{ h.vision_min }}
+                            </div>
+                        </div>
+
+                        <div v-if="filteredLogs.length === 0 && !(logMode === 'QUERY LAB' && queryLabHistory.length)" class="text-center text-slate-600 mt-10 italic">
+                            No logs to display...
+                        </div>
+
+                        <div v-for="(log, i) in filteredLogs" :key="i"
+                            class="mb-1.5 break-words opacity-90 hover:opacity-100 border-l-2 pl-2"
+                            :class="log.level === 'error' ? 'border-danger' : 'border-transparent'">
+
+                            <span class="text-slate-600">[{{ formatTime(log.timestamp) }}]</span>
+
+                            <span :class="{
+                                'text-neon': log.level === 'info',
+                                'text-warning': log.level === 'warn',
+                                'text-danger': log.level === 'error',
+                                'text-success': log.level === 'success'
+                            }">{{ (log.context || 'SYSTEM').toUpperCase() }}:</span>
+
+                            <!-- Task ID Badge if present -->
+                            <span v-if="log.taskId && logMode === 'VERBOSE'"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
+                                {{ log.taskId.split('-').pop() }}
+                            </span>
+
+                            <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
+                                class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
+                                CLIP
+                            </span>
+
+                            <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
+                            <div v-if="extractUrls(log.message).length" class="ml-2 mt-1 space-y-0.5">
+                                <a v-for="(url, uIdx) in extractUrls(log.message)" :key="`log-url-${i}-${uIdx}`"
+                                    :href="url" target="_blank" rel="noopener noreferrer"
+                                    class="block text-neon underline break-all">
+                                    {{ url }}
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Right Panel: Visualizer (70%) -->
+            <section class="flex-1 flex flex-col bg-obsidian relative overflow-y-auto p-8">
+                <div v-if="logMode === 'QUERY LAB'" class="max-w-7xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <div>
+                            <div class="text-xs text-neon font-mono uppercase tracking-widest mb-1">Query Lab</div>
+                            <h2 class="text-2xl font-bold text-white">Pixabay Retrieval + CLIP/Vision Scoring</h2>
+                        </div>
+                        <div class="text-xs font-mono text-slate-400">
+                            Query: <span class="text-slate-200">{{ queryLabInput || '-' }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="queryLabLoading" class="text-slate-400 font-mono text-sm">Running query...</div>
+                    <div v-else-if="!queryLabResults.length" class="text-center py-20 opacity-40">
+                        <h3 class="text-xl font-bold text-slate-400">No Query Results Yet</h3>
+                        <p class="text-slate-500">Enter a query in Query Lab and press TEST.</p>
+                    </div>
+                    <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <div v-for="item in queryLabResults" :key="`query-card-${item.index}`"
+                            class="bg-surface rounded-lg border border-slate-700 overflow-hidden shadow-lg">
+                            <div class="px-3 py-2 border-b border-slate-700/50 bg-surface-highlight/30 flex justify-between items-center text-xs font-mono">
+                                <span class="text-slate-300">Result #{{ item.index }}</span>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-neon/15 border border-neon/30 text-neon">
+                                        CLIP {{ formatQueryScore(item.clip_score, 3) }}
+                                    </span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-500 text-slate-200">
+                                        VISION {{ formatQueryScore(item.vision_score, 0) }}
+                                    </span>
+                                </div>
+                            </div>
+                            <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="block bg-black/20 p-2">
+                                <img :src="item.image_url" class="w-full h-44 object-cover rounded border border-slate-700" />
+                            </a>
+                            <div class="p-3 text-xs font-mono space-y-1">
+                                <div><span class="text-slate-500">query:</span> <span class="text-slate-200">{{ item.query }}</span></div>
+                                <div v-if="item.vision_reason" class="text-slate-400 break-words">vision: {{ item.vision_reason }}</div>
+                                <div v-if="item.clip_error" class="text-warning break-words">clip: {{ item.clip_error }}</div>
+                                <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all block">{{ item.image_url }}</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else class="max-w-7xl mx-auto w-full space-y-12">
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Hero</div>
+                            <div class="text-2xl font-bold text-white mt-1">{{ narrativeMetrics.heroCount }}</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">NarrativeHeroGenTime</div>
+                            <div class="text-2xl font-bold text-neon mt-1">{{ narrativeMetrics.avgGenSeconds }}s</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">NarrativeWaitTime</div>
+                            <div class="text-2xl font-bold text-sky-300 mt-1">{{ narrativeMetrics.avgWaitSeconds }}s</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">SiliconFlowBackoffEvents</div>
+                            <div class="text-2xl font-bold text-warning mt-1">{{ narrativeMetrics.backoffEvents }}</div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-3">
+                            <div class="text-[10px] font-mono text-slate-400 uppercase">Narrative Cost (est USD)</div>
+                            <div class="text-2xl font-bold text-success mt-1">${{ narrativeMetrics.totalCostUsd }}</div>
+                        </div>
+                    </div>
+
+                    <!-- Empty State -->
+                    <div v-if="!Object.keys(groupedTasks).length" class="text-center py-20 opacity-30">
+                        <svg class="w-24 h-24 mx-auto mb-4 text-slate-600" fill="none" stroke="currentColor"
+                            viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                            </path>
+                        </svg>
+                        <h2 class="text-2xl font-bold text-slate-400">No Active Batch</h2>
+                        <p class="text-slate-500">Upload a manifest to visualize generation progress.</p>
+                    </div>
+
+                    <!-- Course Loop -->
+                    <div v-for="(course, courseId) in groupedTasks" :key="courseId" class="animate-fade-in-up">
+
+                        <!-- Course Header -->
+                        <div class="flex items-center gap-4 mb-6 border-b border-slate-700 pb-4">
+                            <div class="bg-neon/10 p-2 rounded">
+                                <svg class="w-6 h-6 text-neon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+                                    </path>
+                                </svg>
+                            </div>
+                            <div>
+                                <div class="text-xs text-neon font-mono uppercase tracking-widest mb-1">Course</div>
+                                <h2 class="text-2xl font-bold text-white capitalize">{{ decodeSlug(courseId) }}</h2>
+                            </div>
+                        </div>
+
+                        <!-- Lessons Loop -->
+                        <div v-for="(lesson, lessonId) in course.lessons" :key="lessonId"
+                            class="mb-10 pl-6 border-l-2 border-slate-800 ml-4">
+
+                            <!-- Lesson Header -->
+                            <div class="flex items-center gap-3 mb-4">
+                                <div class="w-2 h-2 rounded-full bg-slate-600"></div>
+                                <h3 class="text-lg font-semibold text-slate-200">
+                                    <span class="text-neon mr-2">Lesson {{ lesson.index }}:</span>{{ lesson.title ||
+                                    decodeSlug(lessonId) }}
+                                </h3>
+                                <span
+                                    class="bg-surface px-2 py-0.5 rounded text-[10px] text-slate-500 font-mono border border-slate-700">
+                                    {{ lesson.tasks.length }} Visuals
+                                </span>
+                            </div>
+
+                            <!-- Tasks Grid -->
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <div v-for="task in lesson.tasks" :key="task.taskId"
+                                    class="bg-surface rounded-lg border border-slate-700 overflow-hidden group hover:border-slate-500 transition-all shadow-lg flex flex-col h-[280px] cursor-pointer"
+                                    @click="selectAsset(task)">
+
+                                    <!-- Header / Status Indicator -->
+                                    <div class="px-3 py-2 border-b border-slate-700/50 flex justify-between items-center text-xs font-mono"
+                                        :class="getStatusClass(task)">
+
+                                        <span :class="getStatusTextClass(task)">
+                                            {{ getStatusLabel(task) }}
+                                        </span>
+
+                                        <div class="flex items-center gap-2">
+                                            <span v-if="hasClipScore(task)"
+                                                class="text-[10px] px-1.5 py-0.5 rounded bg-neon/15 border border-neon/30 text-neon"
+                                                :title="`CLIP score: ${formatClipScore(getClipScore(task))}`">
+                                                CLIP {{ formatClipScore(getClipScore(task)) }}
+                                            </span>
+                                            <span v-if="hasVisionScore(task)"
+                                                class="text-[10px] px-1.5 py-0.5 rounded bg-slate-700/50 border border-slate-500 text-slate-200"
+                                                :title="`Vision score: ${getVisionScore(task)}`">
+                                                VISION {{ getVisionScore(task) }}
+                                            </span>
+                                            <!-- Duration if complete -->
+                                            <span v-if="task.status === 'completed'" class="text-slate-500">
+                                                {{ ((task.metrics?.total_ms || 0) / 1000).toFixed(1) }}s
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Visual Preview Area -->
+                                    <div
+                                        class="flex-1 relative bg-black/20 flex flex-col items-center justify-center p-2 group-hover:bg-black/40 transition">
+
+                                        <!-- Image -->
+                                        <div v-if="task.url" class="relative w-full h-full">
+                                            <img :src="task.url"
+                                                class="object-contain w-full h-full rounded cursor-zoom-in"
+                                                @click="openImage(task.url, task)">
+                                        </div>
+
+                                        <!-- Processing State -->
+                                        <div v-else-if="task.status === 'processing'" class="text-center">
+                                            <div class="animate-spin text-neon mb-2 mx-auto w-6 h-6">
+                                                <svg class="w-full h-full" fill="none" viewBox="0 0 24 24">
+                                                    <circle class="opacity-25" cx="12" cy="12" r="10"
+                                                        stroke="currentColor" stroke-width="4"></circle>
+                                                    <path class="opacity-75" fill="currentColor"
+                                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                                    </path>
+                                                </svg>
+                                            </div>
+                                            <div class="text-neon text-xs font-mono animate-pulse">
+                                                {{ task.stage || 'Processing...' }}
+                                            </div>
+                                        </div>
+
+                                        <!-- Pending/Intake/Triage State -->
+                                        <div v-else class="text-center">
+                                            <div class="text-slate-700 text-3xl font-bold mb-1 opacity-50">
+                                                {{ task.status === 'failed' ? 'ERROR' : '#' +
+                                                task.taskId.split('-').pop() }}
+                                            </div>
+                                            <div v-if="task.stage === 'Triage'"
+                                                class="text-warning text-[10px] font-mono mt-2 animate-pulse">
+                                                TRIAGING...
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Footer (Title) -->
+                                    <div class="p-2 bg-surface">
+                                        <h4 class="text-[10px] text-slate-300 font-medium truncate mb-1"
+                                            :title="task.details?.title">
+                                            {{ task.details?.title || 'Untitled Visualization' }}
+                                        </h4>
+                                        <!-- Prompt Snippet -->
+                                        <p v-if="task.details?.refined_prompt"
+                                            class="text-[9px] text-slate-500 italic line-clamp-2 leading-tight"
+                                            :title="task.details.refined_prompt">
+                                            {{ task.details.refined_prompt }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+
+        <!-- Image Modal -->
+        <div v-if="selectedTask"
+            class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-sm"
+            @click.self="closeModal">
+
+            <!-- Close Button -->
+            <button class="absolute top-4 right-4 text-slate-400 hover:text-white transition" @click="closeModal">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
+            </button>
+
+            <div class="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center">
+                <img :src="selectedTask.url" class="max-w-full max-h-[85vh] rounded shadow-2xl border border-slate-700">
+
+                <div class="mt-4 flex flex-col items-center gap-4 w-full max-w-4xl">
+                    <div class="flex items-center gap-4">
+                        <h3 class="text-xl font-bold text-white">{{ selectedTask.details?.title || 'Visualization' }}
+                        </h3>
+
+                        <!-- Open Folder Button -->
+                        <button v-if="getTaskOutputDir(selectedTask)"
+                            @click="openFolder(getTaskOutputDir(selectedTask))"
+                            class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm text-white font-medium flex items-center gap-2 transition">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z">
+                                </path>
+                            </svg>
+                            View in Folder
+                        </button>
+                    </div>
+
+                    <!-- Prompts Section -->
+                    <div
+                        class="w-full bg-surface/80 rounded-lg p-4 border border-slate-700 overflow-y-auto max-h-[30vh]">
+
+                        <!-- 0. What was the original request (Raw from Manifest) -->
+                        <div v-if="selectedTask.details?.original_instruction" class="mb-4">
+                            <h4 class="text-xs font-mono text-slate-500 uppercase mb-1">Original Request (Raw)
+                            </h4>
+                            <p class="text-sm text-slate-400 font-mono italic">{{
+                                selectedTask.details.original_instruction }}</p>
+                        </div>
+
+                        <!-- 1. What was asked (Refined Prompt from Lesson Context) -->
+                        <div v-if="selectedTask.details?.refined_prompt" class="mb-4">
+                            <h4 class="text-xs font-mono text-neon uppercase mb-1">Contextual Prompt (Refined)
+                            </h4>
+                            <p class="text-sm text-slate-300 font-mono whitespace-pre-wrap">{{
+                                selectedTask.details.refined_prompt }}</p>
+                        </div>
+
+                        <!-- 2. What was constructed (Blueprint Prompt) -->
+                        <div v-if="selectedTask.details?.blueprint_prompt" class="mb-4">
+                            <h4 class="text-xs font-mono text-warning uppercase mb-1">Blueprint Instruction</h4>
+                            <p class="text-sm text-slate-300 font-mono whitespace-pre-wrap">{{
+                                selectedTask.details.blueprint_prompt }}</p>
+                        </div>
+
+                        <!-- 3. What was generated (Image Prompts) -->
+                        <div v-if="selectedTask.details?.image_prompts && selectedTask.details.image_prompts.length"
+                            class="mb-2">
+                            <h4 class="text-xs font-mono text-success uppercase mb-1">Asset Generation Prompts</h4>
+                            <div v-for="(prompt, idx) in selectedTask.details.image_prompts" :key="idx"
+                                class="mb-2 pl-2 border-l-2 border-slate-600">
+                                <p class="text-xs text-slate-400 font-mono">{{ prompt }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. Blueprint JSON (New) -->
+                    <div v-if="selectedTask.payload?.blueprint"
+                        class="mt-4 mb-2 overflow-y-auto max-h-[20vh] border border-slate-700 rounded p-2 bg-black">
+                        <h4 class="text-xs font-mono text-success uppercase mb-1">Blueprint JSON (Plan)</h4>
+                        <pre
+                            class="text-[10px] text-slate-400 font-mono">{{ JSON.stringify(selectedTask.payload.blueprint, null, 2) }}</pre>
+                    </div>
+
+                    <!-- 5. Task Metadata (Input) -->
+                    <div v-if="selectedTask.metadata"
+                        class="mb-4 overflow-y-auto max-h-[20vh] border border-slate-700 rounded p-2 bg-black">
+                        <h4 class="text-xs font-mono text-neon uppercase mb-1">Task Metadata (Input)</h4>
+                        <pre
+                            class="text-[10px] text-slate-400 font-mono">{{ JSON.stringify(selectedTask.metadata, null, 2) }}</pre>
+                    </div>
+
+                    <!-- 6. Sourced Image Scoring -->
+                    <div v-if="hasClipScore(selectedTask) || hasVisionScore(selectedTask) || selectedTask?.details?.sourced_queries?.length || selectedTask?.details?.sourced_candidates?.length"
+                        class="mb-4 overflow-y-auto max-h-[20vh] border border-neon/30 rounded p-3 bg-black">
+                        <h4 class="text-xs font-mono text-neon uppercase mb-2">Sourced Image Scoring</h4>
+                        <div v-if="hasClipScore(selectedTask)" class="text-sm text-slate-300 font-mono">
+                            CLIP Score:
+                            <span class="text-neon font-bold ml-1">{{ formatClipScore(getClipScore(selectedTask))
+                                }}</span>
+                        </div>
+                        <div v-if="hasVisionScore(selectedTask)"
+                            class="text-sm text-slate-400 font-mono mt-1">
+                            Vision Score:
+                            <span class="text-slate-200 ml-1">{{ getVisionScore(selectedTask) }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.source_provider" class="text-sm text-slate-400 font-mono mt-1">
+                            Provider:
+                            <span class="text-slate-200 ml-1 uppercase">{{ selectedTask.details.source_provider }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.source_query" class="text-sm text-slate-400 font-mono mt-1">
+                            Selected Query:
+                            <span class="text-slate-200 ml-1">{{ selectedTask.details.source_query }}</span>
+                        </div>
+                        <div v-if="getValidationBrief(selectedTask)" class="text-sm text-slate-400 font-mono mt-1">
+                            Validation Brief:
+                            <span class="text-slate-200 ml-1 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedTask) }}</span>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_query_signals" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Query Phrases</div>
+                            <div class="text-xs text-slate-300 font-mono">normalized: {{ selectedTask.details.sourced_query_signals.normalized_brief }}</div>
+                            <div class="text-xs text-slate-300 font-mono">domain: {{ selectedTask.details.sourced_query_signals.domain_terms }}</div>
+                            <div class="text-xs text-slate-300 font-mono">scene: {{ selectedTask.details.sourced_query_signals.scene_terms }}</div>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_query_config" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Source API Params</div>
+                            <div class="text-xs text-slate-300 font-mono">orientation={{ selectedTask.details.sourced_query_config.orientation }} per_page={{ selectedTask.details.sourced_query_config.per_page }} content_filter={{ selectedTask.details.sourced_query_config.content_filter }} max_queries={{ selectedTask.details.sourced_query_config.max_queries }} candidate_cap={{ selectedTask.details.sourced_query_config.candidate_cap }}</div>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_queries?.length" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Source Queries Sent</div>
+                            <div v-for="(query, idx) in selectedTask.details.sourced_queries" :key="`modal-q-${idx}`" class="text-xs text-slate-300 font-mono">
+                                - {{ query }}
+                            </div>
+                        </div>
+                        <div v-if="selectedTask.details?.sourced_candidates?.length" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Sourced Candidate URLs</div>
+                            <div v-for="(candidate, idx) in selectedTask.details.sourced_candidates" :key="`modal-c-${idx}`" class="text-xs font-mono">
+                                <a :href="candidate?.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all">
+                                    {{ candidate?.image_url }}
+                                </a>
+                                <span v-if="candidate?.query" class="text-slate-500 ml-1">({{ candidate.query }})</span>
+                            </div>
+                        </div>
+                        <div v-if="selectedTask.details?.styling_guidance" class="mt-2">
+                            <div class="text-xs text-slate-500 font-mono uppercase mb-1">Styling</div>
+                            <pre class="text-xs text-slate-300 font-mono whitespace-pre-wrap break-words">{{ JSON.stringify(selectedTask.details.styling_guidance, null, 2) }}</pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, nextTick } = Vue;
+        const socket = io();
+
+        createApp({
+            setup() {
+                const isConnected = ref(false);
+                const isDragging = ref(false);
+
+                // Log Views State
+                const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
+                const selectedAssetFilter = ref('');
+                const queryLabInput = ref('dawn light tackle box lures');
+                const queryLabLoading = ref(false);
+                const queryLabError = ref('');
+                const queryLabResults = ref([]);
+                const queryLabHistory = ref([]);
+
+                const logs = ref([]);
+                const tasks = ref({}); // Map: taskId -> task
+                const batch = ref({ total: 0, completed: 0 });
+                const currentBatchId = ref(null);
+                const logContainer = ref(null);
+
+                const filteredLogs = computed(() => {
+                    if (logMode.value === 'VERBOSE') {
+                        return logs.value;
+                    }
+
+                    if (logMode.value === 'QUERY LAB') {
+                        return [];
+                    }
+
+                    if (logMode.value === 'BY ASSET') {
+                        if (!selectedAssetFilter.value) return [];
+                        return logs.value.filter(log => log.taskId === selectedAssetFilter.value);
+                    }
+
+                    // HIGH LEVEL Logic
+                    return logs.value.filter(log => {
+                        // Always show errors and success
+                        if (log.level === 'error' || log.level === 'success') return true;
+
+                        // Show Orchestrator info
+                        if (log.context === 'Orchestrator') return true;
+
+                        // Hide detailed implementation logs (StampingStrategy, ImageGen, BlueprintGen) unless critical
+                        // Show only if message is "Starting generation" or "Completed"
+                        const msg = (log.message || '').toLowerCase();
+                        if (log.context === 'StampingStrategy') {
+                            return msg.includes('starting') || msg.includes('completed');
+                        }
+
+                        return false;
+                    });
+                });
+
+                const selectedAssetTask = computed(() => {
+                    if (!selectedAssetFilter.value) return null;
+                    if (selectedAssetFilter.value === '__styling__') {
+                        if (!batchStylingGuidance.value) return null;
+                        return {
+                            taskId: '__styling__',
+                            status: 'completed',
+                            details: { styling_guidance: batchStylingGuidance.value },
+                            metrics: {}
+                        };
+                    }
+                    return tasks.value?.[selectedAssetFilter.value] || null;
+                });
+
+                const batchStylingGuidance = computed(() => {
+                    const all = Object.values(tasks.value || {});
+                    for (const t of all) {
+                        const style = t?.details?.styling_guidance || t?.metadata?.styling_guidance;
+                        if (style) return style;
+                    }
+                    return null;
+                });
+
+                // Derived State: Hierarchical Grouping
+                const groupedTasks = computed(() => {
+                    const groups = {};
+
+                    Object.values(tasks.value).forEach(task => {
+                        const courseId = task.metadata?.course_id || 'unknown-course';
+                        const lessonId = task.metadata?.lesson_id || 'unknown-lesson';
+                        const lessonTitle = task.metadata?.lesson_title || lessonId;
+                        const lessonIndex = task.metadata?.lesson_index || '?';
+
+                        if (!groups[courseId]) groups[courseId] = { lessons: {} };
+                        if (!groups[courseId].lessons[lessonId]) {
+                            groups[courseId].lessons[lessonId] = {
+                                title: lessonTitle,
+                                index: lessonIndex,
+                                tasks: []
+                            };
+                        }
+                        groups[courseId].lessons[lessonId].tasks.push(task);
+                    });
+
+                    // Sort lessons by index
+                    Object.keys(groups).forEach(cid => {
+                        // Ensure lessons are objects, simpler to just iterate in template but let's keep structure
+                    });
+
+                    return groups;
+                });
+
+                const narrativeMetrics = computed(() => {
+                    const allTasks = Object.values(tasks.value || {});
+                    const heroTasks = allTasks.filter((t) =>
+                        (t?.metadata?.task_type === 'story_image')
+                        || (t?.details?.output_dir || '').includes('/hero/')
+                        || (t?.details?.output_dir || '').includes('\\hero\\')
+                        || t?.details?.refined_prompt?.toLowerCase?.().includes('story_image')
+                    );
+                    const completedHeroes = heroTasks.filter((t) => t?.status === 'completed');
+                    const totalMs = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
+                    const avgMs = completedHeroes.length ? totalMs / completedHeroes.length : 0;
+                    const totalWaitMs = completedHeroes.reduce((sum, t) => {
+                        const metricWait = Number(t?.metrics?.narrative_wait_ms || t?.metrics?.wait_ms || 0);
+                        if (Number.isFinite(metricWait) && metricWait > 0) return sum + metricWait;
+                        const queuedAt = Date.parse(t?.metadata?.queued_at || '');
+                        const startedAt = Date.parse(t?.details?.started_at || '');
+                        if (Number.isFinite(queuedAt) && Number.isFinite(startedAt) && startedAt >= queuedAt) {
+                            return sum + (startedAt - queuedAt);
+                        }
+                        return sum;
+                    }, 0);
+                    const avgWaitMs = completedHeroes.length ? totalWaitMs / completedHeroes.length : 0;
+                    const backoffEvents = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
+                    const totalCost = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
+
+                    return {
+                        heroCount: heroTasks.length,
+                        avgGenSeconds: (avgMs / 1000).toFixed(2),
+                        avgWaitSeconds: (avgWaitMs / 1000).toFixed(2),
+                        backoffEvents,
+                        totalCostUsd: totalCost.toFixed(4),
+                    };
+                });
+
+                // Helpers
+                const decodeSlug = (slug) => slug.replace(/-/g, ' ');
+
+                const formatTime = (ts) => new Date(ts).toLocaleTimeString('en-US', {
+                    hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
+                });
+
+                const addLog = (level, message, context, taskId = null, batchId = null) => {
+                    // Check if already at bottom before adding new log
+                    let autoScroll = true;
+                    if (logContainer.value) {
+                        const el = logContainer.value;
+                        const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
+                        // Only auto-scroll if within 10px of bottom
+                        autoScroll = scrollPos < 10;
+                    }
+
+                    logs.value.push({ timestamp: Date.now(), level, message, context, taskId, batchId });
+                    if (logs.value.length > 500) logs.value.shift();
+
+                    nextTick(() => {
+                        if (autoScroll && logContainer.value) {
+                            logContainer.value.scrollTop = logContainer.value.scrollHeight;
+                        }
+                    });
+                };
+
+                const selectedTask = ref(null);
+
+                const isActiveBatchEvent = (payload) => {
+                    if (!payload || !payload.batchId || !currentBatchId.value) return true;
+                    return payload.batchId === currentBatchId.value;
+                };
+
+                const deriveOutputDirFromUrl = (url) => {
+                    if (!url || typeof url !== 'string') return null;
+                    const marker = '/generated-images/';
+                    const markerIndex = url.indexOf(marker);
+                    if (markerIndex === -1) return null;
+                    const relativePath = url.slice(markerIndex + marker.length).split('?')[0];
+                    if (!relativePath) return null;
+                    return relativePath.replace(/\\/g, '/').replace(/\/poster\.(png|jpg|jpeg|webp)$/i, '');
+                };
+
+                const getTaskOutputDir = (task) => {
+                    if (!task) return null;
+                    return task.details?.output_dir || deriveOutputDirFromUrl(task.url) || null;
+                };
+
+                const normalizeTask = (task) => {
+                    if (!task) return task;
+                    const resolvedOutputDir = getTaskOutputDir(task);
+                    return {
+                        ...task,
+                        details: {
+                            ...(task.details || {}),
+                            output_dir: resolvedOutputDir || task.details?.output_dir
+                        }
+                    };
+                };
+
+                const openImage = (url, task) => {
+                    // If task is provided, open modal. functionality
+                    if (task) {
+                        selectAsset(task);
+                        selectedTask.value = task;
+                    } else {
+                        window.open(url, '_blank');
+                    }
+                };
+
+                const closeModal = () => selectedTask.value = null;
+
+                const clearAll = () => {
+                    logs.value = [];
+                    tasks.value = {};
+                    batch.value = { total: 0, completed: 0 };
+                    currentBatchId.value = null;
+                    selectedTask.value = null;
+                    selectedAssetFilter.value = '';
+                    logMode.value = 'HIGH LEVEL';
+                    addLog('info', 'System Data Cleared', 'Frontend');
+                };
+
+                const openFolder = (path) => {
+                    socket.emit('open_folder', path);
+                    addLog('info', `Requesting to open folder: ${path}`, 'Frontend');
+                };
+
+                const stopBatch = async () => {
+                    try {
+                        addLog('warn', 'Sending Stop Signal...', 'Frontend');
+                        await fetch('/generate/stop', { method: 'POST' });
+                        addLog('warn', 'Stop Signal Sent', 'Frontend');
+                    } catch (e) {
+                        addLog('error', 'Failed to stop batch', e.message);
+                    }
+                };
+
+                const runQueryLab = async () => {
+                    const q = String(queryLabInput.value || '').trim();
+                    if (!q) {
+                        queryLabError.value = 'Query is required.';
+                        return;
+                    }
+                    queryLabLoading.value = true;
+                    queryLabError.value = '';
+                    queryLabResults.value = [];
+                    addLog('info', `Query Lab: testing "${q}"`, 'Frontend');
+                    try {
+                        const res = await fetch('/generate/source-debug', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ query: q, clip_brief: q, per_page: 10, orientation: 'horizontal' }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok || data?.error) {
+                            queryLabError.value = data?.error || `HTTP ${res.status}`;
+                            addLog('error', `Query Lab failed: ${queryLabError.value}`, 'Frontend');
+                            return;
+                        }
+                        queryLabResults.value = Array.isArray(data?.results) ? data.results : [];
+                        const clipVals = queryLabResults.value
+                            .map((r) => Number(r?.clip_score))
+                            .filter((v) => Number.isFinite(v));
+                        const visionVals = queryLabResults.value
+                            .map((r) => Number(r?.vision_score))
+                            .filter((v) => Number.isFinite(v));
+                        const summarize = (vals, digits = 3) => {
+                            if (!vals.length) return { avg: 'n/a', max: 'n/a', min: 'n/a' };
+                            const sum = vals.reduce((a, b) => a + b, 0);
+                            const avg = (sum / vals.length).toFixed(digits);
+                            const max = Math.max(...vals).toFixed(digits);
+                            const min = Math.min(...vals).toFixed(digits);
+                            return { avg, max, min };
+                        };
+                        const clipStats = summarize(clipVals, 3);
+                        const visionStats = summarize(visionVals, 0);
+                        queryLabHistory.value.unshift({
+                            query: q,
+                            clip_avg: clipStats.avg,
+                            clip_max: clipStats.max,
+                            clip_min: clipStats.min,
+                            vision_avg: visionStats.avg,
+                            vision_max: visionStats.max,
+                            vision_min: visionStats.min,
+                        });
+                        if (queryLabHistory.value.length > 50) queryLabHistory.value = queryLabHistory.value.slice(0, 50);
+                        addLog('success', `Query Lab complete: ${queryLabResults.value.length} results`, 'Frontend');
+                    } catch (e) {
+                        queryLabError.value = e?.message || String(e);
+                        addLog('error', `Query Lab failed: ${queryLabError.value}`, 'Frontend');
+                    } finally {
+                        queryLabLoading.value = false;
+                    }
+                };
+
+                // Visual Styling Helpers
+                const getStatusClass = (task) => {
+                    if (task.status === 'failed') return 'bg-danger/10';
+                    if (task.status === 'completed') return 'bg-success/10';
+                    if (task.status === 'processing') return 'bg-neon/10';
+                    if (task.stage === 'Triage') return 'bg-warning/10'; // Triage state
+                    return 'bg-surface-highlight'; // Intake/Pending
+                };
+
+                const getStatusTextClass = (task) => {
+                    if (task.status === 'failed') return 'text-danger';
+                    if (task.status === 'completed') return 'text-success';
+                    if (task.status === 'processing') return 'text-neon animate-pulse';
+                    if (task.stage === 'Triage') return 'text-warning';
+                    return 'text-slate-400';
+                };
+
+                const getStatusLabel = (task) => {
+                    if (task.status === 'failed') return 'FAILED';
+                    if (task.status === 'completed') return 'DONE';
+                    if (task.status === 'processing') return task.stage ? task.stage.toUpperCase() : 'PROCESSING';
+                    if (task.stage === 'Triage') return 'TRIAGE';
+                    return 'INTAKE';
+                };
+
+                const selectAsset = (task) => {
+                    const taskId = task?.taskId;
+                    if (!taskId) return;
+                    selectedAssetFilter.value = taskId;
+                };
+
+                const taskLabel = (task) => {
+                    const title = task?.details?.title || task?.metadata?.title || task?.metadata?.lesson_title || task?.taskId;
+                    const id = String(task?.taskId || '');
+                    const shortId = id.length > 6 ? id.slice(-6) : id;
+                    return `${title} [${shortId}]`;
+                };
+
+                const getClipScore = (task) => {
+                    const raw = task?.metrics?.clip_score ?? task?.details?.clip_score;
+                    const score = Number(raw);
+                    return Number.isFinite(score) ? score : null;
+                };
+
+                const hasClipScore = (task) => {
+                    return getClipScore(task) !== null;
+                };
+
+                const getVisionScore = (task) => {
+                    const raw = task?.metrics?.vision_score ?? task?.details?.vision_score;
+                    const score = Number(raw);
+                    return Number.isFinite(score) ? score : null;
+                };
+
+                const hasVisionScore = (task) => {
+                    return getVisionScore(task) !== null;
+                };
+
+                const formatClipScore = (raw) => {
+                    const score = Number(raw);
+                    if (!Number.isFinite(score)) return 'n/a';
+                    return score.toFixed(3);
+                };
+
+                const getValidationBrief = (task) => {
+                    if (!task) return '';
+                    const fromDetails = String(task?.details?.validation_brief || '').trim();
+                    if (fromDetails) return fromDetails;
+                    const fromMetrics = String(task?.metrics?.validation_brief || '').trim();
+                    if (fromMetrics) return fromMetrics;
+                    return '';
+                };
+
+                const formatQueryScore = (raw, digits = 3) => {
+                    const score = Number(raw);
+                    if (!Number.isFinite(score)) return 'n/a';
+                    return score.toFixed(digits);
+                };
+
+                const extractUrls = (text) => {
+                    const message = String(text || '');
+                    const matches = message.match(/https?:\/\/[^\s|]+/g) || [];
+                    const dedup = [];
+                    for (const url of matches) {
+                        if (!dedup.includes(url)) dedup.push(url);
+                    }
+                    return dedup;
+                };
+
+                // Handlers
+                const processManifest = async (file) => {
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const json = JSON.parse(e.target.result);
+                            addLog('info', `Manifest Loaded: ${file.name}`, 'Frontend');
+                            // ... existing upload logic
+                            // Reset
+                            tasks.value = {};
+                            batch.value = { total: 0, completed: 0 };
+                            currentBatchId.value = null;
+                            const res = await fetch('/generate/manifest', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(json)
+                            });
+                            const data = await res.json();
+                            if (res.ok && !data.error) addLog('success', 'Batch Job Started', 'API');
+                            else addLog('error', 'Batch Start Failed', data.error);
+
+                        } catch (err) {
+                            addLog('error', 'Upload Failed', err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                };
+
+                // Lifecycle
+                onMounted(() => {
+                    socket.on('connect', () => { isConnected.value = true; addLog('info', 'WebSocket Connected', 'System'); });
+                    socket.on('disconnect', () => { isConnected.value = false; addLog('warn', 'WebSocket Disconnected', 'System'); });
+
+                    socket.on('task_progress', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        const existing = tasks.value[data.taskId] || {};
+                        tasks.value[data.taskId] = normalizeTask({
+                            ...existing,
+                            ...data,
+                            details: {
+                                ...(existing.details || {}),
+                                ...(data.details || {})
+                            }
+                        });
+                    });
+
+                    socket.on('batch_initialized', (initialTasks) => {
+                        console.log('[Frontend] batch_initialized received:', initialTasks);
+                        // Force reactivity by creating a new object
+                        const normalized = {};
+                        Object.keys(initialTasks || {}).forEach((taskId) => {
+                            normalized[taskId] = normalizeTask(initialTasks[taskId]);
+                        });
+                        const firstTask = Object.values(normalized || {})[0];
+                        const nextBatchId = firstTask?.metadata?.batch_id || firstTask?.batchId || null;
+                        if (nextBatchId) currentBatchId.value = nextBatchId;
+                        tasks.value = normalized;
+                        console.log('[Frontend] tasks ref updated to new object. Keys:', Object.keys(tasks.value));
+                        addLog('info', `Batch Initialized with ${Object.keys(initialTasks).length} tasks`, 'System', null, currentBatchId.value);
+
+                        // Debug: Select first asset automatically to prove list exists
+                        const firstId = Object.keys(tasks.value)[0];
+                        if (firstId) {
+                            console.log('[Frontend] Auto-selecting first asset:', firstId);
+                            // Optional: selectedAssetFilter.value = firstId; 
+                        }
+                    });
+
+                    socket.on('system_log', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        addLog(data.level, data.message, data.context, data.taskId, data.batchId || null);
+                    });
+
+                    socket.on('batch_progress', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        batch.value = { total: data.total, completed: data.completed };
+                    });
+
+                    socket.on('batch_finalized', (data) => {
+                        if (!isActiveBatchEvent(data)) return;
+                        batch.value = { total: data.total, completed: data.completed };
+                        addLog(
+                            'success',
+                            `Batch finalized: ${data.completed}/${data.total} completed, ${data.failed} failed in ${Number(data.durationSeconds).toFixed(2)}s`,
+                            'Orchestrator',
+                            null,
+                            data.batchId || null
+                        );
+                    });
+
+                    window.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') closeModal();
+                    });
+                });
+
+                return {
+                    isConnected, isDragging, logs, tasks, batch, logContainer,
+                    groupedTasks, selectedTask,
+                    narrativeMetrics,
+                    selectedAssetTask, batchStylingGuidance,
+                    logMode, selectedAssetFilter, filteredLogs,
+                    queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
+                    queryLabHistory,
+                    handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
+                    handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
+                    formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
+                    getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
+                    getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, formatQueryScore,
+                    getValidationBrief,
+                    extractUrls, selectAsset, taskLabel
+                };
+
+            }
+        }).mount('#app');
+    </script>
+</body>
+
+</html>

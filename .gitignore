@@ -2,7 +2,14 @@ node_modules/
 dist/
 .DS_Store
 .env
+.env.*
+!.env.example
 test_output_*.txt
 
 public/generated-images
 test-charts.js
+
+# Runtime/process artifacts
+*.pid
+runtime_app*.log
+clip_scorer*.log

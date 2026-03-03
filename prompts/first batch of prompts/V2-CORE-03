@@ -1,0 +1,35 @@
+Goal: Explicitly separate the "Main Topic" from the "Spokes" in the data schema to ensure the center of the Hub never displays the wrong information.
+
+1. Blueprint Schema Refactor:
+
+    Update the HtmlInfographicBlueprint interface in HtmlInfographicStrategy.ts.
+
+    Add Property: center_topic: { title: string; description: string; };.
+
+    Update LLM Instructions: Modify the generateBlueprint system prompt. Explicitly instruct Gemini: "Place the core subject of the visualization in center_topic. Place the 3-8 supporting details in the items array. Do NOT repeat the core subject in the items array."
+
+2. Surgical Data Mapping:
+
+    In the hub_radial section of performGeneration:
+
+        Map Center: Explicitly set #slot_title_center and #slot_txt_center using the new blueprint.center_topic object.
+
+        Map Spokes: Ensure the loop for spokes uses the blueprint.items array. Since the center is now separate, you no longer need to .slice(1) the array.
+
+3. The "Anti-Mud" Style Enforcement:
+
+    In the JSDOM injection block, if the theme is wellness_mindful:
+
+        Force .glass-card and #hub-center to have background: #FAF9F6 !important; (Solid Cream).
+
+        Force color: #2D3748 !important; for all text to ensure high contrast.
+
+        Reason: Transparency is causing the "muddy" look where the background image bleeds into the text.
+
+4. Final Hub Verification:
+
+    Run the "Autonomic Nervous System" Hub test.
+
+    Validation: 1. Check [FORENSIC] LLM Blueprint Result: Does it contain a distinct center_topic?
+    2. Check the generated PNG: Does the center circle contain the main title while the spokes contain the divisions?
+    3. Check the debug_last_run.html: Are the spokes mathematically centered using the translate(-50%, -50%) fix?

@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Advanced Comparison Template</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    /* Unified theme tokens (overridden by backend injection) */
+    --bg-primary: #F8F5F0;
+    --accent-primary: #FF6B6B;
+    --accent-secondary: #E8A598;
+    --text-primary: #1A1A1A;
+    --text-secondary: #666666;
+    --font-main: 'Inter', sans-serif;
+
+    /* Backward-compatible aliases used in this template */
+    --bg: var(--bg-primary);
+    --text: var(--text-primary);
+    --muted: var(--text-secondary);
+    --accent: var(--accent-primary);
+    --border: var(--text-primary);
+    --winner-bg: color-mix(in srgb, var(--accent) 14%, white);
+    --font: var(--font-main);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    width: 1200px;
+    height: 1200px;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    border: 8px solid var(--border);
+}
+
+/* CANVAS */
+#canvas {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+#stage {
+    width: 100%;
+    transform-origin: top center;
+    will-change: transform;
+}
+
+/* HEADER */
+header {
+    padding: 50px 60px 30px;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 44px;
+    font-weight: 900;
+    margin: 0 0 10px 0;
+    text-transform: uppercase;
+}
+
+header p {
+    margin: 0;
+    font-weight: 600;
+    opacity: 0.6;
+    letter-spacing: 0.15em;
+}
+
+/* SUBJECT STRIP */
+.subjects {
+    display: flex;
+    justify-content: center;
+    gap: 60px;
+    padding: 10px 40px 30px;
+}
+
+.subject {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.subject img {
+    width: 110px;
+    height: 110px;
+    border-radius: 16px;
+    border: 3px solid var(--border);
+    object-fit: cover;
+}
+
+.subject span {
+    font-weight: 800;
+    font-size: 20px;
+}
+
+/* MAIN */
+main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 0 60px 40px;
+    gap: 20px;
+}
+
+/* ROW */
+.compare-row {
+    display: grid;
+    align-items: stretch;
+    gap: 20px;
+    position: relative;
+}
+
+/* CENTER METRIC */
+.metric {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: -14px;
+    background: white;
+    border: 3px solid var(--border);
+    font-weight: 800;
+    padding: 6px 16px;
+    font-size: 14px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+/* CELL */
+.cell {
+    background: white;
+    border: 3px solid var(--border);
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    transition: background 0.3s ease;
+}
+
+.cell h3 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.cell p {
+    margin: 0;
+    font-size: 16px;
+    color: var(--muted);
+}
+
+/* WINNER HIGHLIGHT */
+.cell.winner {
+    background: var(--winner-bg);
+    border-color: var(--accent);
+}
+
+/* FOOTER */
+footer {
+    padding: 30px 60px;
+    background: var(--border);
+    color: white;
+}
+
+footer h2 {
+    margin: 0 0 6px;
+    font-size: 26px;
+    font-weight: 900;
+}
+
+footer p {
+    margin: 0;
+    font-size: 16px;
+    opacity: 0.8;
+}
+
+</style>
+</head>
+
+<body>
+<div id="canvas">
+<div id="stage">
+
+<header>
+    <h1 id="main-title"></h1>
+    <p id="subtitle"></p>
+</header>
+
+<div class="subjects" id="subjects-container"></div>
+
+<main id="rows-container"></main>
+
+<footer>
+    <h2 id="verdict-title"></h2>
+    <p id="verdict-text"></p>
+</footer>
+
+</div>
+</div>
+
+<script>
+const DATA_PAYLOAD = /* INSERT_JSON_HERE */ null;
+
+/*
+DATA FORMAT:
+
+{
+  center: { title, subtitle },
+  subjects: [
+    { name, image_url },
+    { name, image_url },
+    { name, image_url } // optional 3rd+
+  ],
+  items: [
+    {
+      metric: "Speed",
+      values: [
+        { value: "Fast", description: "...", score: 8 },
+        { value: "Moderate", description: "...", score: 6 },
+        { value: "Slow", description: "...", score: 3 }
+      ]
+    }
+  ],
+  verdict: { title, text }
+}
+*/
+
+function render(data) {
+    if (!data) return;
+
+    document.getElementById('main-title').innerText = data.center.title;
+    document.getElementById('subtitle').innerText = data.center.subtitle || "";
+
+    // SUBJECTS
+    const subjectsContainer = document.getElementById('subjects-container');
+    subjectsContainer.innerHTML = '';
+
+    data.subjects.forEach(sub => {
+        const div = document.createElement('div');
+        div.className = 'subject';
+        div.innerHTML = `
+            <img src="${sub.image_url}">
+            <span>${sub.name}</span>
+        `;
+        subjectsContainer.appendChild(div);
+    });
+
+    // ROWS
+    const rowsContainer = document.getElementById('rows-container');
+    rowsContainer.innerHTML = '';
+
+    const columnCount = data.subjects.length;
+    
+    data.items.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'compare-row';
+        row.style.gridTemplateColumns = `repeat(${columnCount}, 1fr)`;
+
+        // Determine winner (highest score)
+        let maxScore = Math.max(...item.values.map(v => v.score || 0));
+
+        item.values.forEach(val => {
+            const cell = document.createElement('div');
+            cell.className = 'cell';
+
+            if (val.score === maxScore && maxScore > 0) {
+                cell.classList.add('winner');
+            }
+
+            cell.innerHTML = `
+                <h3>${val.value}</h3>
+                <p>${val.description}</p>
+            `;
+            row.appendChild(cell);
+        });
+
+        const metric = document.createElement('div');
+        metric.className = 'metric';
+        metric.innerText = item.metric;
+        row.appendChild(metric);
+
+        rowsContainer.appendChild(row);
+    });
+
+    if (data.verdict) {
+        document.getElementById('verdict-title').innerText = data.verdict.title;
+        document.getElementById('verdict-text').innerText = data.verdict.text;
+    }
+
+    const reflow = () => {
+        balanceRows();
+        fitToCanvas();
+    };
+
+    // Initial pass.
+    reflow();
+
+    // Stabilize after late font/image layout shifts.
+    settleLayout().then(() => {
+        reflow();
+        requestAnimationFrame(() => reflow());
+    });
+}
+
+/* AUTOMATIC ROW BALANCING */
+function balanceRows() {
+    const rows = document.querySelectorAll('.compare-row');
+    rows.forEach(row => {
+        let maxHeight = 0;
+        row.querySelectorAll('.cell').forEach(cell => {
+            cell.style.height = 'auto';
+            maxHeight = Math.max(maxHeight, cell.offsetHeight);
+        });
+        row.querySelectorAll('.cell').forEach(cell => {
+            cell.style.height = maxHeight + 'px';
+        });
+    });
+}
+
+function fitToCanvas() {
+    const canvas = document.getElementById('canvas');
+    const stage = document.getElementById('stage');
+    if (!canvas || !stage) return;
+
+    // Reset prior scaling to measure true size.
+    stage.style.transform = 'scale(1)';
+    stage.style.marginLeft = '0px';
+
+    const safetyInset = 12;
+    const canvasWidth = Math.max(canvas.clientWidth - safetyInset * 2, 1);
+    const canvasHeight = Math.max(canvas.clientHeight - safetyInset * 2, 1);
+    const requiredWidth = stage.scrollWidth;
+    const requiredHeight = stage.scrollHeight;
+
+    const scale = Math.min(canvasWidth / requiredWidth, canvasHeight / requiredHeight, 1);
+    stage.style.transform = `scale(${scale})`;
+
+    // Re-center horizontally after scaling.
+    const scaledWidth = requiredWidth * scale;
+    const sideOffset = Math.max((canvasWidth - scaledWidth) / 2, 0);
+    stage.style.marginLeft = `${sideOffset + safetyInset}px`;
+}
+
+function settleLayout() {
+    const fontReady = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    const imgPromises = Array.from(document.querySelectorAll('img')).map((img) => {
+        if (img.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+            img.addEventListener('load', () => resolve(null), { once: true });
+            img.addEventListener('error', () => resolve(null), { once: true });
+        });
+    });
+
+    return Promise.all([fontReady, ...imgPromises]).then(() => null);
+}
+
+if (DATA_PAYLOAD) {
+    render(DATA_PAYLOAD);
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,769 @@
+﻿{
+    "course":  {
+                   "title":  "Fishing Fundamentals: Ethics, Technique, and Modern Culture",
+                   "targetAudience":  "Beginner to intermediate anglers; families and adult learners; ages 16+; non-commercial, safety-forward; U.S.-centric with local-law emphasis",
+                   "designPhilosophy":  "Practical, outdoorsy, trustworthy. Clear diagrams for gear and rules; realistic story photos to make scenarios feel familiar and memorable.",
+                   "learningScienceRationale":  [
+                                                    {
+                                                        "principle":  "Dual Coding Theory",
+                                                        "theorist":  "Paivio",
+                                                        "description":  "Pair concise explanations with diagrams and concrete scenes to increase recall."
+                                                    },
+                                                    {
+                                                        "principle":  "Cognitive Load Theory",
+                                                        "theorist":  "Sweller",
+                                                        "description":  "Use structured comparisons and checklists so beginners can decide quickly without overload."
+                                                    },
+                                                    {
+                                                        "principle":  "Signaling Principle",
+                                                        "theorist":  "Mayer",
+                                                        "description":  "Use visual cues (icons, arrows, highlighted panels) to direct attention to the most important differences and legal rules."
+                                                    }
+                                                ],
+                   "globalStyleGuide":  {
+                                            "colorPalette":  {
+                                                                 "riverBlue":  "#2B6CB0",
+                                                                 "forestGreen":  "#2F855A",
+                                                                 "sunriseGold":  "#D69E2E",
+                                                                 "stoneGrey":  "#4A5568",
+                                                                 "foamWhite":  "#F7FAFC",
+                                                                 "deepNavy":  "#1A365D",
+                                                                 "warningOrange":  "#DD6B20"
+                                                             },
+                                            "typography":  {
+                                                               "fontFamily":  [
+                                                                                  "Inter",
+                                                                                  "Source Sans Pro"
+                                                                              ],
+                                                               "heading":  "18-22pt bold",
+                                                               "body":  "12-14pt regular",
+                                                               "decorativeFontsAllowed":  false
+                                                           },
+                                            "layout":  {
+                                                           "whitespace":  "Generous",
+                                                           "clutter":  "None",
+                                                           "principle":  "Every element must earn its place"
+                                                       },
+                                            "illustrationStyle":  {
+                                                                      "design":  "Clean vector infographics + realistic photo-based story images",
+                                                                      "shapes":  "Simple icons and panels for diagrams; natural scenes for photos",
+                                                                      "humanFigures":  "Real people in photos; no identifiable faces required (prefer turned-away or out-of-focus)"
+                                                                  },
+                                            "mood":  "Outdoorsy, calm, confident, safety-forward"
+                                        },
+                   "styling":  {
+                                   "version":  "2026-03-ux-contrast-v1",
+                                   "system":  {
+                                                  "profile_id":  "field_manual_system",
+                                                  "infographic_theme_id":  "field_manual",
+                                                  "chart_theme_id":  "chart_field",
+                                                  "generated_image_style_suffix":  "outdoor field-guide illustration, practical iconography, restrained color, high clarity",
+                                                  "sourced_image_style_suffix":  "authentic outdoor documentary photo, practical gear context, non-staged natural light"
+                                              },
+                                   "accessibility":  {
+                                                         "min_contrast_ratio":  4.5,
+                                                         "enforce_per_panel_text_contrast":  true,
+                                                         "avoid_light_text_on_light_cards":  true
+                                                     }
+                               }
+               },
+    "lessons":  [
+                    {
+                        "lessonId":  "lesson-1",
+                        "title":  "Bait, Laws, and the Rise of Sport Fishing",
+                        "description":  "Compare live bait vs. lures, learn why local regulations matter, and understand how sport fishing evolved into a spectator culture.",
+                        "visualizations":  [
+                                               {
+                                                   "visualizationId":  "1.1",
+                                                   "title":  "Live Bait vs. Lures: A Practical Comparison",
+                                                   "type":  "split_panel_comparison",
+                                                   "dimensions":  {
+                                                                      "width":  1200,
+                                                                      "height":  1200,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Full-width",
+                                                   "purpose":  "Help beginners choose between live bait and lures by comparing setup, effectiveness, ethics, and constraints.",
+                                                   "panels":  [
+                                                                  {
+                                                                      "side":  "left",
+                                                                      "label":  "LIVE BAIT",
+                                                                      "characteristics":  [
+                                                                                              "Pros: Natural scencomputer t/motion can trigger bites when fish are finicky",
+                                                                                              "Pros: Often easier for beginners to get initial success",
+                                                                                              "Cons: Requires bait care (keep alive/fresh) and storage",
+                                                                                              "Cons: Higher chance of deep hooking if not monitored closely",
+                                                                                              "Cons: Some waters restrict live bait to protect ecosystems"
+                                                                                          ],
+                                                                      "useCases":  [
+                                                                                       "Still water or slow current",
+                                                                                       "Cold fronts / pressured fish",
+                                                                                       "Targeting species that respond strongly to scent"
+                                                                                   ],
+                                                                      "gearCallouts":  [
+                                                                                           "Hook size matched to species",
+                                                                                           "Split shot or bobber (optional)",
+                                                                                           "Bait container / aerator (if needed)"
+                                                                                       ]
+                                                                  },
+                                                                  {
+                                                                      "side":  "right",
+                                                                      "label":  "LURES",
+                                                                      "characteristics":  [
+                                                                                              "Pros: Fast to deploy; easy to cover water and locate fish",
+                                                                                              "Pros: Cleaner logistics (no live storage) and often more selective",
+                                                                                              "Pros: Enables varied retrieves (jig, twitch, steady reel)",
+                                                                                              "Cons: Learning curve to pick lure type and retrieve pattern",
+                                                                                              "Cons: Can snag and require practice in structure-heavy areas"
+                                                                                          ],
+                                                                      "useCases":  [
+                                                                                       "Searching for active fish",
+                                                                                       "Windy conditions (heavier lures cast better)",
+                                                                                       "Sight fishing in clear water"
+                                                                                   ],
+                                                                      "gearCallouts":  [
+                                                                                           "Spinnerbait / crankbait / soft plastic (examples)",
+                                                                                           "Leader line if toothy species",
+                                                                                           "Pliers for safe hook removal"
+                                                                                       ]
+                                                                  }
+                                                              ],
+                                                   "bridgeElement":  "CHOOSE BASED ON CONDITIONS + RULES",
+                                                   "bottomNote":  "Rule of thumb: Use live bait for natural presentation when fish are cautious; use lures to cover water and trigger reaction strikes. Always check whether live bait is allowed where you fish.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.2",
+                                                   "title":  "Local Fishing Laws: The Quick Compliance Checklist",
+                                                   "type":  "grid_reference_card",
+                                                   "dimensions":  {
+                                                                      "width":  1050,
+                                                                      "height":  650,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Inline near the \u0027rules\u0027 section",
+                                                   "purpose":  "Provide a simple, scannable set of legal checks anglers should follow before and during a trip.",
+                                                   "distortions":  [
+                                                                       {
+                                                                           "name":  "LICENSE \u0026 PERMITS",
+                                                                           "definition":  "Ensure you have the correct license type (resident/nonresident), stamps, or endorsements required for the water and species.",
+                                                                           "example":  "Buy your license in advance and carry a digital/printed copy as required."
+                                                                       },
+                                                                       {
+                                                                           "name":  "SEASONS \u0026 OPEN/CLOSED WATERS",
+                                                                           "definition":  "Some species or waters have seasonal closures or special rules (spawning protections, refuge zones).",
+                                                                           "example":  "Verify the season is open for your target species before you cast."
+                                                                       },
+                                                                       {
+                                                                           "name":  "BAG LIMITS \u0026 SIZE LIMITS",
+                                                                           "definition":  "Know how many fish you can keep and any minimum/maximum size rules (including slot limits).",
+                                                                           "example":  "Measure fish immediately and release quickly if out of bounds."
+                                                                       },
+                                                                       {
+                                                                           "name":  "GEAR \u0026 METHOD RESTRICTIONS",
+                                                                           "definition":  "Regulations may restrict hooks (barbless), bait (no live bait), number of rods, or use of nets/gigs.",
+                                                                           "example":  "Some trout waters allow only artificial lures with single barbless hooks."
+                                                                       },
+                                                                       {
+                                                                           "name":  "INVASIVE SPECIES \u0026 BAIT TRANSPORT",
+                                                                           "definition":  "Moving live bait or water between locations can spread invasive species and disease.",
+                                                                           "example":  "Drain livewells and follow local bait-transport rules."
+                                                                       },
+                                                                       {
+                                                                           "name":  "PROTECTED SPECIES \u0026 ETHICAL HANDLING",
+                                                                           "definition":  "Know which species must be released, and best practices to minimize harm (wet hands, quick photo, revive fish).",
+                                                                           "example":  "If you catch a protected species, release immediately and report if required."
+                                                                       }
+                                                                   ],
+                                                   "summaryNote":  "Regulations vary by state, water body, and species. Always verify the most current local rules from an official source before fishing.",
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.3",
+                                                   "title":  "From Pastime to Spectator Sport: The Evolution of Sport Fishing",
+                                                   "type":  "timeline",
+                                                   "dimensions":  {
+                                                                      "width":  1100,
+                                                                      "height":  600,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Full-width",
+                                                   "purpose":  "Show how recreational fishing developed into organized tournaments and media-driven spectator events.",
+                                                   "structure":  {
+                                                                     "milestones":  [
+                                                                                        {
+                                                                                            "year":  "1800s",
+                                                                                            "title":  "Recreation \u0026 Early Clubs",
+                                                                                            "detail":  "Fishing grows as leisure activity; early clubs form shared norms and conservation ideas."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "Early 1900s",
+                                                                                            "title":  "Gear Innovation \u0026 Wider Access",
+                                                                                            "detail":  "Mass-produced rods, reels, and lines make fishing more accessible to the public."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "Mid-Late 1900s",
+                                                                                            "title":  "Tournament Formats Appear",
+                                                                                            "detail":  "Competitive events formalize rules, scoring, and weigh-ins; sponsorship begins."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "2000s",
+                                                                                            "title":  "TV, Internet, and Pro Circuits",
+                                                                                            "detail":  "Media coverage expands audiences; pro anglers build brands and followings."
+                                                                                        },
+                                                                                        {
+                                                                                            "year":  "Today",
+                                                                                            "title":  "Live Coverage \u0026 Conservation Focus",
+                                                                                            "detail":  "Live streams, GPS overlays, and catch-and-release best practices shape modern tournaments."
+                                                                                        }
+                                                                                    ],
+                                                                     "footerNote":  "Modern sport fishing blends competition, storytelling, sponsorship, and conservation-minded handling."
+                                                                 },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.4",
+                                                   "title":  "Early Morning Setup: Choosing Bait or Lure",
+                                                   "type":  "sourced_image",
+                                                   "dimensions":  {
+                                                                      "width":  1400,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Lesson opener mood image",
+                                                   "purpose":  "Set context for the bait vs. lure comparison with a realistic, relatable scene at the water\u0027s edge.",
+                                                   "imageSpecs":  {
+                                                                      "brief":  "Realistic photo-style scene of an angler preparing gear at dawn by a lake. One open tackle box with lures visible, and a small bait container beside it. No branding. Calm, cinematic natural light.",
+                                                                      "scene":  {
+                                                                                    "setting":  {
+                                                                                                    "location":  "quiet lake shoreline",
+                                                                                                    "timeOfDay":  "dawn",
+                                                                                                    "props":  [
+                                                                                                                  "tackle box with assorted lures",
+                                                                                                                  "small bait container",
+                                                                                                                  "rod leaning on bag",
+                                                                                                                  "thermos or water bottle"
+                                                                                                              ],
+                                                                                                    "backgroundComplexity":  "medium"
+                                                                                                },
+                                                                                    "subjects":  [
+                                                                                                     {
+                                                                                                         "role":  "main",
+                                                                                                         "kind":  "human",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "kneeling or crouching, hands sorting tackle",
+                                                                                                         "emotionCue":  "focused calm",
+                                                                                                         "wardrobe":  "neutral outdoor clothing; hat optional"
+                                                                                                     }
+                                                                                                 ],
+                                                                                    "action":  "preparing tackle (choosing between bait container and lure tray)"
+                                                                                },
+                                                                      "composition":  {
+                                                                                          "shotType":  "wide",
+                                                                                          "cameraAngle":  "low 3/4",
+                                                                                          "framing":  "rule-of-thirds",
+                                                                                          "focus":  "hands + open tackle box",
+                                                                                          "negativeSpace":  "upper-right reserved for optional headline",
+                                                                                          "edgeTreatment":  "none (natural photo edges)"
+                                                                                      },
+                                                                      "constraints":  {
+                                                                                          "paletteLockToCourseStyleGuide":  false,
+                                                                                          "noBakedInText":  true,
+                                                                                          "doNotInclude":  [
+                                                                                                               "cartoon style",
+                                                                                                               "illustration style",
+                                                                                                               "logos/watermarks",
+                                                                                                               "readable brand names",
+                                                                                                               "graphic gore"
+                                                                                                           ]
+                                                                                      },
+                                                                      "accessibility":  {
+                                                                                            "altText":  "A realistic dawn shoreline scene of an angler kneeling beside an open tackle box with lures and a small bait container, preparing to fish."
+                                                                                        },
+                                                                      "rendering":  {
+                                                                                        "mode":  "raster",
+                                                                                        "export":  {
+                                                                                                       "format":  "png",
+                                                                                                       "scale":  2
+                                                                                                   },
+                                                                                        "generation":  {
+                                                                                                           "source":  "text_description",
+                                                                                                           "promptParts":  {
+                                                                                                                               "positive":  [
+                                                                                                                                                "realistic photo",
+                                                                                                                                                "cinematic dawn light",
+                                                                                                                                                "angler preparing tackle at lake shore",
+                                                                                                                                                "open tackle box with lures",
+                                                                                                                                                "small bait container beside it",
+                                                                                                                                                "natural colors, shallow depth of field",
+                                                                                                                                                "no logos, no text"
+                                                                                                                                            ],
+                                                                                                                               "negative":  [
+                                                                                                                                                "cartoon",
+                                                                                                                                                "illustration",
+                                                                                                                                                "anime",
+                                                                                                                                                "watermark",
+                                                                                                                                                "brand logos",
+                                                                                                                                                "text overlay"
+                                                                                                                                            ]
+                                                                                                                           },
+                                                                                                           "seed":  null,
+                                                                                                           "variants":  1
+                                                                                                       }
+                                                                                    }
+                                                                  },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.5",
+                                                   "title":  "The Smart Release: Ethical Handling in Real Life",
+                                                   "type":  "sourced_image",
+                                                   "dimensions":  {
+                                                                      "width":  1400,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Inline image near laws/ethics section",
+                                                   "purpose":  "Reinforce the idea that legal compliance and ethical handling go together.",
+                                                   "imageSpecs":  {
+                                                                      "brief":  "Realistic photo-style close scene: an angler with wet hands gently holding a fish just above the water surface for a quick release. No blood, no gore, no trophy pose; respectful handling.",
+                                                                      "scene":  {
+                                                                                    "setting":  {
+                                                                                                    "location":  "riverbank or dock edge",
+                                                                                                    "timeOfDay":  "daylight",
+                                                                                                    "props":  [
+                                                                                                                  "landing net nearby (optional)",
+                                                                                                                  "pliers (optional)"
+                                                                                                              ],
+                                                                                                    "backgroundComplexity":  "low"
+                                                                                                },
+                                                                                    "subjects":  [
+                                                                                                     {
+                                                                                                         "role":  "main",
+                                                                                                         "kind":  "human",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "crouched, hands wet, supporting fish near water",
+                                                                                                         "emotionCue":  "careful, respectful",
+                                                                                                         "wardrobe":  "neutral outdoor clothing"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "role":  "secondary",
+                                                                                                         "kind":  "fish",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "supported horizontally, close to water",
+                                                                                                         "emotionCue":  "natural"
+                                                                                                     }
+                                                                                                 ],
+                                                                                    "action":  "gentle release moment"
+                                                                                },
+                                                                      "composition":  {
+                                                                                          "shotType":  "close",
+                                                                                          "cameraAngle":  "eye-level",
+                                                                                          "framing":  "tight on hands/fish/water",
+                                                                                          "focus":  "fish + hands",
+                                                                                          "negativeSpace":  "top-left reserved for short callout",
+                                                                                          "edgeTreatment":  "none (natural photo edges)"
+                                                                                      },
+                                                                      "constraints":  {
+                                                                                          "paletteLockToCourseStyleGuide":  false,
+                                                                                          "noBakedInText":  true,
+                                                                                          "doNotInclude":  [
+                                                                                                               "cartoon style",
+                                                                                                               "illustration style",
+                                                                                                               "logos/watermarks",
+                                                                                                               "readable brand names",
+                                                                                                               "graphic gore",
+                                                                                                               "dead fish display"
+                                                                                                           ]
+                                                                                      },
+                                                                      "accessibility":  {
+                                                                                            "altText":  "A realistic close-up of wet hands gently supporting a fish at the water\u0027s surface during a careful catch-and-release."
+                                                                                        },
+                                                                      "rendering":  {
+                                                                                        "mode":  "raster",
+                                                                                        "export":  {
+                                                                                                       "format":  "png",
+                                                                                                       "scale":  2
+                                                                                                   },
+                                                                                        "generation":  {
+                                                                                                           "source":  "text_description",
+                                                                                                           "promptParts":  {
+                                                                                                                               "positive":  [
+                                                                                                                                                "realistic photo",
+                                                                                                                                                "angler gently releasing fish",
+                                                                                                                                                "wet hands, fish close to water surface",
+                                                                                                                                                "ethical catch and release",
+                                                                                                                                                "natural daylight, shallow depth of field",
+                                                                                                                                                "no logos, no text"
+                                                                                                                                            ],
+                                                                                                                               "negative":  [
+                                                                                                                                                "cartoon",
+                                                                                                                                                "illustration",
+                                                                                                                                                "watermark",
+                                                                                                                                                "brand logos",
+                                                                                                                                                "text overlay",
+                                                                                                                                                "blood",
+                                                                                                                                                "gore"
+                                                                                                                                            ]
+                                                                                                                           },
+                                                                                                           "seed":  null,
+                                                                                                           "variants":  1
+                                                                                                       }
+                                                                                    }
+                                                                  },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.6",
+                                                   "title":  "Checking the Rules Before the First Cast",
+                                                   "type":  "sourced_image",
+                                                   "dimensions":  {
+                                                                      "width":  1400,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Inline image near compliance checklist",
+                                                   "purpose":  "Show the practical habit of checking local rules in a realistic scenario.",
+                                                   "imageSpecs":  {
+                                                                      "brief":  "Realistic photo-style scene: angler at trailhead or dock reading a posted regulations sign or checking a fishing app on a phone with a license card nearby. No readable official text required (can be blurred).",
+                                                                      "scene":  {
+                                                                                    "setting":  {
+                                                                                                    "location":  "trailhead kiosk or dock entry point",
+                                                                                                    "timeOfDay":  "morning",
+                                                                                                    "props":  [
+                                                                                                                  "regulations signboard (text not readable)",
+                                                                                                                  "smartphone",
+                                                                                                                  "license card (non-identifiable)"
+                                                                                                              ],
+                                                                                                    "backgroundComplexity":  "medium"
+                                                                                                },
+                                                                                    "subjects":  [
+                                                                                                     {
+                                                                                                         "role":  "main",
+                                                                                                         "kind":  "human",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "standing, looking at sign or phone",
+                                                                                                         "emotionCue":  "attentive",
+                                                                                                         "wardrobe":  "neutral outdoor clothing"
+                                                                                                     }
+                                                                                                 ],
+                                                                                    "action":  "reviewing rules before fishing"
+                                                                                },
+                                                                      "composition":  {
+                                                                                          "shotType":  "medium",
+                                                                                          "cameraAngle":  "eye-level",
+                                                                                          "framing":  "rule-of-thirds",
+                                                                                          "focus":  "hands + phone/sign area",
+                                                                                          "negativeSpace":  "right side reserved for caption",
+                                                                                          "edgeTreatment":  "none (natural photo edges)"
+                                                                                      },
+                                                                      "constraints":  {
+                                                                                          "paletteLockToCourseStyleGuide":  false,
+                                                                                          "noBakedInText":  true,
+                                                                                          "doNotInclude":  [
+                                                                                                               "cartoon style",
+                                                                                                               "illustration style",
+                                                                                                               "logos/watermarks",
+                                                                                                               "readable brand names"
+                                                                                                           ]
+                                                                                      },
+                                                                      "accessibility":  {
+                                                                                            "altText":  "A realistic scene of an angler at a dock entrance checking local fishing rules on a phone beside a posted regulations sign."
+                                                                                        },
+                                                                      "rendering":  {
+                                                                                        "mode":  "raster",
+                                                                                        "export":  {
+                                                                                                       "format":  "png",
+                                                                                                       "scale":  2
+                                                                                                   },
+                                                                                        "generation":  {
+                                                                                                           "source":  "text_description",
+                                                                                                           "promptParts":  {
+                                                                                                                               "positive":  [
+                                                                                                                                                "realistic photo",
+                                                                                                                                                "angler checking local fishing regulations",
+                                                                                                                                                "dock or trailhead signboard",
+                                                                                                                                                "smartphone in hand, license card nearby",
+                                                                                                                                                "natural morning light, documentary feel",
+                                                                                                                                                "no logos, no text"
+                                                                                                                                            ],
+                                                                                                                               "negative":  [
+                                                                                                                                                "cartoon",
+                                                                                                                                                "illustration",
+                                                                                                                                                "watermark",
+                                                                                                                                                "brand logos",
+                                                                                                                                                "text overlay"
+                                                                                                                                            ]
+                                                                                                                           },
+                                                                                                           "seed":  null,
+                                                                                                           "variants":  1
+                                                                                                       }
+                                                                                    }
+                                                                  },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.7",
+                                                   "title":  "Tournament Energy: The Weigh-In Moment",
+                                                   "type":  "sourced_image",
+                                                   "dimensions":  {
+                                                                      "width":  1400,
+                                                                      "height":  900,
+                                                                      "orientation":  "landscape"
+                                                                  },
+                                                   "placement":  "Inline image near spectator sport timeline",
+                                                   "purpose":  "Bring the spectator-sport narrative to life with a realistic tournament scene.",
+                                                   "imageSpecs":  {
+                                                                      "brief":  "Realistic photo-style scene of a modern fishing tournament weigh-in: stage lights, crowd behind barriers, angler on stage with equipment visible. Avoid showing any brand logos or readable signage.",
+                                                                      "scene":  {
+                                                                                    "setting":  {
+                                                                                                    "location":  "outdoor event stage near marina",
+                                                                                                    "timeOfDay":  "afternoon",
+                                                                                                    "props":  [
+                                                                                                                  "stage truss lights",
+                                                                                                                  "crowd barrier",
+                                                                                                                  "weigh-in station (no readable signage)"
+                                                                                                              ],
+                                                                                                    "backgroundComplexity":  "high"
+                                                                                                },
+                                                                                    "subjects":  [
+                                                                                                     {
+                                                                                                         "role":  "main",
+                                                                                                         "kind":  "human",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "standing on stage at weigh-in",
+                                                                                                         "emotionCue":  "focused / proud (no need for close-up face)",
+                                                                                                         "wardrobe":  "generic fishing apparel without brand marks"
+                                                                                                     },
+                                                                                                     {
+                                                                                                         "role":  "support",
+                                                                                                         "kind":  "crowd",
+                                                                                                         "count":  1,
+                                                                                                         "pose":  "audience gathered behind barrier",
+                                                                                                         "emotionCue":  "engaged"
+                                                                                                     }
+                                                                                                 ],
+                                                                                    "action":  "public weigh-in / announcement moment"
+                                                                                },
+                                                                      "composition":  {
+                                                                                          "shotType":  "wide",
+                                                                                          "cameraAngle":  "slight low angle",
+                                                                                          "framing":  "centered",
+                                                                                          "focus":  "stage + crowd",
+                                                                                          "negativeSpace":  "upper-left reserved for caption",
+                                                                                          "edgeTreatment":  "none (natural photo edges)"
+                                                                                      },
+                                                                      "constraints":  {
+                                                                                          "paletteLockToCourseStyleGuide":  false,
+                                                                                          "noBakedInText":  true,
+                                                                                          "doNotInclude":  [
+                                                                                                               "cartoon style",
+                                                                                                               "illustration style",
+                                                                                                               "logos/watermarks",
+                                                                                                               "readable brand names",
+                                                                                                               "readable sponsor banners"
+                                                                                                           ]
+                                                                                      },
+                                                                      "accessibility":  {
+                                                                                            "altText":  "A realistic wide shot of a fishing tournament weigh-in with an angler on stage under lights and a crowd watching from behind barriers."
+                                                                                        },
+                                                                      "rendering":  {
+                                                                                        "mode":  "raster",
+                                                                                        "export":  {
+                                                                                                       "format":  "png",
+                                                                                                       "scale":  2
+                                                                                                   },
+                                                                                        "generation":  {
+                                                                                                           "source":  "text_description",
+                                                                                                           "promptParts":  {
+                                                                                                                               "positive":  [
+                                                                                                                                                "realistic photo",
+                                                                                                                                                "modern fishing tournament weigh-in stage",
+                                                                                                                                                "crowd watching behind barriers",
+                                                                                                                                                "stage lighting, marina background",
+                                                                                                                                                "documentary event photography style",
+                                                                                                                                                "no logos, no text"
+                                                                                                                                            ],
+                                                                                                                               "negative":  [
+                                                                                                                                                "cartoon",
+                                                                                                                                                "illustration",
+                                                                                                                                                "watermark",
+                                                                                                                                                "brand logos",
+                                                                                                                                                "text overlay",
+                                                                                                                                                "readable sponsor banners"
+                                                                                                                                            ]
+                                                                                                                           },
+                                                                                                           "seed":  null,
+                                                                                                           "variants":  1
+                                                                                                       }
+                                                                                    }
+                                                                  },
+                                                   "styling":  {
+                                                                   "infographic_theme_id":  "field_manual"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.8",
+                                                   "title":  "Most Used Bait Types by Beginners",
+                                                   "type":  "bar_chart",
+                                                   "description":  "Simple comparison of common beginner bait usage in first season.",
+                                                   "dimensions":  {
+                                                                      "width":  1024,
+                                                                      "height":  1024,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "chartType":  "bar",
+                                                   "format":  "static",
+                                                   "data":  {
+                                                                "labels":  [
+                                                                               "Worms",
+                                                                               "Minnows",
+                                                                               "Dough Bait",
+                                                                               "Crickets",
+                                                                               "Shrimp"
+                                                                           ],
+                                                                "values":  [
+                                                                               42,
+                                                                               28,
+                                                                               15,
+                                                                               9,
+                                                                               6
+                                                                           ]
+                                                            },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_field"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.9",
+                                                   "title":  "Catch Rate by Time of Day",
+                                                   "type":  "line_chart",
+                                                   "description":  "Trend of average bites per hour across typical fishing windows.",
+                                                   "dimensions":  {
+                                                                      "width":  1024,
+                                                                      "height":  1024,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "chartType":  "line",
+                                                   "format":  "static",
+                                                   "data":  {
+                                                                "labels":  [
+                                                                               "5AM",
+                                                                               "7AM",
+                                                                               "9AM",
+                                                                               "11AM",
+                                                                               "1PM",
+                                                                               "3PM",
+                                                                               "5PM",
+                                                                               "7PM"
+                                                                           ],
+                                                                "values":  [
+                                                                               8,
+                                                                               13,
+                                                                               11,
+                                                                               7,
+                                                                               5,
+                                                                               6,
+                                                                               9,
+                                                                               10
+                                                                           ]
+                                                            },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_field"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.10",
+                                                   "title":  "Where New Anglers Spend Their Time",
+                                                   "type":  "pie_chart",
+                                                   "description":  "Distribution of effort across setup, casting, waiting, and handling.",
+                                                   "dimensions":  {
+                                                                      "width":  1024,
+                                                                      "height":  1024,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "chartType":  "pie",
+                                                   "format":  "static",
+                                                   "data":  {
+                                                                "labels":  [
+                                                                               "Setup",
+                                                                               "Casting",
+                                                                               "Waiting",
+                                                                               "Fish Handling",
+                                                                               "Cleanup"
+                                                                           ],
+                                                                "values":  [
+                                                                               18,
+                                                                               24,
+                                                                               36,
+                                                                               14,
+                                                                               8
+                                                                           ]
+                                                            },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_field"
+                                                               }
+                                               },
+                                               {
+                                                   "visualizationId":  "1.11",
+                                                   "title":  "Trip Conversion Funnel",
+                                                   "type":  "funnel_chart",
+                                                   "description":  "How preparation quality influences completed and successful trips.",
+                                                   "dimensions":  {
+                                                                      "width":  1024,
+                                                                      "height":  1024,
+                                                                      "orientation":  "square"
+                                                                  },
+                                                   "chartType":  "funnel",
+                                                   "format":  "static",
+                                                   "data":  {
+                                                                "labels":  [
+                                                                               "Planned Trips",
+                                                                               "Permitted Trips",
+                                                                               "Launched Trips",
+                                                                               "Hookups",
+                                                                               "Landed Fish"
+                                                                           ],
+                                                                "values":  [
+                                                                               120,
+                                                                               102,
+                                                                               88,
+                                                                               54,
+                                                                               31
+                                                                           ]
+                                                            },
+                                                   "styling":  {
+                                                                   "chart_theme_id":  "chart_field"
+                                                               }
+                                               }
+                                           ]
+                    }
+                ],
+    "production":  {
+                       "recommendedWorkflow":  [
+                                                   "Generate visual elements first",
+                                                   "Export at 2x resolution",
+                                                   "Overlay text manually in design tool",
+                                                   "Verify color consistency across all visuals",
+                                                   "For realistic images, ensure no visible logos or readable signage"
+                                               ],
+                       "placementGuidelines":  [
+                                                   "Full-width placement for comparisons and timelines",
+                                                   "Precede each infographic with a one-sentence setup",
+                                                   "Follow each infographic with a referencing sentence",
+                                                   "Never orphan a visual without narrative anchor"
+                                               ]
+                   }
+}
