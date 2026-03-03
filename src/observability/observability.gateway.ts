@@ -1,26 +1,51 @@
-import { WebSocketGateway, WebSocketServer, OnGatewayConnection, OnGatewayDisconnect, SubscribeMessage } from '@nestjs/websockets';
+import {
+    WebSocketGateway,
+    WebSocketServer,
+    OnGatewayConnection,
+    OnGatewayDisconnect,
+    OnGatewayInit,
+    SubscribeMessage
+} from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
 
 @WebSocketGateway({
     transports: ['websocket'],
 })
-export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
     @WebSocketServer()
     server: Server;
 
     private readonly logger = new Logger(ObservabilityGateway.name);
     private readonly allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
     private readonly liveStatsMinIntervalMs = Math.max(500, Number(process.env.OBS_LIVE_STATS_MIN_EMIT_MS || 1000));
+    private readonly liveStatsPollMs = Math.max(500, Number(process.env.OBS_LIVE_STATS_POLL_MS || 1500));
     private readonly workerTimeoutMs = Math.max(
         60000,
         Number(process.env.WORKER_TIMEOUT_MS || process.env.MANIFEST_TASK_TIMEOUT_MS || 120000),
     );
     private lastLiveStatsAt = 0;
+    private liveStatsTimer: NodeJS.Timeout | null = null;
+    private lastTaskDeltaAt: string | null = null;
+    private lastSystemLogId: number | null = null;
 
     constructor(private readonly storage: PostgresStorageService) { }
+
+    afterInit() {
+        if (this.liveStatsTimer) return;
+        this.liveStatsTimer = setInterval(() => {
+            // Periodic snapshot enables cross-process observability:
+            // workers persist to Postgres; app process fan-outs to connected sockets.
+            void this.emitLiveStatsSnapshot();
+        }, this.liveStatsPollMs);
+    }
+
+    onModuleDestroy() {
+        if (this.liveStatsTimer) clearInterval(this.liveStatsTimer);
+        this.liveStatsTimer = null;
+    }
 
     async handleConnection(client: Socket) {
         const origin = String(client.handshake?.headers?.origin || '').trim() || undefined;
@@ -172,17 +197,57 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
 
     private async emitLiveStatsSnapshot(target?: Socket, force = false): Promise<void> {
         if (!this.storage.isEnabled()) return;
+        if (!target && !this.hasConnectedClients()) return;
         const now = Date.now();
         if (!force && now - this.lastLiveStatsAt < this.liveStatsMinIntervalMs) return;
         this.lastLiveStatsAt = now;
-        const [queue, workers, database] = await Promise.all([
+
+        const [queue, workers, database, taskDeltas, logDeltas] = await Promise.all([
             this.storage.getQueueHealthStats(),
             this.storage.getWorkerHealthStats(this.workerTimeoutMs),
             this.storage.getDatabaseHealthStats(),
+            target
+                ? this.storage.getRecentTaskDeltas(null, 200)
+                : this.storage.getRecentTaskDeltas(this.lastTaskDeltaAt, 200),
+            target
+                ? this.storage.getRecentSystemLogs(null, 300)
+                : this.storage.getRecentSystemLogs(this.lastSystemLogId, 300),
         ]);
-        const payload = { queue, workers, database, recent: { task_deltas: [], logs: [] }, timestamp: new Date().toISOString() };
+
+        const orderedTaskDeltas = target ? [...taskDeltas].reverse() : taskDeltas;
+        const orderedLogDeltas = target ? [...logDeltas].reverse() : logDeltas;
+        this.advanceDeltaCursors(orderedTaskDeltas, orderedLogDeltas);
+
+        const payload = {
+            queue,
+            workers,
+            database,
+            recent: { task_deltas: orderedTaskDeltas, logs: orderedLogDeltas },
+            timestamp: new Date().toISOString()
+        };
         if (target) target.emit('live_stats', payload);
         else this.emitLiveStats(payload);
+    }
+
+    private hasConnectedClients(): boolean {
+        try {
+            return !!this.server?.engine && this.server.engine.clientsCount > 0;
+        } catch {
+            return false;
+        }
+    }
+
+    private advanceDeltaCursors(taskDeltas: Array<{ updated_at?: string }>, logDeltas: Array<{ id?: number }>) {
+        for (const row of taskDeltas || []) {
+            const ts = String(row?.updated_at || '').trim();
+            if (!ts) continue;
+            if (!this.lastTaskDeltaAt || ts > this.lastTaskDeltaAt) this.lastTaskDeltaAt = ts;
+        }
+        for (const row of logDeltas || []) {
+            const id = Number(row?.id || 0);
+            if (!Number.isFinite(id) || id <= 0) continue;
+            if (!this.lastSystemLogId || id > this.lastSystemLogId) this.lastSystemLogId = id;
+        }
     }
 
     @SubscribeMessage('open_folder')
