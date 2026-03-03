@@ -77,13 +77,19 @@ export class TemplateStampingService {
             --font: '${theme.font_name}', sans-serif;
 			--font-size-heading: ${theme.font_size_heading || '2rem'};
 			--font-size-body: ${theme.font_size_body || '1rem'};
-			--glass-bg: ${theme.glass_color || 'rgba(255, 255, 255, 0.85)'};
+            --glass-bg: ${theme.glass_color || 'rgba(255, 255, 255, 0.85)'};
             --bg: var(--bg-primary);
             --text: var(--text-primary);
             --muted: var(--text-secondary);
             --accent: var(--accent-primary);
             --border: var(--text-primary);
             --winner-bg: color-mix(in srgb, var(--accent-primary) 15%, white);
+            --surface-bg: color-mix(in srgb, white 92%, var(--accent-primary) 8%);
+            --surface-text: color-mix(in srgb, #0b1220 88%, var(--text-primary) 12%);
+            --surface-muted: color-mix(in srgb, #334155 85%, var(--text-secondary) 15%);
+            --metric-bg: color-mix(in srgb, white 95%, var(--accent-primary) 5%);
+            --footer-bg: color-mix(in srgb, white 86%, var(--accent-primary) 14%);
+            --footer-text: var(--surface-text);
 		}
 	</style>
 `;
