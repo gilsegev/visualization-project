@@ -1132,6 +1132,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             await this.localStorage.save(path.join(safeRelativeOutputDir, 'assets', 'sourced-search-log.json'), Buffer.from(JSON.stringify(data, null, 2), 'utf8'));
 
             const top = data.candidates.slice(0, 10);
+            let savedCount = 0;
+            let rateLimitedCount = 0;
             await Promise.all(top.map(async (c, idx) => {
                 try {
                     const res = await this.withTimeout(
@@ -1143,11 +1145,30 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                         path.join(safeRelativeOutputDir, 'assets', `sourced-candidate-${String(idx + 1).padStart(2, '0')}.jpg`),
                         Buffer.from(res.data),
                     );
+                    savedCount += 1;
                 } catch (error) {
-                    this.observability.emitLog('warn', `Failed saving sourced candidate ${idx + 1}: ${error?.message || error}`, 'SourcedImage', taskId);
+                    const status = Number((error as any)?.response?.status || 0);
+                    if (status === 429) {
+                        rateLimitedCount += 1;
+                        return;
+                    }
+                    this.observability.emitLog('warn', `Candidate artifact save skipped (${idx + 1}): ${error?.message || error}`, 'SourcedImage', taskId);
                 }
             }));
-            this.observability.emitLog('info', `Saved sourced artifacts in ./assets (queries + ${top.length} candidate images)`, 'SourcedImage', taskId);
+            if (rateLimitedCount > 0) {
+                this.observability.emitLog(
+                    'warn',
+                    `Candidate preview downloads rate-limited by source provider (429): skipped=${rateLimitedCount}/${top.length}`,
+                    'SourcedImage',
+                    taskId
+                );
+            }
+            this.observability.emitLog(
+                'info',
+                `Saved sourced artifacts in ./assets (queries + ${savedCount}/${top.length} candidate previews)`,
+                'SourcedImage',
+                taskId
+            );
         } catch (error) {
             this.observability.emitLog('warn', `Failed persisting sourced artifacts: ${error?.message || error}`, 'SourcedImage', taskId);
         }

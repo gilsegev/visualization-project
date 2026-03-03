@@ -208,8 +208,13 @@
 
                     <!-- Filter Controls (for BY ASSET) -->
                     <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
-                        <div class="text-[10px] text-slate-500 mb-1">Tasks Available: {{ Object.keys(tasks || {}).length
-                            }}
+                        <div class="mb-1 flex items-center justify-between gap-2">
+                            <div class="text-[10px] text-slate-500">Tasks Available: {{ Object.keys(tasks || {}).length }}</div>
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors"
+                                @click="showAssetInspector = !showAssetInspector">
+                                {{ showAssetInspector ? 'Hide Inspector' : 'Show Inspector' }}
+                            </button>
                         </div>
                         <select v-model="selectedAssetFilter"
                             class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
@@ -220,7 +225,7 @@
                             </option>
                         </select>
 
-                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[30vh] overflow-y-auto matrix-scroll">
+                        <div v-if="selectedAssetTask && showAssetInspector" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[16vh] overflow-y-auto matrix-scroll">
                             <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
                             <div class="mt-1 text-[11px] font-mono text-slate-300">
                                 <div>
@@ -768,6 +773,7 @@
                 // Log Views State
                 const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
                 const selectedAssetFilter = ref('');
+                const showAssetInspector = ref(false);
                 const queryLabInput = ref('dawn light tackle box lures');
                 const queryLabLoading = ref(false);
                 const queryLabError = ref('');
@@ -1517,6 +1523,7 @@
                     queueHealth,
                     liveStats,
                     selectedAssetTask, batchStylingGuidance,
+                    showAssetInspector,
                     logMode, selectedAssetFilter, filteredLogs,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
