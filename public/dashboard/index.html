@@ -83,36 +83,115 @@
         <!-- Main Content -->
         <main class="flex-1 flex overflow-hidden">
             <!-- Left Panel: Controls & Logs (30%) -->
-            <aside class="w-[30%] border-r border-slate-700 flex flex-col bg-surface/50 backdrop-blur-sm">
+            <aside class="w-[30%] border-r border-slate-700 flex flex-col min-h-0 overflow-hidden bg-surface/50 backdrop-blur-sm">
+                <div class="shrink-0 max-h-[46vh] overflow-y-auto matrix-scroll">
                 <!-- Drop Zone -->
-                <div class="p-6 border-b border-slate-700 transition-colors"
+                <div class="p-3 border-b border-slate-700 transition-colors"
                     :class="{'bg-neon/10 border-neon': isDragging, 'bg-surface/30': !isDragging}"
                     @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false"
                     @drop.prevent="handleDrop">
-                    <div class="border-2 border-dashed border-slate-600 rounded-lg p-6 text-center group cursor-pointer hover:border-neon/50 transition"
+                    <div class="border border-dashed border-slate-600 rounded-lg px-3 py-2 group cursor-pointer hover:border-neon/50 transition flex items-center justify-center gap-2"
                         @click="$refs.fileInput.click()">
                         <input type="file" ref="fileInput" class="hidden" accept=".json" @change="handleFileSelect">
-                        <svg class="w-8 h-8 text-slate-500 mx-auto mb-2 group-hover:text-neon transition" fill="none"
+                        <svg class="w-4 h-4 text-slate-500 group-hover:text-neon transition" fill="none"
                             stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12">
                             </path>
                         </svg>
-                        <p class="text-slate-400 text-sm font-medium">Upload <code
+                        <p class="text-slate-400 text-xs font-medium">Upload <code
                                 class="text-neon">manifest.json</code>
                         </p>
                     </div>
 
-                    <div class="mt-4 text-center flex gap-2 justify-center">
+                    <div class="mt-2 text-center flex gap-2 justify-center">
                         <button @click="stopBatch"
-                            class="text-[10px] text-warning hover:text-white transition-colors font-mono tracking-wider border border-warning/30 px-2 py-1 rounded hover:bg-warning/20">
+                            class="text-[9px] text-warning hover:text-white transition-colors font-mono tracking-wider border border-warning/30 px-2 py-1 rounded hover:bg-warning/20">
                             [ STOP GENERATION ]
                         </button>
                         <button @click="clearAll"
-                            class="text-[10px] text-slate-600 hover:text-danger transition-colors font-mono tracking-wider px-2 py-1">
+                            class="text-[9px] text-slate-600 hover:text-danger transition-colors font-mono tracking-wider px-2 py-1">
                             [ CLEAR DATA ]
                         </button>
                     </div>
+                </div>
+
+                <!-- Live Queue Health -->
+                <div class="p-4 border-b border-slate-700 bg-surface/30">
+                    <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-2">LIVE QUEUE HEALTH</div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">PENDING</div>
+                            <div class="text-lg font-bold text-warning leading-tight">{{ queueHealth.pending }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">COMPLETED</div>
+                            <div class="text-lg font-bold text-success leading-tight">{{ queueHealth.completed }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">FAILED</div>
+                            <div class="text-lg font-bold text-danger leading-tight">{{ queueHealth.failed }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Workers -->
+                <div class="p-4 border-b border-slate-700 bg-surface/30">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-[10px] text-slate-500 font-mono tracking-wide">WORKERS</div>
+                        <div class="text-[10px] text-slate-400 font-mono">count: {{ liveStats.workers.length }}</div>
+                    </div>
+                    <div class="max-h-32 overflow-y-auto matrix-scroll space-y-1">
+                        <div v-if="liveStats.workers.length === 0" class="text-[10px] text-slate-600 font-mono italic">
+                            No worker heartbeats yet...
+                        </div>
+                        <div v-for="w in liveStats.workers" :key="w.worker_id" class="rounded border border-slate-700 bg-black/30 px-2 py-1">
+                            <div class="flex items-center justify-between">
+                                <div class="text-[10px] text-slate-300 font-mono">{{ w.worker_id }}</div>
+                                <div class="flex items-center gap-1">
+                                    <div class="w-2 h-2 rounded-full" :class="w.healthy ? 'bg-success' : 'bg-danger'"></div>
+                                    <span class="text-[10px] font-mono" :class="w.healthy ? 'text-success' : 'text-danger'">
+                                        {{ w.healthy ? 'LIVE' : 'DOWN' }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-[10px] text-slate-500 font-mono">
+                                pid={{ w.pid || 'n/a' }} | task={{ w.current_task_id || 'idle' }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Database -->
+                <div class="p-4 border-b border-slate-700 bg-surface/30">
+                    <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-2">DATABASE HEALTH</div>
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">DB Size</div>
+                            <div class="text-slate-200">{{ liveStats.database?.storage?.size_pretty || 'n/a' }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">Connections</div>
+                            <div class="text-slate-200">{{ liveStats.database?.connections?.active || 0 }}/{{ liveStats.database?.connections?.total || 0 }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">Tasks (Total)</div>
+                            <div class="text-slate-200">{{ liveStats.database?.tasks?.total || 0 }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">Avg Duration</div>
+                            <div class="text-slate-200">{{ formatSeconds(liveStats.database?.tasks?.avg_duration_seconds) }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">Today Completed</div>
+                            <div class="text-success">{{ liveStats.database?.tasks?.today_completed || 0 }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-slate-500">Today Failed</div>
+                            <div class="text-danger">{{ liveStats.database?.tasks?.today_failed || 0 }}</div>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                 <!-- Live Logs -->
@@ -669,12 +748,14 @@
 
     <script>
         const { createApp, ref, computed, onMounted, nextTick } = Vue;
-        const socket = io();
+        let socket = null;
 
         createApp({
             setup() {
                 const isConnected = ref(false);
                 const isDragging = ref(false);
+                const apiKey = ref('');
+                const authReady = ref(false);
 
                 // Log Views State
                 const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
@@ -684,12 +765,18 @@
                 const queryLabError = ref('');
                 const queryLabResults = ref([]);
                 const queryLabHistory = ref([]);
+                const liveStats = ref({
+                    queue: { pending: 0, completed: 0, failed: 0 },
+                    workers: [],
+                    database: {}
+                });
 
                 const logs = ref([]);
                 const tasks = ref({}); // Map: taskId -> task
                 const batch = ref({ total: 0, completed: 0 });
                 const currentBatchId = ref(null);
                 const logContainer = ref(null);
+                const seenLogIds = new Set();
 
                 const filteredLogs = computed(() => {
                     if (logMode.value === 'VERBOSE') {
@@ -778,17 +865,30 @@
 
                 const narrativeMetrics = computed(() => {
                     const allTasks = Object.values(tasks.value || {});
+                    const taskTypeOf = (t) => String(
+                        t?.type
+                        || t?.metadata?.task_type
+                        || t?.metadata?.template_type
+                        || ''
+                    ).toLowerCase();
+                    const metricsOf = (t) => t?.metrics || t?.metadata?.metrics || t?.details?.metrics || {};
                     const heroTasks = allTasks.filter((t) =>
-                        (t?.metadata?.task_type === 'story_image')
+                        ['story_image', 'sourced_image'].includes(taskTypeOf(t))
                         || (t?.details?.output_dir || '').includes('/hero/')
                         || (t?.details?.output_dir || '').includes('\\hero\\')
-                        || t?.details?.refined_prompt?.toLowerCase?.().includes('story_image')
+                        || /story_image|sourced_image/i.test(String(t?.details?.refined_prompt || ''))
                     );
                     const completedHeroes = heroTasks.filter((t) => t?.status === 'completed');
-                    const totalMs = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.narrative_hero_gen_ms || t?.metrics?.generation_ms || 0), 0);
+                    const totalMs = completedHeroes.reduce((sum, t) => sum + Number(
+                        metricsOf(t)?.narrative_hero_gen_ms
+                        || metricsOf(t)?.generation_ms
+                        || metricsOf(t)?.total_ms
+                        || 0
+                    ), 0);
                     const avgMs = completedHeroes.length ? totalMs / completedHeroes.length : 0;
                     const totalWaitMs = completedHeroes.reduce((sum, t) => {
-                        const metricWait = Number(t?.metrics?.narrative_wait_ms || t?.metrics?.wait_ms || 0);
+                        const m = metricsOf(t);
+                        const metricWait = Number(m?.narrative_wait_ms || m?.wait_ms || 0);
                         if (Number.isFinite(metricWait) && metricWait > 0) return sum + metricWait;
                         const queuedAt = Date.parse(t?.metadata?.queued_at || '');
                         const startedAt = Date.parse(t?.details?.started_at || '');
@@ -798,8 +898,8 @@
                         return sum;
                     }, 0);
                     const avgWaitMs = completedHeroes.length ? totalWaitMs / completedHeroes.length : 0;
-                    const backoffEvents = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.siliconflow_backoff_events || 0), 0);
-                    const totalCost = completedHeroes.reduce((sum, t) => sum + Number(t?.metrics?.estimated_cost_usd || 0), 0);
+                    const backoffEvents = completedHeroes.reduce((sum, t) => sum + Number(metricsOf(t)?.siliconflow_backoff_events || 0), 0);
+                    const totalCost = completedHeroes.reduce((sum, t) => sum + Number(metricsOf(t)?.estimated_cost_usd || 0), 0);
 
                     return {
                         heroCount: heroTasks.length,
@@ -810,12 +910,39 @@
                     };
                 });
 
+                const queueHealth = computed(() => {
+                    const q = liveStats.value?.queue || {};
+                    const backendPending = Number(q.pending);
+                    const backendCompleted = Number(q.completed);
+                    const backendFailed = Number(q.failed);
+                    if ([backendPending, backendCompleted, backendFailed].every(Number.isFinite)) {
+                        return { pending: backendPending, completed: backendCompleted, failed: backendFailed };
+                    }
+                    const values = Object.values(tasks.value || {});
+                    let pending = 0;
+                    let completed = 0;
+                    let failed = 0;
+                    for (const t of values) {
+                        const s = String(t?.status || '').toLowerCase();
+                        if (s === 'completed') completed++;
+                        else if (s === 'failed') failed++;
+                        else pending++;
+                    }
+                    return { pending, completed, failed };
+                });
+
                 // Helpers
                 const decodeSlug = (slug) => slug.replace(/-/g, ' ');
 
                 const formatTime = (ts) => new Date(ts).toLocaleTimeString('en-US', {
                     hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
                 });
+
+                const formatSeconds = (value) => {
+                    const n = Number(value);
+                    if (!Number.isFinite(n)) return '0.00s';
+                    return `${n.toFixed(2)}s`;
+                };
 
                 const addLog = (level, message, context, taskId = null, batchId = null) => {
                     // Check if already at bottom before adding new log
@@ -835,6 +962,77 @@
                             logContainer.value.scrollTop = logContainer.value.scrollHeight;
                         }
                     });
+                };
+
+                const applyTaskDelta = (row) => {
+                    if (!row || !row.task_id) return;
+                    const mapped = {
+                        taskId: row.task_id,
+                        batchId: row.batch_id || null,
+                        status: row.status || 'pending',
+                        stage: row.stage || null,
+                        url: row.url || null,
+                        details: row.details || {},
+                        metadata: row.metadata || {},
+                        metrics: row?.metadata?.metrics || row?.details?.metrics || {},
+                    };
+                    if (!isActiveBatchEvent(mapped)) return;
+                    const existing = tasks.value[mapped.taskId] || {};
+                    tasks.value[mapped.taskId] = normalizeTask({
+                        ...existing,
+                        ...mapped,
+                        details: { ...(existing.details || {}), ...(mapped.details || {}) },
+                        metadata: { ...(existing.metadata || {}), ...(mapped.metadata || {}) },
+                    });
+                };
+
+                const applyLogDelta = (row) => {
+                    const id = Number(row?.id || 0);
+                    if (id && seenLogIds.has(id)) return;
+                    if (id) seenLogIds.add(id);
+                    const mapped = {
+                        level: row?.level || 'info',
+                        message: row?.message || '',
+                        context: row?.context || 'System',
+                        taskId: row?.task_id || null,
+                        batchId: row?.batch_id || null,
+                        timestamp: row?.created_at || new Date().toISOString(),
+                    };
+                    if (!isActiveBatchEvent(mapped)) return;
+                    logs.value.push({
+                        timestamp: Date.parse(mapped.timestamp) || Date.now(),
+                        level: mapped.level,
+                        message: mapped.message,
+                        context: mapped.context,
+                        taskId: mapped.taskId,
+                        batchId: mapped.batchId,
+                    });
+                    if (logs.value.length > 500) logs.value.shift();
+                };
+
+                const promptForApiKey = () => {
+                    const cached = localStorage.getItem('obs_api_key') || '';
+                    const entered = window.prompt('Enter API key for observability access:', cached);
+                    const key = String(entered || '').trim();
+                    if (!key) return '';
+                    localStorage.setItem('obs_api_key', key);
+                    apiKey.value = key;
+                    return key;
+                };
+
+                const requireApiKey = () => {
+                    if (apiKey.value) return apiKey.value;
+                    const fromStorage = String(localStorage.getItem('obs_api_key') || '').trim();
+                    if (fromStorage) {
+                        apiKey.value = fromStorage;
+                        return fromStorage;
+                    }
+                    return promptForApiKey();
+                };
+
+                const authHeaders = () => {
+                    const key = requireApiKey();
+                    return key ? { 'x-api-key': key } : {};
                 };
 
                 const selectedTask = ref(null);
@@ -895,6 +1093,7 @@
                 };
 
                 const openFolder = (path) => {
+                    if (!socket) return;
                     socket.emit('open_folder', path);
                     addLog('info', `Requesting to open folder: ${path}`, 'Frontend');
                 };
@@ -902,7 +1101,7 @@
                 const stopBatch = async () => {
                     try {
                         addLog('warn', 'Sending Stop Signal...', 'Frontend');
-                        await fetch('/generate/stop', { method: 'POST' });
+                        await fetch('/generate/stop', { method: 'POST', headers: authHeaders() });
                         addLog('warn', 'Stop Signal Sent', 'Frontend');
                     } catch (e) {
                         addLog('error', 'Failed to stop batch', e.message);
@@ -922,7 +1121,7 @@
                     try {
                         const res = await fetch('/generate/source-debug', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
                             body: JSON.stringify({ query: q, clip_brief: q, per_page: 10, orientation: 'horizontal' }),
                         });
                         const data = await res.json();
@@ -1070,7 +1269,7 @@
                             currentBatchId.value = null;
                             const res = await fetch('/generate/manifest', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
                                 body: JSON.stringify(json)
                             });
                             const data = await res.json();
@@ -1086,8 +1285,25 @@
 
                 // Lifecycle
                 onMounted(() => {
+                    const key = requireApiKey();
+                    if (!key) {
+                        addLog('error', 'API key is required to connect', 'Auth');
+                        return;
+                    }
+                    authReady.value = true;
+                    socket = io({
+                        auth: { apiKey: key },
+                        extraHeaders: { 'x-api-key': key },
+                        transports: ['websocket'],
+                    });
+
                     socket.on('connect', () => { isConnected.value = true; addLog('info', 'WebSocket Connected', 'System'); });
                     socket.on('disconnect', () => { isConnected.value = false; addLog('warn', 'WebSocket Disconnected', 'System'); });
+                    socket.on('auth_error', (data) => {
+                        isConnected.value = false;
+                        const message = String(data?.message || 'Authentication failed');
+                        addLog('error', `WebSocket auth failed: ${message}`, 'Auth');
+                    });
 
                     socket.on('task_progress', (data) => {
                         if (!isActiveBatchEvent(data)) return;
@@ -1146,6 +1362,24 @@
                         );
                     });
 
+                    socket.on('live_stats', (data) => {
+                        liveStats.value = {
+                            queue: data?.queue || { pending: 0, completed: 0, failed: 0 },
+                            workers: Array.isArray(data?.workers) ? data.workers : [],
+                            database: data?.database || {},
+                            timestamp: data?.timestamp || null
+                        };
+                        const taskDeltas = Array.isArray(data?.recent?.task_deltas) ? data.recent.task_deltas : [];
+                        const logDeltas = Array.isArray(data?.recent?.logs) ? data.recent.logs : [];
+                        for (const delta of taskDeltas) applyTaskDelta(delta);
+                        for (const delta of logDeltas) applyLogDelta(delta);
+                        if (logContainer.value) {
+                            const el = logContainer.value;
+                            const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
+                            if (scrollPos < 10) el.scrollTop = el.scrollHeight;
+                        }
+                    });
+
                     window.addEventListener('keydown', (e) => {
                         if (e.key === 'Escape') closeModal();
                     });
@@ -1154,14 +1388,17 @@
                 return {
                     isConnected, isDragging, logs, tasks, batch, logContainer,
                     groupedTasks, selectedTask,
+                    apiKey, authReady,
                     narrativeMetrics,
+                    queueHealth,
+                    liveStats,
                     selectedAssetTask, batchStylingGuidance,
                     logMode, selectedAssetFilter, filteredLogs,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
-                    formatTime, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
+                    formatTime, formatSeconds, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
                     getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, formatQueryScore,
                     getValidationBrief,

@@ -4,13 +4,18 @@ import { Logger } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
 
-@WebSocketGateway()
+@WebSocketGateway({
+    transports: ['websocket'],
+})
 export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @WebSocketServer()
     server: Server;
 
     private readonly logger = new Logger(ObservabilityGateway.name);
     private readonly allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+    private readonly liveStatsMinIntervalMs = Math.max(500, Number(process.env.OBS_LIVE_STATS_MIN_EMIT_MS || 1000));
+    private readonly workerTimeoutMs = Math.max(5000, Number(process.env.WORKER_TIMEOUT_MS || 30000));
+    private lastLiveStatsAt = 0;
 
     constructor(private readonly storage: PostgresStorageService) { }
 
@@ -42,6 +47,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
         }
         this.logger.log(`Client connected: ${client.id}`);
         client.emit('connection_ack', { message: 'Connected to Visualization Observability' });
+        void this.emitLiveStatsSnapshot(client, true);
     }
 
     handleDisconnect(client: Socket) {
@@ -76,6 +82,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     }) {
         if (this.server) this.server.emit('task_progress', data);
         void this.storage.upsertTaskProgress(data);
+        void this.emitLiveStatsSnapshot();
 
         if (data.status === 'failed') {
             const fs = require('fs');
@@ -121,6 +128,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
      */
     emitBatchProgress(data: { total: number; completed: number; current: string; batchId?: string }) {
         if (this.server) this.server.emit('batch_progress', data);
+        void this.emitLiveStatsSnapshot();
     }
 
     /**
@@ -131,6 +139,7 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
         this.logger.log(`Emitting batch_initialized with ${Object.keys(tasks).length} tasks`);
         if (this.server) this.server.emit('batch_initialized', tasks);
         void this.storage.upsertBatchInitialized(tasks);
+        void this.emitLiveStatsSnapshot(undefined, true);
     }
 
     emitBatchFinalized(data: {
@@ -145,6 +154,32 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     }) {
         if (this.server) this.server.emit('batch_finalized', data);
         void this.storage.upsertBatchFinalized(data);
+        void this.emitLiveStatsSnapshot(undefined, true);
+    }
+
+    emitLiveStats(data: {
+        queue: { pending: number; completed: number; failed: number };
+        workers: any[];
+        database: any;
+        recent?: { task_deltas?: any[]; logs?: any[] };
+        timestamp: string;
+    }) {
+        if (this.server) this.server.emit('live_stats', data);
+    }
+
+    private async emitLiveStatsSnapshot(target?: Socket, force = false): Promise<void> {
+        if (!this.storage.isEnabled()) return;
+        const now = Date.now();
+        if (!force && now - this.lastLiveStatsAt < this.liveStatsMinIntervalMs) return;
+        this.lastLiveStatsAt = now;
+        const [queue, workers, database] = await Promise.all([
+            this.storage.getQueueHealthStats(),
+            this.storage.getWorkerHealthStats(this.workerTimeoutMs),
+            this.storage.getDatabaseHealthStats(),
+        ]);
+        const payload = { queue, workers, database, recent: { task_deltas: [], logs: [] }, timestamp: new Date().toISOString() };
+        if (target) target.emit('live_stats', payload);
+        else this.emitLiveStats(payload);
     }
 
     @SubscribeMessage('open_folder')
