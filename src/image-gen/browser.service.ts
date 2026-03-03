@@ -19,6 +19,11 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
     async onModuleInit() {
         this.logger.log('Initializing BrowserService...');
+        const prewarm = String(process.env.PLAYWRIGHT_PREWARM || '').trim().toLowerCase();
+        if (!(prewarm === '1' || prewarm === 'true' || prewarm === 'yes')) {
+            this.logger.log('Skipping Playwright prewarm at startup (set PLAYWRIGHT_PREWARM=true to enable).');
+            return;
+        }
         try {
             await this.ensureBrowser();
             this.browserReady = true;
