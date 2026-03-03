@@ -16,6 +16,7 @@
     "start:app:dev": "nest start --watch",
     "start:app:prod": "node dist/main.js",
     "start:worker": "node dist/worker/main.js",
+    "start:worker:runtime": "node tools/start-worker-runtime.js",
     "start:worker:dev": "ts-node -r tsconfig-paths/register src/worker/main.ts",
     "start:all": "node tools/start-all.js",
     "start:clip-scorer": "node tools/clip-scorer/server.js",
