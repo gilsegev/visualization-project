@@ -6,10 +6,10 @@
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "node tools/start-with-clip.js start:app",
+    "start": "node dist/src/main",
     "start:dev": "node tools/start-with-clip.js start:app:dev",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node tools/start-with-clip.js start:app:prod",
+    "start:prod": "node dist/src/main",
     "start:app": "nest start",
     "start:app:dev": "nest start --watch",
     "start:app:prod": "node dist/src/main",
