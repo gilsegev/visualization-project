@@ -35,11 +35,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY package*.json ./
 
-# Install all deps (including dev for build), but skip lifecycle scripts to control Playwright install explicitly.
-# Railway/build environments may set production npm config globally, so force include dev deps here.
-RUN npm ci --ignore-scripts --include=dev
+# Install all deps (including dev for build). We need lifecycle scripts enabled so native/runtime
+# artifacts used by scoring dependencies (for example sharp via transformers) are properly installed.
+RUN npm ci --include=dev
 
-# Install Chromium in the image.
+# Ensure Chromium is present for Playwright rendering.
 RUN npx playwright install chromium
 
 COPY . .

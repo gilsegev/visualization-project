@@ -1,0 +1,93 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-visualization}
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-postgres} -d ${PGDATABASE:-visualization}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  image-quality-control:
+    build: .
+    command: ["npm", "run", "start:image-quality-control"]
+    environment:
+      IQC_HOST: 0.0.0.0
+      IQC_PORT: 4310
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+      OPENROUTER_VISION_MODEL: ${OPENROUTER_VISION_MODEL:-}
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4310/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  app-api:
+    build: .
+    command: ["npm", "start"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      image-quality-control:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      PORT: 8080
+      PROCESS_ROLE: app
+      POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-visualization}}
+      INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
+      IQC_URL: http://image-quality-control:4310
+      CLIP_SCORER_URL: http://image-quality-control:4310
+      QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+    volumes:
+      - generated_assets:/app/public/generated-images
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8080/dashboard/index.html').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  app-worker:
+    build: .
+    command: ["npm", "run", "start:worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      image-quality-control:
+        condition: service_healthy
+    environment:
+      PROCESS_ROLE: worker
+      WORKER_ID: compose-worker-1
+      POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-visualization}}
+      INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
+      IQC_URL: http://image-quality-control:4310
+      CLIP_SCORER_URL: http://image-quality-control:4310
+      QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+    volumes:
+      - generated_assets:/app/public/generated-images
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"process.exit(0)\""]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  pgdata:
+  generated_assets:

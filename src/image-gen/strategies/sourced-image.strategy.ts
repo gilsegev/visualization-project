@@ -224,7 +224,24 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                         'info',
                         `Candidate ${idx + 1}/${scoreTargets.length} | provider=${c.provider} query="${c.query}" clip=${clipScore.toFixed(3)} q_clip=${clipQ.toFixed(3)} b_clip=${clipB.toFixed(3)} vision=${vision.score} weighted=${weightedScore.toFixed(3)} match=${isMatch ? 'yes' : 'no'} url=${c.imageUrl}`,
                         'SourcedImage',
-                        task.id
+                        task.id,
+                        undefined,
+                        {
+                            metadata: {
+                                event_kind: 'iqc_candidate_scored',
+                                task_id: task.id,
+                                batch_id: (task as any)?.metadata?.batch_id || null,
+                                candidate_index: idx + 1,
+                                candidate_total: scoreTargets.length,
+                                provider: c.provider,
+                                query: c.query,
+                                clip_score: Number(clipScore.toFixed(4)),
+                                vision_score: Number(vision.score),
+                                weighted_score: Number(weightedScore.toFixed(4)),
+                                accepted: isMatch,
+                                source: 'image-quality-control',
+                            },
+                        },
                     );
                     return {
                         ...c,
@@ -246,7 +263,18 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                     'warn',
                     `No sourced candidates passed combined thresholds (clip>=${clipThreshold.toFixed(2)}); top weighted=${topWeighted?.weightedScore?.toFixed(3) || 'n/a'}. Falling back to story generator`,
                     'SourcedImage',
-                    task.id
+                    task.id,
+                    undefined,
+                    {
+                        metadata: {
+                            event_kind: 'iqc_no_match_fallback',
+                            task_id: task.id,
+                            batch_id: (task as any)?.metadata?.batch_id || null,
+                            clip_threshold: clipThreshold,
+                            top_weighted_score: Number((topWeighted?.weightedScore || 0).toFixed(4)),
+                            source: 'image-quality-control',
+                        },
+                    },
                 );
                 return this.fallbackToStory(task, {
                     clip_score: Number((topWeighted?.clipScore || 0).toFixed(4)),
@@ -1029,50 +1057,13 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             || (task as any)?.metadata?.custom_theme?.image_style_suffix
             || ''
         ).trim();
-        if (!this.openai) {
-            return { score: 75, reason: 'OPENROUTER_API_KEY unavailable; vision gate bypassed with neutral pass score.' };
-        }
-        try {
-            const model = this.configService.get<string>('OPENROUTER_VISION_MODEL')
-                || this.configService.get<string>('OPENROUTER_MODEL')
-                || 'google/gemini-2.0-flash-001';
-            const response = await this.withTimeout(
-                this.openai.chat.completions.create({
-                    model,
-                    temperature: 0,
-                    max_tokens: 260,
-                    messages: [
-                        {
-                            role: 'system',
-                            content: 'You are an image quality gate for sourced stock photos. Score 0-100 by rubric: semantic relevance to brief 70, visual clarity/composition 20, safety appropriateness 10. Do NOT penalize for missing brand palette, illustration style, or non-minimalist photo texture. Return JSON only: {"score": number, "reason": "short string", "sports_scene": boolean}.'
-                        },
-                        {
-                            role: 'user',
-                            content: [
-                                { type: 'text', text: `Brief: ${brief}\nPrimary domain: ${primaryDomain || 'general'}\nStyle guide: ${style || 'Muted, clean, non-clinical educational visual.'}\nIf domain is fishing and image shows athletes, stadium, rugby, team sports, set sports_scene=true.` },
-                                { type: 'image_url', image_url: { url: imageUrl } }
-                            ]
-                        }
-                    ]
-                }),
-                30000,
-                'Vision gate timeout'
-            );
-            const raw = String(response.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(raw || '{}');
-            const score = Math.max(0, Math.min(100, Number(parsed?.score || 0)));
-            const reason = String(parsed?.reason || 'No reason provided').slice(0, 280);
-            const sportsScene = Boolean(parsed?.sports_scene)
-                || /athlete|stadium|team sport|rugby|soccer|football/i.test(reason);
-            if (primaryDomain === 'fishing' && sportsScene) {
-                return { score: 0, reason: 'Rejected by domain hardening: sports scene detected for fishing domain.' };
-            }
-            if (!Number.isFinite(score)) return { score: 0, reason: 'Vision gate returned non-numeric score.' };
-            return { score, reason };
-        } catch (error) {
-            this.observability.emitLog('warn', `Vision gate failed; accepting CLIP-selected image (${error?.message || error})`, 'SourcedImage', task.id);
-            return { score: 75, reason: 'Vision gate unavailable; accepted by CLIP threshold only.' };
-        }
+        return this.clipService.visionScoreImage(
+            imageUrl,
+            brief,
+            primaryDomain,
+            style,
+            { score: 75, reason: 'Vision gate unavailable; accepted by CLIP threshold only.' },
+        );
     }
 
     private async fallbackToStory(

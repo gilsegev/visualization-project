@@ -1,7 +1,6 @@
 import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import OpenAI from 'openai';
 import { ImageOrchestratorService } from './image-orchestrator.service';
 import { LocalClipService } from './services/local-clip.service';
 import { ApiKeyGuard } from '../auth/api-key.guard';
@@ -12,23 +11,11 @@ import { enforceManifestLimits } from '../common/validation/payload-limits';
 @Controller('generate')
 @UseGuards(ApiKeyGuard)
 export class ImageGenController {
-    private readonly openai: OpenAI | null;
-
     constructor(
         private readonly orchestrator: ImageOrchestratorService,
         private readonly configService: ConfigService,
         private readonly clipService: LocalClipService,
-    ) {
-        const apiKey = this.configService.get<string>('OPENROUTER_API_KEY');
-        this.openai = apiKey ? new OpenAI({
-            apiKey,
-            baseURL: 'https://openrouter.ai/api/v1',
-            defaultHeaders: {
-                'HTTP-Referer': 'https://visualization-project.local',
-                'X-Title': 'Visualization Project Query Lab',
-            }
-        }) : null;
-    }
+    ) { }
 
     @Post()
     async generate(@Body() body: GenerateContentDto) {
@@ -133,37 +120,14 @@ export class ImageGenController {
     }
 
     private async visionScore(imageUrl: string, brief: string): Promise<{ score: number | null; reason: string | null }> {
-        if (!this.openai) {
-            return { score: null, reason: 'OPENROUTER_API_KEY missing' };
-        }
         try {
-            const model = this.configService.get<string>('OPENROUTER_VISION_MODEL')
-                || this.configService.get<string>('OPENROUTER_MODEL')
-                || 'google/gemini-2.0-flash-001';
-            const response = await this.openai.chat.completions.create({
-                model,
-                temperature: 0,
-                max_tokens: 180,
-                messages: [
-                    {
-                        role: 'system',
-                        content: 'Score image-query alignment 0-100 and return JSON only: {"score": number, "reason":"short"}'
-                    },
-                    {
-                        role: 'user',
-                        content: [
-                            { type: 'text', text: `Query brief: ${brief}` },
-                            { type: 'image_url', image_url: { url: imageUrl } }
-                        ]
-                    }
-                ]
+            const result = await this.clipService.visionScoreImage(imageUrl, brief, '', '', {
+                score: 75,
+                reason: 'Vision gate unavailable; accepted with neutral score.',
             });
-            const raw = String(response.choices?.[0]?.message?.content || '').replace(/```json|```/g, '').trim();
-            const parsed = JSON.parse(raw || '{}');
-            const score = Number(parsed?.score);
             return {
-                score: Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : null,
-                reason: String(parsed?.reason || '').slice(0, 300) || null,
+                score: Number.isFinite(result.score) ? Math.max(0, Math.min(100, result.score)) : null,
+                reason: String(result.reason || '').slice(0, 300) || null,
             };
         } catch (e: any) {
             return { score: null, reason: `vision_error: ${String(e?.message || e)}` };

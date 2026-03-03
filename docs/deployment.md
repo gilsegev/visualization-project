@@ -2,72 +2,85 @@
 
 ## Target Topology
 
-Deploy as two containers on the same Docker network:
+Deploy as three application services plus PostgreSQL:
 
-1. `app` (Nest orchestrator + API + UI)
-2. `clip-scorer` (isolated CLIP scoring service)
+1. `app-api` (Nest API, dashboard UI, WebSocket observability fanout)
+2. `app-worker` (durable queue consumer only)
+3. `image-quality-control` (IQC sidecar for CLIP + Vision scoring)
+4. `postgres` (state, queue, observability persistence)
 
-This keeps CLIP runtime crashes isolated from the main app.
+Observability stays in `app-api`. Workers write to Postgres; API streams state to the dashboard.
 
-## Environment Variables
+## Runtime Commands
 
-### App container
+- API only: `npm start`
+- Worker only: `npm run start:worker`
+- IQC only: `npm run start:image-quality-control`
+- Legacy combined runtime (compatibility): `npm run start:runtime`
 
-- `CLIP_SCORER_URL=http://clip-scorer:4310`
-- `CLIP_SCORER_USE_LOCAL_FALLBACK=false`
-- `SOURCED_IMAGE_DISABLE_CLIP=false`
-- `SOURCED_IMAGE_DISABLE_VISION=true` (or `false` when vision gate is enabled)
-- `UNSPLASH_ACCESS_KEY=<your_unsplash_access_key>`
+## Environment Contract
 
-### CLIP scorer container
+### Shared (API + Worker)
 
-- `CLIP_SCORER_PORT=4310`
-- `CLIP_SCORER_HOST=0.0.0.0`
-- `CLIP_SCORER_MODEL=Xenova/clip-vit-base-patch32`
+- `POSTGRES_ENABLED=true`
+- `DATABASE_URL=postgresql://...`
+- `IQC_URL=http://image-quality-control:4310`
+- `QUALITY_CONTROL_TIMEOUT_MS=12000`
 
-## Runtime Contract
+Compatibility alias remains supported:
 
-`clip-scorer` exposes:
+- `CLIP_SCORER_URL` (fallback alias when `IQC_URL` is unset)
 
-- `GET /health` -> `{ ok: true }`
-- `POST /score`
-  - request: `{ "imageUrl": "...", "brief": "..." }`
-  - response: `{ "ok": true, "score": 0.0-1.0, "latency_ms": number, "model": "..." }`
+### IQC service
 
-## Minimal Docker Compose Example
+- `IQC_HOST=0.0.0.0`
+- `IQC_PORT=4310`
+- `OPENROUTER_API_KEY=<key>` (required for vision scoring)
+- `OPENROUTER_VISION_MODEL=<optional override>`
 
-```yaml
-services:
-  app:
-    build: .
-    environment:
-      CLIP_SCORER_URL: http://clip-scorer:4310
-      CLIP_SCORER_USE_LOCAL_FALLBACK: "false"
-      SOURCED_IMAGE_DISABLE_CLIP: "false"
-      SOURCED_IMAGE_DISABLE_VISION: "true"
-      UNSPLASH_ACCESS_KEY: ${UNSPLASH_ACCESS_KEY}
-    depends_on:
-      - clip-scorer
-    ports:
-      - "3000:3000"
+## IQC HTTP API
 
-  clip-scorer:
-    image: node:20
-    working_dir: /app
-    volumes:
-      - ./:/app
-    command: ["node", "tools/clip-scorer/server.js"]
-    environment:
-      CLIP_SCORER_PORT: "4310"
-      CLIP_SCORER_HOST: "0.0.0.0"
-      CLIP_SCORER_MODEL: Xenova/clip-vit-base-patch32
-    ports:
-      - "4310:4310"
+- `GET /health`
+  - response: `{ ok, service, clip_model, vision_model, vision_enabled }`
+- `POST /score/clip`
+  - request: `{ imageUrl, brief }`
+  - response: `{ ok, score, positive_score, strongest_negative_score, strongest_negative_label, ... }`
+- `POST /score/vision`
+  - request: `{ imageUrl, brief, domain?, style? }`
+  - response: `{ ok, score, reason, ... }`
+- `POST /score/composite`
+  - request: `{ imageUrl, brief, domain?, style?, clipWeight?, clipThreshold?, disableClip?, disableVision? }`
+  - response: `{ ok, clip_score, vision_score, weighted_score, clip_pass, vision_pass, accepted, ... }`
+
+Backward-compatible endpoint:
+
+- `POST /score` (alias of `/score/clip`)
+
+## Local Compose
+
+Use `docker-compose.yml` from repo root:
+
+```bash
+docker compose up --build
 ```
 
-## Health and Fail-Fast
+This starts `app-api`, `app-worker`, `image-quality-control`, and `postgres` with shared generated-asset storage.
 
-- App task-level timeout: `MANIFEST_TASK_TIMEOUT_MS`
-- Sourced-image timeout: `SOURCED_IMAGE_TIMEOUT_MS`
-- If `clip-scorer` is unavailable and fallback is disabled, task fails fast with clear error.
-- Recommended production setting: keep `CLIP_SCORER_USE_LOCAL_FALLBACK=false`.
+## Railway Cutover (Simple)
+
+1. Deploy `image-quality-control` service first.
+2. Deploy `app-worker` service (`npm run start:worker`).
+3. Switch existing app service to API-only (`npm start`).
+4. Set envs:
+   - API and worker: `IQC_URL`, `DATABASE_URL`, `POSTGRES_ENABLED=true`
+   - IQC: `OPENROUTER_API_KEY`
+5. Run smoke test with one manifest and confirm:
+   - queue updates in dashboard
+   - worker task completion
+   - IQC scoring logs present
+
+## Rollback
+
+1. Redeploy prior API image/tag and run legacy runtime (`npm run start:runtime`) if needed.
+2. Disable/scale down split `app-worker` and `image-quality-control`.
+3. Keep PostgreSQL unchanged (no destructive schema rollback required).
