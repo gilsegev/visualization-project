@@ -8,7 +8,12 @@ import { ObservabilityGateway } from '../observability/observability.gateway';
 @Injectable()
 export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(DurableQueueWorkerService.name);
-    private readonly workerId = process.env.WORKER_ID || `worker-${process.pid}`;
+    private readonly workerId = (() => {
+        const explicit = String(process.env.WORKER_ID || '').trim();
+        if (explicit) return explicit;
+        const slot = String(process.env.WORKER_SLOT || '0').trim() || '0';
+        return `${hostname()}-w${slot}`;
+    })();
     private readonly pollMs = Math.max(250, Number(process.env.DURABLE_QUEUE_POLL_MS || 1000));
     private readonly leaseSeconds = Math.max(30, Number(process.env.DURABLE_QUEUE_LEASE_SECONDS || 120));
     private readonly heartbeatMs = Math.max(10000, Number(process.env.DURABLE_QUEUE_HEARTBEAT_MS || 30000));

@@ -36,6 +36,33 @@ export type WorkerHeartbeatRow = {
     metadata: any;
 };
 
+export type QueueHealthStats = {
+    pending: number;
+    completed: number;
+    failed: number;
+};
+
+export type TaskDeltaRow = {
+    task_id: string;
+    batch_id: string | null;
+    status: string | null;
+    stage: string | null;
+    url: string | null;
+    details: any;
+    metadata: any;
+    updated_at: string;
+};
+
+export type SystemLogRow = {
+    id: number;
+    created_at: string;
+    level: string;
+    message: string;
+    context: string | null;
+    task_id: string | null;
+    batch_id: string | null;
+};
+
 @Injectable()
 export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PostgresStorageService.name);
@@ -367,7 +394,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             `UPDATE worker_heartbeats
              SET status = 'TERMINATED',
                  current_task_id = NULL,
-                 metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('gc_reason', $2, 'gc_at', NOW()::text),
+                 metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('gc_reason', $2::text, 'gc_at', NOW()::text),
                  updated_at = NOW()
              WHERE worker_id = $1`,
             [workerId, String(reason || 'orphan_worker_cleanup').slice(0, 300)]
@@ -539,6 +566,158 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    async getQueueHealthStats(): Promise<QueueHealthStats> {
+        if (!this.pool) return { pending: 0, completed: 0, failed: 0 };
+        const rows = await this.queryRows<{ pending: number; completed: number; failed: number }>(
+            `SELECT
+                COUNT(*) FILTER (WHERE queue_status IN ('queued', 'processing'))::int AS pending,
+                COUNT(*) FILTER (WHERE queue_status = 'completed')::int AS completed,
+                COUNT(*) FILTER (WHERE queue_status = 'failed')::int AS failed
+             FROM tasks`
+        );
+        return rows[0] || { pending: 0, completed: 0, failed: 0 };
+    }
+
+    async getWorkerHealthStats(timeoutMs = 30000): Promise<any[]> {
+        if (!this.pool) return [];
+        const timeoutSec = Math.max(5, Math.floor(timeoutMs / 1000));
+        const showDeadMinutes = Math.max(0, Number(process.env.WORKER_HEARTBEAT_SHOW_DEAD_MINUTES || 0));
+        return this.queryRows<any>(
+            `SELECT
+                worker_id, pid, host, status, current_task_id, started_at, last_seen_at,
+                CASE
+                    WHEN status = 'ACTIVE' AND last_seen_at >= NOW() - (($1::text || ' seconds')::interval)
+                    THEN true ELSE false
+                END AS healthy
+             FROM worker_heartbeats
+             WHERE
+                status = 'ACTIVE'
+                OR ($2::int > 0 AND status <> 'ACTIVE' AND last_seen_at >= NOW() - (($2::text || ' minutes')::interval))
+             ORDER BY started_at DESC`,
+            [timeoutSec, showDeadMinutes]
+        );
+    }
+
+    async purgeDeadWorkerHeartbeats(retentionMinutes = 60): Promise<number> {
+        if (!this.pool) return 0;
+        const mins = Math.max(1, Number(retentionMinutes || 60));
+        const rows = await this.queryRows<{ worker_id: string }>(
+            `DELETE FROM worker_heartbeats
+             WHERE status IN ('TERMINATED', 'SHUTDOWN')
+               AND last_seen_at < NOW() - (($1::text || ' minutes')::interval)
+             RETURNING worker_id`,
+            [mins]
+        );
+        return rows.length;
+    }
+
+    async getDatabaseHealthStats(): Promise<any> {
+        if (!this.pool) return {};
+        const [taskRows, batchRows, dbRows, connRows] = await Promise.all([
+            this.queryRows<{ total: number; today_completed: number; today_failed: number; avg_duration_seconds: number }>(
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status = 'completed' AND queued_at >= date_trunc('day', NOW()))::int AS today_completed,
+                    COUNT(*) FILTER (WHERE status = 'failed' AND queued_at >= date_trunc('day', NOW()))::int AS today_failed,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (ended_at - started_at))) FILTER (WHERE started_at IS NOT NULL AND ended_at IS NOT NULL), 0)::float AS avg_duration_seconds
+                 FROM task_runs`
+            ),
+            this.queryRows<{ total: number; running: number }>(
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status = 'running')::int AS running
+                 FROM batch_runs`
+            ),
+            this.queryRows<{ size_pretty: string; size_bytes: string }>(
+                `SELECT pg_size_pretty(pg_database_size(current_database())) AS size_pretty,
+                        pg_database_size(current_database())::text AS size_bytes`
+            ),
+            this.queryRows<{ total: number; active: number }>(
+                `SELECT
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE state = 'active')::int AS active
+                 FROM pg_stat_activity
+                 WHERE datname = current_database()`
+            ),
+        ]);
+        return {
+            tasks: taskRows[0] || { total: 0, today_completed: 0, today_failed: 0, avg_duration_seconds: 0 },
+            batches: batchRows[0] || { total: 0, running: 0 },
+            storage: dbRows[0] || { size_pretty: 'n/a', size_bytes: '0' },
+            connections: connRows[0] || { total: 0, active: 0 },
+        };
+    }
+
+    async getRecentTaskDeltas(sinceIso: string | null, limit = 200): Promise<TaskDeltaRow[]> {
+        if (!this.pool) return [];
+        const cap = Math.max(1, Math.min(500, Number(limit || 200)));
+        if (sinceIso) {
+            return this.queryRows<TaskDeltaRow>(
+                `SELECT
+                    tr.task_id,
+                    tr.batch_id,
+                    tr.status,
+                    tr.stage,
+                    tr.url,
+                    tr.details,
+                    COALESCE(tr.metadata, '{}'::jsonb)
+                      || jsonb_build_object(
+                        'metrics',
+                        COALESCE(tr.metadata->'metrics', t.metadata->'metrics', '{}'::jsonb)
+                      ) AS metadata,
+                    tr.updated_at::text AS updated_at
+                 FROM task_runs tr
+                 LEFT JOIN tasks t ON t.task_id = tr.task_id
+                 WHERE tr.updated_at > $1::timestamptz
+                 ORDER BY tr.updated_at ASC
+                 LIMIT $2`,
+                [sinceIso, cap]
+            );
+        }
+        return this.queryRows<TaskDeltaRow>(
+            `SELECT
+                tr.task_id,
+                tr.batch_id,
+                tr.status,
+                tr.stage,
+                tr.url,
+                tr.details,
+                COALESCE(tr.metadata, '{}'::jsonb)
+                  || jsonb_build_object(
+                    'metrics',
+                    COALESCE(tr.metadata->'metrics', t.metadata->'metrics', '{}'::jsonb)
+                  ) AS metadata,
+                tr.updated_at::text AS updated_at
+             FROM task_runs tr
+             LEFT JOIN tasks t ON t.task_id = tr.task_id
+             ORDER BY tr.updated_at DESC
+             LIMIT $1`,
+            [cap]
+        );
+    }
+
+    async getRecentSystemLogs(afterId: number | null, limit = 300): Promise<SystemLogRow[]> {
+        if (!this.pool) return [];
+        const cap = Math.max(1, Math.min(1000, Number(limit || 300)));
+        if (Number.isFinite(afterId as number) && Number(afterId) > 0) {
+            return this.queryRows<SystemLogRow>(
+                `SELECT id, created_at::text, level, message, context, task_id, batch_id
+                 FROM system_logs
+                 WHERE id > $1
+                 ORDER BY id ASC
+                 LIMIT $2`,
+                [Number(afterId), cap]
+            );
+        }
+        return this.queryRows<SystemLogRow>(
+            `SELECT id, created_at::text, level, message, context, task_id, batch_id
+             FROM system_logs
+             ORDER BY id DESC
+             LIMIT $1`,
+            [cap]
+        );
+    }
+
     async upsertTaskProgress(data: {
         taskId: string;
         status: string;
@@ -547,6 +726,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         url?: string;
         details?: any;
         metadata?: any;
+        metrics?: any;
     }): Promise<void> {
         if (!this.pool) return;
         const taskId = String(data.taskId || '').trim();
@@ -555,6 +735,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         const now = new Date().toISOString();
         const details = data.details ?? null;
         const metadata = data.metadata ?? null;
+        const metrics = data.metrics ?? null;
         const title = String(details?.title || metadata?.title || metadata?.lesson_title || '').trim() || null;
         await this.query(
             `INSERT INTO task_runs (
@@ -575,7 +756,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 ended_at = COALESCE(EXCLUDED.ended_at, task_runs.ended_at),
                 url = COALESCE(EXCLUDED.url, task_runs.url),
                 details = COALESCE(EXCLUDED.details, task_runs.details),
-                metadata = COALESCE(EXCLUDED.metadata, task_runs.metadata),
+                metadata = COALESCE(task_runs.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
                 updated_at = NOW()`,
             [
                 taskId,
@@ -591,7 +772,12 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 (data.status === 'completed' || data.status === 'failed') ? now : null,
                 data.url || null,
                 details ? JSON.stringify(details) : null,
-                metadata ? JSON.stringify(metadata) : null,
+                (metadata || metrics)
+                    ? JSON.stringify({
+                        ...(metadata || {}),
+                        ...(metrics ? { metrics } : {}),
+                    })
+                    : null,
             ]
         );
         await this.query(
@@ -617,7 +803,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 stage = EXCLUDED.stage,
                 title = COALESCE(EXCLUDED.title, tasks.title),
                 details = COALESCE(EXCLUDED.details, tasks.details),
-                metadata = COALESCE(EXCLUDED.metadata, tasks.metadata),
+                metadata = COALESCE(tasks.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
                 updated_at = NOW()`,
             [
                 taskId,
@@ -627,7 +813,12 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 data.stage || null,
                 title,
                 details ? JSON.stringify(details) : null,
-                metadata ? JSON.stringify(metadata) : null,
+                (metadata || metrics)
+                    ? JSON.stringify({
+                        ...(metadata || {}),
+                        ...(metrics ? { metrics } : {}),
+                    })
+                    : null,
             ]
         );
     }
