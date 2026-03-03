@@ -260,7 +260,7 @@ export class ImageOrchestratorService {
         };
     }
 
-    async generateFromManifest(manifest: any) {
+    async generateFromManifest(manifest: any, authContext?: { userId?: number }) {
         this.stopSignal = false; // Reset signal
         const start = performance.now();
         const batchStartedAt = new Date();
@@ -342,6 +342,7 @@ export class ImageOrchestratorService {
                     refined_prompt: refinedPrompt.trim(),
                     payload: taskPayload,
                     metadata: {
+                        user_id: Number.isFinite(Number(authContext?.userId)) ? Number(authContext?.userId) : undefined,
                         title: viz.title || vizDescription,
                         course_id: courseSlug,
                         lesson_id: lesson.lessonId,
