@@ -43,6 +43,7 @@ services:
     environment:
       PORT: 8080
       PROCESS_ROLE: app
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1},http://localhost:8081,http://127.0.0.1:8081
       POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-visualization}}
       INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
@@ -51,6 +52,7 @@ services:
       QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
     volumes:
       - generated_assets:/app/public/generated-images
     healthcheck:
@@ -70,7 +72,7 @@ services:
         condition: service_healthy
     environment:
       PROCESS_ROLE: worker
-      WORKER_ID: compose-worker-1
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1},http://localhost:8081,http://127.0.0.1:8081
       POSTGRES_ENABLED: ${POSTGRES_ENABLED:-true}
       DATABASE_URL: ${DATABASE_URL:-postgresql://${PGUSER:-postgres}:${PGPASSWORD:-postgres}@postgres:5432/${PGDATABASE:-visualization}}
       INITIAL_ADMIN_KEY: ${INITIAL_ADMIN_KEY:-local-dev-admin-key}
@@ -79,6 +81,7 @@ services:
       QUALITY_CONTROL_TIMEOUT_MS: ${QUALITY_CONTROL_TIMEOUT_MS:-12000}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-google/gemini-2.0-flash-001}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
     volumes:
       - generated_assets:/app/public/generated-images
     healthcheck:

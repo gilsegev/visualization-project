@@ -1076,16 +1076,6 @@ export class SourcedImageStrategy extends BaseImageStrategy {
             queryConfig?: Record<string, any>;
         }
     ): Promise<ImageGenerationResult> {
-        const siliconFlowKey = String(this.configService.get<string>('SILICONFLOW_API_KEY') || '').trim();
-        if (!siliconFlowKey) {
-            this.observability.emitLog(
-                'warn',
-                'Story fallback unavailable (missing SILICONFLOW_API_KEY). Rendering deterministic local fallback.',
-                'SourcedImage',
-                task.id
-            );
-            return this.renderDeterministicFallback(task, sourcedDiagnostics, sourcedArtifacts);
-        }
         const fallbackTask: any = {
             ...task,
             type: 'story_image',
@@ -1094,157 +1084,23 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 sourced_fallback: true,
             }
         };
-        try {
-            const storyResult = await this.storyImageStrategy.generate(fallbackTask);
-            if (sourcedArtifacts && storyResult?.payload?.output_dir) {
-                await this.persistSourcedArtifacts(String(storyResult.payload.output_dir), sourcedArtifacts, task.id);
-            }
-            const mergedMetrics = {
-                ...(storyResult?.payload?.metrics || {}),
-                ...(sourcedDiagnostics || {}),
-                sourced_fallback: true,
-            };
-            return {
-                ...storyResult,
-                payload: {
-                    ...(storyResult?.payload || {}),
-                    source_type: 'sourced_image_fallback_story',
-                    metrics: mergedMetrics,
-                },
-            };
-        } catch (error: any) {
-            const message = String(error?.message || '');
-            const missingStoryProvider = message.includes('SILICONFLOW_API_KEY is not defined');
-            if (!missingStoryProvider) {
-                throw error;
-            }
-            this.observability.emitLog(
-                'warn',
-                'Story fallback unavailable (missing SILICONFLOW_API_KEY). Rendering deterministic local fallback.',
-                'SourcedImage',
-                task.id
-            );
-            return this.renderDeterministicFallback(task, sourcedDiagnostics, sourcedArtifacts);
-        }
-    }
-
-    private async renderDeterministicFallback(
-        task: ImageTask,
-        sourcedDiagnostics?: Record<string, any>,
-        sourcedArtifacts?: {
-            brief: string;
-            queries: string[];
-            candidates: Array<{ provider?: string; query: string; image_url: string }>;
-            queryConfig?: Record<string, any>;
-        }
-    ): Promise<ImageGenerationResult> {
-        const payload = (task as any)?.payload || {};
-        const imageSpecs = payload?.imageSpecs || {};
-        const brief = String(imageSpecs?.brief || task?.refined_prompt || '').trim() || 'Sourced image unavailable';
-        const dims = this.resolveDimensions(task);
-        const exportScale = this.resolveExportScale(imageSpecs);
-        const relativeOutputDir = this.getRelativeOutputDir(task);
-        const safeBrief = this.escapeHtml(brief);
-        const fallbackHtml = `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      html, body { margin: 0; padding: 0; width: 100%; height: 100%; }
-      body {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: radial-gradient(1200px 600px at 20% 10%, #1f3557 0%, #0b1a32 45%, #091428 100%);
-        color: #e6edf8;
-        font-family: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
-      }
-      .card {
-        width: min(86%, 980px);
-        border: 1px solid rgba(121, 187, 255, 0.45);
-        background: rgba(8, 19, 38, 0.72);
-        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
-        border-radius: 18px;
-        padding: 48px;
-      }
-      .label {
-        font-size: 14px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: #7ec9ff;
-        margin-bottom: 16px;
-      }
-      .title {
-        font-size: 42px;
-        line-height: 1.2;
-        margin: 0 0 18px;
-        font-weight: 700;
-      }
-      .subtitle {
-        font-size: 20px;
-        line-height: 1.5;
-        margin: 0;
-        color: #cddbf0;
-      }
-    </style>
-  </head>
-  <body>
-    <article class="card">
-      <div class="label">Sourced Image Fallback</div>
-      <h1 class="title">Night SOC Monitoring Scene</h1>
-      <p class="subtitle">${safeBrief}</p>
-    </article>
-  </body>
-</html>`;
-        const taskBaseUrl = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
-        const posterBuffer = await this.browserService.screenshotHtml(fallbackHtml, taskBaseUrl, {
-            width: dims.width,
-            height: dims.height,
-            resizeMode: 'fill',
-            scale: exportScale,
-        });
-        const publicUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), posterBuffer);
-        await this.localStorage.save(path.join(relativeOutputDir, 'index.html'), Buffer.from(fallbackHtml));
-        await this.localStorage.save(path.join(relativeOutputDir, 'blueprint.json'), Buffer.from(JSON.stringify({
-            template_id: 'deterministic_fallback',
-            source_type: 'sourced_image_fallback_local',
-            image_size: `${dims.width}x${dims.height}`,
-            export_scale: exportScale,
-            reason: 'missing_source_and_story_providers',
-        }, null, 2)));
-        if (sourcedArtifacts) {
-            await this.persistSourcedArtifacts(relativeOutputDir, sourcedArtifacts, task.id);
+        const storyResult = await this.storyImageStrategy.generate(fallbackTask);
+        if (sourcedArtifacts && storyResult?.payload?.output_dir) {
+            await this.persistSourcedArtifacts(String(storyResult.payload.output_dir), sourcedArtifacts, task.id);
         }
         const mergedMetrics = {
+            ...(storyResult?.payload?.metrics || {}),
             ...(sourcedDiagnostics || {}),
             sourced_fallback: true,
-            sourced_fallback_reason: 'missing_story_provider_key',
-            fallback_mode: 'deterministic_local',
         };
         return {
-            url: publicUrl,
-            posterUrl: publicUrl,
+            ...storyResult,
             payload: {
-                output_dir: relativeOutputDir,
-                source_type: 'sourced_image_fallback_local',
-                image_prompts: [brief],
-                blueprint_prompt: task.refined_prompt,
-                image_size: `${dims.width}x${dims.height}`,
-                export_scale: exportScale,
-                quality_score: 70,
+                ...(storyResult?.payload || {}),
+                source_type: 'sourced_image_fallback_story',
                 metrics: mergedMetrics,
             },
         };
-    }
-
-    private escapeHtml(value: string): string {
-        return String(value || '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
     }
 
     private async persistSourcedArtifacts(
