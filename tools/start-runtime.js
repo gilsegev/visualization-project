@@ -1,4 +1,5 @@
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
 const os = require('os');
 
 function toBool(v, fallback = false) {
@@ -48,6 +49,64 @@ function shutdown(code = 0) {
 
 const durableQueueEnabled = toBool(process.env.DURABLE_QUEUE_ENABLED, true);
 const workerCount = durableQueueEnabled ? toInt(process.env.WORKER_COUNT, 1) : 0;
+
+function ensureLinuxPlaywrightDeps() {
+  if (process.platform !== 'linux') return;
+  if (toBool(process.env.SKIP_RUNTIME_APT, false)) return;
+  if (!fs.existsSync('/usr/bin/apt-get')) return;
+
+  const glibCheck = spawnSync('sh', ['-lc', 'ldconfig -p | grep -q "libglib-2.0.so.0"']);
+  if (glibCheck.status === 0) return;
+
+  console.log('[runtime] libglib not found; installing Playwright runtime libs...');
+
+  const update = spawnSync('apt-get', ['update'], { stdio: 'inherit' });
+  if (update.status !== 0) {
+    console.error('[runtime] apt-get update failed; continuing without runtime lib install.');
+    return;
+  }
+
+  const install = spawnSync(
+    'apt-get',
+    [
+      'install',
+      '-y',
+      '--no-install-recommends',
+      'libglib2.0-0',
+      'libnss3',
+      'libnspr4',
+      'libatk1.0-0',
+      'libatk-bridge2.0-0',
+      'libatspi2.0-0',
+      'libx11-6',
+      'libxcomposite1',
+      'libxdamage1',
+      'libxfixes3',
+      'libxrandr2',
+      'libgbm1',
+      'libxkbcommon0',
+      'libasound2',
+      'libxshmfence1',
+      'libdrm2',
+      'libgtk-3-0',
+      'libpango-1.0-0',
+      'libcairo2',
+      'libxcb1',
+      'ca-certificates',
+      'fonts-liberation',
+    ],
+    { stdio: 'inherit' },
+  );
+
+  if (install.status !== 0) {
+    console.error('[runtime] apt-get install failed; continuing with existing image libs.');
+    return;
+  }
+
+  console.log('[runtime] Playwright runtime libs installed.');
+}
+
+ensureLinuxPlaywrightDeps();
 
 children.push(run('app', 'node', ['dist/src/main'], {}, { fatal: true }));
 
