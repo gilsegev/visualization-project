@@ -15,10 +15,17 @@ interface ScreenshotHtmlOptions {
 export class BrowserService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(BrowserService.name);
     private browser: Browser;
+    private browserReady = false;
 
     async onModuleInit() {
         this.logger.log('Initializing BrowserService...');
-        await this.ensureBrowser();
+        try {
+            await this.ensureBrowser();
+            this.browserReady = true;
+        } catch (error) {
+            this.browserReady = false;
+            this.logger.error(`Browser init failed; rendering endpoints will fail until fixed: ${error?.message || error}`);
+        }
     }
 
     async onModuleDestroy() {
@@ -60,6 +67,9 @@ export class BrowserService implements OnModuleInit, OnModuleDestroy {
 
     async getNewPage(options: { recordVideo?: { dir: string } } = {}): Promise<{ context: BrowserContext; page: Page }> {
         await this.ensureBrowser();
+        if (!this.browser) {
+            throw new Error('Browser is unavailable. Install Playwright Chromium in runtime image.');
+        }
         // Create a new independent context for each task to ensure isolation
         const context = await this.browser.newContext({
             viewport: { width: 1200, height: 1200 }, // V2-RESET-01: Locked to 1200x1200
