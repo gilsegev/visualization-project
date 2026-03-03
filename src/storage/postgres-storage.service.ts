@@ -650,7 +650,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 END AS healthy
              FROM worker_heartbeats
              WHERE
-                status = 'ACTIVE'
+                (status = 'ACTIVE' AND last_seen_at >= NOW() - (($1::text || ' seconds')::interval))
                 OR ($2::int > 0 AND status <> 'ACTIVE' AND last_seen_at >= NOW() - (($2::text || ' minutes')::interval))
              ORDER BY started_at DESC`,
             [timeoutSec, showDeadMinutes]
