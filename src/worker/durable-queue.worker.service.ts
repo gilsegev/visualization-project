@@ -16,7 +16,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     })();
     private readonly pollMs = Math.max(250, Number(process.env.DURABLE_QUEUE_POLL_MS || 1000));
     private readonly leaseSeconds = Math.max(30, Number(process.env.DURABLE_QUEUE_LEASE_SECONDS || 120));
-    private readonly heartbeatMs = Math.max(10000, Number(process.env.DURABLE_QUEUE_HEARTBEAT_MS || 30000));
+    private readonly heartbeatMs = Math.max(5000, Number(process.env.DURABLE_QUEUE_HEARTBEAT_MS || 10000));
     private readonly staleMinutes = Math.max(1, Number(process.env.DURABLE_QUEUE_STALE_MINUTES || 10));
     private readonly retryDelaySeconds = Math.max(5, Number(process.env.DURABLE_QUEUE_RETRY_DELAY_SECONDS || 30));
     private readonly taskTimeoutMs = Math.max(60000, Number(process.env.MANIFEST_TASK_TIMEOUT_MS || 120000));
@@ -105,6 +105,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
 
         const startedAt = new Date();
         const perfStart = performance.now();
+        this.logger.log(`Claimed task ${taskId} (attempt ${row.attempts}/${row.max_attempts})`);
         this.observability.emitProgress({ taskId, batchId, status: 'processing', stage: 'Starting Generation...' } as any);
         this.observability.emitLog('info', `Worker claimed task (attempt ${row.attempts}/${row.max_attempts})`, 'Worker', taskId, batchId);
 
@@ -162,7 +163,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 }
             }
             const strategy = this.strategyFactory.getStrategy(task);
-            const result: any = await this.withTimeout((strategy as any).performGeneration(task, 1), this.taskTimeoutMs, `Task timeout after ${this.taskTimeoutMs}ms`);
+            const result: any = await this.withTimeout((strategy as any).generate(task, 1), this.taskTimeoutMs, `Task timeout after ${this.taskTimeoutMs}ms`);
             const durationMs = performance.now() - perfStart;
             const endedAt = new Date();
             const actualCostUsd = this.resolveActualCostUsd(result, estimatedCostUsd);
@@ -223,20 +224,27 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 taskId,
                 batchId
             );
+            this.logger.log(`Completed task ${taskId} in ${durationMs.toFixed(0)}ms`);
         } catch (error: any) {
             const message = String(error?.message || 'Unknown task failure');
+            const stack = typeof error?.stack === 'string'
+                ? error.stack.split('\n').slice(0, 5).join(' | ')
+                : undefined;
             await this.storage.recordTaskCost(taskId, {
                 estimated_usd: estimatedCostUsd,
                 actual_usd: 0,
                 provider: task?.type || 'worker',
             });
             const disposition = await this.storage.failOrRequeueDurableTask(taskId, message, this.retryDelaySeconds);
+            this.logger.error(
+                `Task ${taskId} ${disposition}. message="${message}"${stack ? ` stack="${stack}"` : ''}`
+            );
             this.observability.emitProgress({
                 taskId,
                 batchId,
                 status: disposition === 'failed' ? 'failed' : 'pending',
                 stage: disposition === 'failed' ? 'Failed' : 'Queued for Retry',
-                details: { error: message }
+                details: { error: message, stack }
             } as any);
             this.observability.emitLog(
                 disposition === 'failed' ? 'error' : 'warn',

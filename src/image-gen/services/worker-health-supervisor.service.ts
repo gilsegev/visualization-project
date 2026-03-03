@@ -13,7 +13,10 @@ export class WorkerHealthSupervisorService implements OnModuleInit, OnModuleDest
         String(process.env.DURABLE_QUEUE_ENABLED || 'true').toLowerCase() === 'true'
         && String(process.env.WORKER_SUPERVISOR_ENABLED || 'true').toLowerCase() === 'true';
     private readonly gcEnabled = String(process.env.WORKER_GC_ENABLED || 'true').toLowerCase() === 'true';
-    private readonly workerTimeoutMs = Math.max(5000, Number(process.env.WORKER_TIMEOUT_MS || 30000));
+    private readonly workerTimeoutMs = Math.max(
+        60000,
+        Number(process.env.WORKER_TIMEOUT_MS || process.env.MANIFEST_TASK_TIMEOUT_MS || 120000),
+    );
     private readonly pollMs = Math.max(2000, Number(process.env.WORKER_SUPERVISOR_POLL_MS || process.env.WORKER_HEARTBEAT_MS || 10000));
     private readonly gcIntervalMs = Math.max(5000, Number(process.env.WORKER_GC_INTERVAL_MS || 30000));
     private readonly expectedSignature = String(process.env.WORKER_SIGNATURE || 'viz-worker').trim();

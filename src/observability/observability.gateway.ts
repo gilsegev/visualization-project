@@ -14,7 +14,10 @@ export class ObservabilityGateway implements OnGatewayConnection, OnGatewayDisco
     private readonly logger = new Logger(ObservabilityGateway.name);
     private readonly allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
     private readonly liveStatsMinIntervalMs = Math.max(500, Number(process.env.OBS_LIVE_STATS_MIN_EMIT_MS || 1000));
-    private readonly workerTimeoutMs = Math.max(5000, Number(process.env.WORKER_TIMEOUT_MS || 30000));
+    private readonly workerTimeoutMs = Math.max(
+        60000,
+        Number(process.env.WORKER_TIMEOUT_MS || process.env.MANIFEST_TASK_TIMEOUT_MS || 120000),
+    );
     private lastLiveStatsAt = 0;
 
     constructor(private readonly storage: PostgresStorageService) { }
