@@ -264,8 +264,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         const attempts = Number(row.attempts || 0);
         const maxAttempts = Math.max(1, Number(row.max_attempts || 3));
         const shouldRetry = attempts < maxAttempts;
-        await this.query(
-            `UPDATE tasks
+        const sql = `UPDATE tasks
              SET queue_status = ${shouldRetry ? `'queued'` : `'failed'`},
                  status = ${shouldRetry ? `'pending'` : `'failed'`},
                  stage = ${shouldRetry ? `'Queued for Retry'` : `'Failed'`},
@@ -275,9 +274,12 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                  lease_expires_at = NULL,
                  last_heartbeat_at = NULL,
                  updated_at = NOW()
-             WHERE task_id = $1`,
-            [taskId, String(errorMessage || 'Unknown error').slice(0, 2000), Math.max(5, retryDelaySeconds || 30)]
-        );
+             WHERE task_id = $1`;
+        const params: any[] = [taskId, String(errorMessage || 'Unknown error').slice(0, 2000)];
+        if (shouldRetry) {
+            params.push(Math.max(5, retryDelaySeconds || 30));
+        }
+        await this.query(sql, params);
         return shouldRetry ? 'requeued' : 'failed';
     }
 
