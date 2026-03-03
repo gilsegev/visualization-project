@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { createHash } from 'crypto';
+import { normalizeDbResultPath } from '../common/path-safety.util';
 
 export type AuthUser = {
     id: number;
@@ -234,6 +235,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
 
     async completeDurableTask(taskId: string, resultUrl?: string | null, details?: any, metrics?: any): Promise<void> {
         if (!this.pool || !taskId) return;
+        const safeResultPath = normalizeDbResultPath(resultUrl);
         await this.query(
             `UPDATE tasks
              SET queue_status = 'completed',
@@ -247,7 +249,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                  last_heartbeat_at = NULL,
                  updated_at = NOW()
              WHERE task_id = $1`,
-            [taskId, resultUrl || null, details ? JSON.stringify(details) : null, metrics ? JSON.stringify(metrics) : null]
+            [taskId, safeResultPath, details ? JSON.stringify(details) : null, metrics ? JSON.stringify(metrics) : null]
         );
     }
 

@@ -14,6 +14,7 @@ import { BrowserService } from '../browser.service';
 import { LocalClipService } from '../services/local-clip.service';
 import { StoryImageStrategy } from './story-image.strategy';
 import { QueryOptimizer } from '../services/query-optimizer';
+import { resolveWithinGeneratedImages, sanitizeRelativePath } from '../../common/path-safety.util';
 
 @Injectable()
 export class SourcedImageStrategy extends BaseImageStrategy {
@@ -1122,7 +1123,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         taskId?: string,
     ): Promise<void> {
         try {
-            const assetsDir = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir, 'assets');
+            const safeRelativeOutputDir = sanitizeRelativePath(relativeOutputDir, 'output dir');
+            const assetsDir = resolveWithinGeneratedImages(path.join(safeRelativeOutputDir, 'assets'));
             await fs.promises.mkdir(assetsDir, { recursive: true });
 
             const queryConfig = data.queryConfig || {};
@@ -1135,8 +1137,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                 ...data.candidates.map((c, i) => `  ${i + 1}. provider="${c.provider || 'unknown'}" query="${c.query}" url="${c.image_url}"`),
             ];
             const txt = lines.join('\n');
-            await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'sourced-search-log.txt'), Buffer.from(txt, 'utf8'));
-            await this.localStorage.save(path.join(relativeOutputDir, 'assets', 'sourced-search-log.json'), Buffer.from(JSON.stringify(data, null, 2), 'utf8'));
+            await this.localStorage.save(path.join(safeRelativeOutputDir, 'assets', 'sourced-search-log.txt'), Buffer.from(txt, 'utf8'));
+            await this.localStorage.save(path.join(safeRelativeOutputDir, 'assets', 'sourced-search-log.json'), Buffer.from(JSON.stringify(data, null, 2), 'utf8'));
 
             const top = data.candidates.slice(0, 10);
             await Promise.all(top.map(async (c, idx) => {
@@ -1147,7 +1149,7 @@ export class SourcedImageStrategy extends BaseImageStrategy {
                         `candidate download timeout ${idx + 1}`,
                     );
                     await this.localStorage.save(
-                        path.join(relativeOutputDir, 'assets', `sourced-candidate-${String(idx + 1).padStart(2, '0')}.jpg`),
+                        path.join(safeRelativeOutputDir, 'assets', `sourced-candidate-${String(idx + 1).padStart(2, '0')}.jpg`),
                         Buffer.from(res.data),
                     );
                 } catch (error) {

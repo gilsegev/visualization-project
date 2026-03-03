@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import OpenAI from 'openai';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { resolveWithinGeneratedImages, sanitizeRelativePath } from '../../common/path-safety.util';
 
 const execFileAsync = promisify(execFile);
 
@@ -50,8 +51,8 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         const courseId = taskAny.metadata?.course_id || 'uncategorized_course';
         const lessonId = taskAny.metadata?.lesson_id || 'uncategorized_lesson';
         const taskId = task.id || `task-${Date.now()}`;
-        const relativeOutputDir = path.join(dateStr, courseId, lessonId, taskId);
-        const absoluteOutputDir = path.join(process.cwd(), 'public', 'generated-images', relativeOutputDir);
+        const relativeOutputDir = sanitizeRelativePath(path.join(dateStr, String(courseId), String(lessonId), String(taskId)), 'output dir');
+        const absoluteOutputDir = resolveWithinGeneratedImages(relativeOutputDir);
         await fs.promises.mkdir(absoluteOutputDir, { recursive: true });
 
         const theme = this.resolveTheme(taskAny);
