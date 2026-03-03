@@ -2,7 +2,7 @@ FROM node:22-bookworm
 
 WORKDIR /app
 
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -36,7 +36,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY package*.json ./
 
 # Install all deps (including dev for build), but skip lifecycle scripts to control Playwright install explicitly.
-RUN npm ci --ignore-scripts
+# Railway/build environments may set production npm config globally, so force include dev deps here.
+RUN npm ci --ignore-scripts --include=dev
 
 # Install Chromium in the image.
 RUN npx playwright install chromium
@@ -47,6 +48,8 @@ RUN npm run build
 
 # Drop dev dependencies for runtime image size and security.
 RUN npm prune --omit=dev
+
+ENV NODE_ENV=production
 
 EXPOSE 8080
 
