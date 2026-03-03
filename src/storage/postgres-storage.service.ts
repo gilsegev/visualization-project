@@ -42,6 +42,8 @@ export type QueueHealthStats = {
     failed: number;
 };
 
+export type DailyUsageAssetType = 'SOURCED_IMAGE' | 'GENERATED_IMAGE' | 'CHART' | 'INFOGRAPHIC';
+
 export type TaskDeltaRow = {
     task_id: string;
     batch_id: string | null;
@@ -517,6 +519,54 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    async reserveDailyAssetQuota(userId: number, assetType: DailyUsageAssetType, limit: number): Promise<{
+        allowed: boolean;
+        currentCount: number;
+        usageDateUtc: string;
+    }> {
+        if (!this.pool || !Number.isFinite(userId) || userId <= 0) {
+            return { allowed: true, currentCount: 0, usageDateUtc: new Date().toISOString().slice(0, 10) };
+        }
+        const effectiveLimit = Math.max(0, Number(limit || 0));
+        const usageDateRows = await this.queryRows<{ usage_date: string }>(
+            `SELECT (NOW() AT TIME ZONE 'UTC')::date::text AS usage_date`
+        );
+        const usageDateUtc = usageDateRows[0]?.usage_date || new Date().toISOString().slice(0, 10);
+        if (effectiveLimit <= 0) return { allowed: true, currentCount: 0, usageDateUtc };
+
+        const upserted = await this.queryRows<{ current_count: number; usage_date: string }>(
+            `INSERT INTO daily_usage (user_id, asset_type, usage_date, current_count, updated_at)
+             VALUES ($1, $2, (NOW() AT TIME ZONE 'UTC')::date, 1, NOW())
+             ON CONFLICT (user_id, asset_type, usage_date) DO UPDATE
+             SET current_count = daily_usage.current_count + 1,
+                 updated_at = NOW()
+             WHERE daily_usage.current_count < $3
+             RETURNING current_count, usage_date::text`,
+            [Number(userId), assetType, effectiveLimit]
+        );
+        if (upserted.length) {
+            return {
+                allowed: true,
+                currentCount: Number(upserted[0].current_count || 0),
+                usageDateUtc: upserted[0].usage_date || usageDateUtc,
+            };
+        }
+        const current = await this.queryRows<{ current_count: number }>(
+            `SELECT current_count
+             FROM daily_usage
+             WHERE user_id = $1
+               AND asset_type = $2
+               AND usage_date = (NOW() AT TIME ZONE 'UTC')::date
+             LIMIT 1`,
+            [Number(userId), assetType]
+        );
+        return {
+            allowed: false,
+            currentCount: Number(current[0]?.current_count || effectiveLimit),
+            usageDateUtc,
+        };
+    }
+
     async failDurableTaskImmediately(taskId: string, errorMessage: string): Promise<void> {
         if (!this.pool || !taskId) return;
         await this.query(
@@ -971,6 +1021,19 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 task_id TEXT,
                 batch_id TEXT
             );
+            CREATE TABLE IF NOT EXISTS daily_usage (
+                id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                asset_type TEXT NOT NULL,
+                usage_date DATE NOT NULL,
+                current_count INTEGER NOT NULL DEFAULT 0,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT chk_daily_usage_asset_type
+                    CHECK (asset_type IN ('SOURCED_IMAGE', 'GENERATED_IMAGE', 'CHART', 'INFOGRAPHIC')),
+                CONSTRAINT uq_daily_usage_user_asset_date
+                    UNIQUE (user_id, asset_type, usage_date)
+            );
             CREATE INDEX IF NOT EXISTS idx_task_runs_batch_id ON task_runs(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_batch_id ON tasks(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_queue_pull ON tasks(queue_status, available_at, updated_at);
@@ -979,6 +1042,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             CREATE UNIQUE INDEX IF NOT EXISTS ux_worker_heartbeats_current_task_id
                 ON worker_heartbeats(current_task_id) WHERE current_task_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_system_logs_batch_task ON system_logs(batch_id, task_id);
+            CREATE INDEX IF NOT EXISTS idx_daily_usage_user_date ON daily_usage(user_id, usage_date);
         `);
         await this.query(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_quota NUMERIC(12,6) DEFAULT 25;

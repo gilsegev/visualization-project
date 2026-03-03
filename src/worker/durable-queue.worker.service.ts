@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { performance } from 'perf_hooks';
 import { hostname } from 'os';
 import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
-import { PostgresStorageService, QueueTaskRow } from '../storage/postgres-storage.service';
+import { DailyUsageAssetType, PostgresStorageService, QueueTaskRow } from '../storage/postgres-storage.service';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 
 @Injectable()
@@ -27,6 +27,10 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     private readonly costSourcedUsd = Math.max(0, Number(process.env.TASK_COST_SOURCED_IMAGE_USD || 0.03));
     private readonly costDataVizUsd = Math.max(0, Number(process.env.TASK_COST_DATA_VIZ_USD || 0.01));
     private readonly costInfographicUsd = Math.max(0, Number(process.env.TASK_COST_INFOGRAPHIC_USD || 0.01));
+    private readonly quotaSourcedImage = Math.max(0, Number(process.env.QUOTA_SOURCED_IMAGE || 100));
+    private readonly quotaGeneratedImage = Math.max(0, Number(process.env.QUOTA_GENERATED_IMAGE || 20));
+    private readonly quotaChart = Math.max(0, Number(process.env.QUOTA_CHART || 50));
+    private readonly quotaInfographic = Math.max(0, Number(process.env.QUOTA_INFOGRAPHIC || 10));
 
     private running = false;
     private janitorTimer: NodeJS.Timeout | null = null;
@@ -90,6 +94,8 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         if (!taskId) return;
         const userId = this.resolveUserId(task, row);
         const estimatedCostUsd = this.estimateTaskCostUsd(task);
+        const assetType = this.resolveDailyAssetType(task);
+        const assetQuotaLimit = this.resolveDailyAssetQuotaLimit(assetType);
         this.currentTaskId = taskId;
         await this.storage.setWorkerCurrentTask(this.workerId, taskId);
 
@@ -103,7 +109,36 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         this.observability.emitLog('info', `Worker claimed task (attempt ${row.attempts}/${row.max_attempts})`, 'Worker', taskId, batchId);
 
         try {
+            await this.storage.recordTaskCost(taskId, {
+                estimated_usd: estimatedCostUsd,
+                actual_usd: 0,
+                provider: task?.type || 'worker',
+                model: String(task?.metadata?.template_type || task?.type || 'unknown'),
+            });
             if (userId) {
+                const quotaResult = await this.storage.reserveDailyAssetQuota(userId, assetType, assetQuotaLimit);
+                if (!quotaResult.allowed) {
+                    const quotaMsg = `429 Too Many Requests: daily quota exceeded for ${assetType} user=${userId} count=${quotaResult.currentCount} limit=${assetQuotaLimit} date=${quotaResult.usageDateUtc}`;
+                    await this.storage.failDurableTaskImmediately(taskId, quotaMsg);
+                    this.observability.emitProgress({
+                        taskId,
+                        batchId,
+                        status: 'failed',
+                        stage: 'Rate Limit Exceeded',
+                        details: {
+                            error: quotaMsg,
+                            user_id: userId,
+                            http_status: 429,
+                            asset_type: assetType,
+                            quota_limit: assetQuotaLimit,
+                            quota_count: quotaResult.currentCount,
+                            usage_date_utc: quotaResult.usageDateUtc,
+                            estimated_cost_usd: estimatedCostUsd.toFixed(6),
+                        }
+                    } as any);
+                    this.observability.emitLog('warn', quotaMsg, 'Worker', taskId, batchId);
+                    return;
+                }
                 const budget = await this.storage.getUserDailyBudget(userId);
                 const projected = budget.estimatedUsd + budget.actualUsd + estimatedCostUsd;
                 if (Number.isFinite(budget.dailyQuotaUsd) && projected > Number(budget.dailyQuotaUsd)) {
@@ -275,5 +310,20 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         const fromEstimated = Number(result?.payload?.metrics?.estimated_cost_usd);
         if (Number.isFinite(fromEstimated) && fromEstimated >= 0) return fromEstimated;
         return fallback;
+    }
+
+    private resolveDailyAssetType(task: any): DailyUsageAssetType {
+        const t = String(task?.type || task?.metadata?.task_type || '').toLowerCase();
+        if (t === 'sourced_image') return 'SOURCED_IMAGE';
+        if (t === 'story_image') return 'GENERATED_IMAGE';
+        if (t === 'data_viz') return 'CHART';
+        return 'INFOGRAPHIC';
+    }
+
+    private resolveDailyAssetQuotaLimit(assetType: DailyUsageAssetType): number {
+        if (assetType === 'SOURCED_IMAGE') return this.quotaSourcedImage;
+        if (assetType === 'GENERATED_IMAGE') return this.quotaGeneratedImage;
+        if (assetType === 'CHART') return this.quotaChart;
+        return this.quotaInfographic;
     }
 }

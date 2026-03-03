@@ -1,56 +1,50 @@
-# Phase Implementation: Rate Limiting and Cost Controls (Section 6)
+# 6) Rate Limiting and Cost Controls (High)
 
-## Scope Implemented
-Implemented only **Section 6: Rate Limiting and Cost Controls (High)** from `docs/production_readiness_plan.md`.
+## Issue
+- Unbounded per-user requests across asset classes can spike spend and exhaust upstream providers.
 
-## What Was Added
-1. API throttling (per API key):
-- `src/main.ts`
-  - Added global in-memory fixed-window middleware keyed by `x-api-key`/Bearer token.
-  - Config: `API_RATE_LIMIT_PER_MINUTE` (default: `120`).
-  - Exceeding requests return `429 Too Many Requests`.
+## High-Level Plan
+- Enforce per-user, per-asset daily quotas in PostgreSQL using atomic count-up semantics (UTC day boundary).
+- Keep cost telemetry in `tasks.metadata.cost` and stamp estimated cost at task start.
 
-2. Worker-side budget gate before generation:
-- `src/worker/durable-queue.worker.service.ts`
-  - Before strategy execution, worker now fetches user daily budget usage.
-  - If projected spend exceeds user `daily_quota`, task is failed immediately (no retry loop).
-  - Emits observability progress/log with `Quota Exceeded` stage.
+## Design Specification (Implemented)
+- Added `daily_usage` table (PostgreSQL):
+  - `user_id`, `asset_type`, `usage_date`, `current_count`, timestamps.
+  - Unique key on `(user_id, asset_type, usage_date)`.
+  - Asset types constrained to:
+    - `SOURCED_IMAGE`
+    - `GENERATED_IMAGE`
+    - `CHART`
+    - `INFOGRAPHIC`
+- Added atomic quota reservation:
+  - `reserveDailyAssetQuota(userId, assetType, limit)` in `PostgresStorageService`.
+  - Uses single-statement upsert with `WHERE current_count < limit` to avoid race overrun.
+  - UTC reset is implicit via `(NOW() AT TIME ZONE 'UTC')::date`.
+- Worker-side count-up guard:
+  - In `DurableQueueWorkerService`, each claimed task maps to one asset quota bucket.
+  - If quota is exceeded, task is failed immediately with a 429-style message and no retry.
+- Cost telemetry:
+  - Estimated cost is written to `tasks.metadata.cost` when task processing begins.
+  - Final actual cost continues to be updated on completion/failure paths.
 
-3. Cost telemetry persistence in PostgreSQL task metadata:
-- `src/storage/postgres-storage.service.ts`
-  - Added `recordTaskCost(...)` to persist `metadata.cost` (`estimated_usd`, `actual_usd`, provider/model metadata).
-  - Worker now records cost on success and failure paths.
-
-4. User daily quota storage + usage query:
-- `src/storage/postgres-storage.service.ts`
-  - Added `users.daily_quota` schema field (default `25`).
-  - Added migration-safe `ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_quota`.
-  - Added `getUserDailyBudget(...)` for worker budget checks.
-  - Added `failDurableTaskImmediately(...)` for non-retriable quota failures.
-
-5. Config surface updates:
-- `.env.example`
-  - Added section 6 environment knobs:
-    - `API_RATE_LIMIT_PER_MINUTE`
-    - `TASK_COST_STORY_IMAGE_USD`
-    - `TASK_COST_SOURCED_IMAGE_USD`
-    - `TASK_COST_DATA_VIZ_USD`
-    - `TASK_COST_INFOGRAPHIC_USD`
+## Environment Knobs
+- `QUOTA_SOURCED_IMAGE`
+- `QUOTA_GENERATED_IMAGE`
+- `QUOTA_CHART`
+- `QUOTA_INFOGRAPHIC`
 
 ## Validation Performed
-1. Build validation:
-- `npm run build`
+- Build validation: `npm run build` succeeds.
+- Runtime/DB validation:
+  - `daily_usage` table exists with unique user/asset/day key.
+  - Quota rows increment during task intake.
+  - Existing workflows continue, with no schema regressions.
 
-2. Functional behavior checks (manual test plan):
-- Rate limit test:
-  - Send repeated authenticated requests above `API_RATE_LIMIT_PER_MINUTE` within one minute.
-  - Expected: `429` response from rate-limit middleware.
-- Quota exceed test:
-  - Set a low `users.daily_quota` for a test user and trigger durable-queue tasks.
-  - Expected: worker marks task `failed` with `Quota Exceeded`, no extra retry cycle.
-- Cost telemetry test:
-  - Run a task and verify `tasks.metadata.cost` contains estimated/actual values.
-
-## Notes
-- This phase intentionally does not implement other production-readiness sections.
-- Rate limiting is process-local in-memory (works immediately; not yet distributed across multiple API instances).
+## Validation Procedure (Operator)
+1. Set one quota low, e.g. `QUOTA_GENERATED_IMAGE=1`.
+2. Submit 2 generated-image tasks for same user in same UTC day.
+3. Confirm:
+   - first task proceeds,
+   - second task fails with stage `Rate Limit Exceeded`,
+   - task details include `http_status: 429`, `asset_type`, `quota_limit`, `quota_count`, `usage_date_utc`.
+4. Submit a `sourced_image` task and verify it still succeeds (asset isolation).
