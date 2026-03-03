@@ -118,6 +118,26 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
             });
             if (userId) {
                 const quotaResult = await this.storage.reserveDailyAssetQuota(userId, assetType, assetQuotaLimit);
+                const quotaDecisionMetadata = {
+                    event_kind: 'quota_decision',
+                    user_id: userId,
+                    asset_type: assetType,
+                    allowed: quotaResult.allowed,
+                    current_count: quotaResult.currentCount,
+                    quota_limit: assetQuotaLimit,
+                    usage_date_utc: quotaResult.usageDateUtc,
+                    estimated_cost_usd: Number(estimatedCostUsd.toFixed(6)),
+                    worker_id: this.workerId,
+                    task_attempt: row.attempts,
+                };
+                this.observability.emitLog(
+                    'info',
+                    `Quota decision ${quotaResult.allowed ? 'ALLOW' : 'DENY'} asset=${assetType} count=${quotaResult.currentCount}/${assetQuotaLimit} user=${userId}`,
+                    'WorkerQuota',
+                    taskId,
+                    batchId,
+                    { metadata: quotaDecisionMetadata },
+                );
                 if (!quotaResult.allowed) {
                     const quotaMsg = `429 Too Many Requests: daily quota exceeded for ${assetType} user=${userId} count=${quotaResult.currentCount} limit=${assetQuotaLimit} date=${quotaResult.usageDateUtc}`;
                     await this.storage.failDurableTaskImmediately(taskId, quotaMsg);
@@ -137,7 +157,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                             estimated_cost_usd: estimatedCostUsd.toFixed(6),
                         }
                     } as any);
-                    this.observability.emitLog('warn', quotaMsg, 'Worker', taskId, batchId);
+                    this.observability.emitLog('warn', quotaMsg, 'Worker', taskId, batchId, { metadata: quotaDecisionMetadata });
                     return;
                 }
                 const budget = await this.storage.getUserDailyBudget(userId);

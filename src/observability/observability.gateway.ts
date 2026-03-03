@@ -11,6 +11,12 @@ import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
 
+type ObservabilitySource = {
+    role: 'app' | 'worker' | 'unknown';
+    pid: number;
+    workerId?: string;
+};
+
 @WebSocketGateway({
     transports: ['websocket'],
 })
@@ -30,6 +36,8 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
     private liveStatsTimer: NodeJS.Timeout | null = null;
     private lastTaskDeltaAt: string | null = null;
     private lastSystemLogId: number | null = null;
+    private eventCounter = 0;
+    private readonly source: ObservabilitySource = this.resolveSource();
 
     constructor(private readonly storage: PostgresStorageService) { }
 
@@ -107,16 +115,35 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             batch_id?: string;
             queued_at?: string;
         };
+        eventId?: string;
+        source?: ObservabilitySource;
     }) {
-        if (this.server) this.server.emit('task_progress', data);
-        void this.storage.upsertTaskProgress(data);
+        const eventId = String(data.eventId || this.nextEventId()).trim();
+        const source = data.source || this.source;
+        const payload = {
+            ...data,
+            eventId,
+            source,
+            metadata: {
+                ...(data.metadata || {}),
+                event_id: eventId,
+                source,
+            },
+            details: {
+                ...(data.details || {}),
+                event_id: eventId,
+                source,
+            },
+        };
+        if (this.server) this.server.emit('task_progress', payload);
+        void this.storage.upsertTaskProgress(payload);
         void this.emitLiveStatsSnapshot();
 
-        if (data.status === 'failed') {
+        if (payload.status === 'failed') {
             const fs = require('fs');
             const path = require('path');
             const logFile = path.join(process.cwd(), 'debug_errors.log');
-            const entry = `[${new Date().toISOString()}] [FAILED] [Task: ${data.taskId}] ${JSON.stringify(data.details || {})}\n`;
+            const entry = `[${new Date().toISOString()}] [FAILED] [${source.role}#${source.pid}] [event=${eventId}] [Task: ${payload.taskId}] ${JSON.stringify(payload.details || {})}\n`;
             fs.appendFile(logFile, entry, (err) => {
                 if (err) console.error('Failed to write to debug log:', err);
             });
@@ -126,8 +153,18 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
     /**
      * Emit a generic log message to the dashboard
      */
-    emitLog(level: 'info' | 'warn' | 'error' | 'success', message: string, context?: string, taskId?: string, batchId?: string) {
+    emitLog(
+        level: 'info' | 'warn' | 'error' | 'success',
+        message: string,
+        context?: string,
+        taskId?: string,
+        batchId?: string,
+        options?: { eventId?: string; source?: ObservabilitySource; metadata?: Record<string, any> },
+    ) {
         const timestamp = new Date().toISOString();
+        const eventId = String(options?.eventId || this.nextEventId()).trim();
+        const source = options?.source || this.source;
+        const metadata = options?.metadata || null;
         if (this.server) {
             this.server.emit('system_log', {
                 level,
@@ -135,16 +172,19 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                 context,
                 taskId,
                 batchId,
-                timestamp
+                timestamp,
+                eventId,
+                source,
+                metadata,
             });
         }
-        void this.storage.insertSystemLog({ level, message, context, taskId, batchId, timestamp });
+        void this.storage.insertSystemLog({ level, message, context, taskId, batchId, timestamp, eventId, source, metadata });
 
         if (level === 'error' || level === 'warn') {
             const fs = require('fs');
             const path = require('path');
             const logFile = path.join(process.cwd(), 'debug_errors.log');
-            const entry = `[${new Date().toISOString()}] [${level.toUpperCase()}] [${context || 'SYSTEM'}] ${batchId ? `[${batchId}] ` : ''}${taskId ? `[${taskId}] ` : ''}${message}\n`;
+            const entry = `[${new Date().toISOString()}] [${level.toUpperCase()}] [${context || 'SYSTEM'}] [${source.role}#${source.pid}] [event=${eventId}] ${batchId ? `[${batchId}] ` : ''}${taskId ? `[${taskId}] ` : ''}${message}\n`;
             fs.appendFile(logFile, entry, (err) => {
                 if (err) console.error('Failed to write to debug log:', err);
             });
@@ -248,6 +288,21 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             if (!Number.isFinite(id) || id <= 0) continue;
             if (!this.lastSystemLogId || id > this.lastSystemLogId) this.lastSystemLogId = id;
         }
+    }
+
+    private nextEventId(): string {
+        this.eventCounter = (this.eventCounter + 1) % 1000000;
+        return `evt-${Date.now().toString(36)}-${process.pid}-${this.eventCounter.toString(36)}`;
+    }
+
+    private resolveSource(): ObservabilitySource {
+        const roleRaw = String(process.env.PROCESS_ROLE || '').trim().toLowerCase();
+        const role: ObservabilitySource['role'] =
+            roleRaw === 'app' || roleRaw === 'worker'
+                ? roleRaw
+                : (process.env.WORKER_ID ? 'worker' : 'app');
+        const workerId = String(process.env.WORKER_ID || '').trim() || undefined;
+        return { role, pid: process.pid, workerId };
     }
 
     @SubscribeMessage('open_folder')

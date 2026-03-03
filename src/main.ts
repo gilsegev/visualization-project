@@ -4,6 +4,7 @@ import * as dotenv from 'dotenv';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
 import { isAllowedOrigin, parseAllowedOrigins } from './security/origin-allowlist';
+import { ObservabilityGateway } from './observability/observability.gateway';
 
 dotenv.config();
 
@@ -31,6 +32,33 @@ async function bootstrap() {
         console.log(`${req.method} ${req.originalUrl}`);
         next();
     });
+
+    try {
+        const observability = app.get(ObservabilityGateway);
+        observability.emitLog(
+            'info',
+            'Startup config snapshot',
+            'Startup',
+            undefined,
+            undefined,
+            {
+                metadata: {
+                    event_kind: 'startup_snapshot',
+                    process_role: 'app',
+                    pid: process.pid,
+                    node_env: process.env.NODE_ENV || 'development',
+                    max_request_body_mb: maxBodyMb,
+                    port: String(process.env.PORT || 3000),
+                    durable_queue_enabled: String(process.env.DURABLE_QUEUE_ENABLED || 'true').toLowerCase() === 'true',
+                    worker_count: Math.max(0, Number(process.env.WORKER_COUNT || 1)),
+                    obs_live_stats_poll_ms: Math.max(500, Number(process.env.OBS_LIVE_STATS_POLL_MS || 1500)),
+                    obs_live_stats_min_emit_ms: Math.max(500, Number(process.env.OBS_LIVE_STATS_MIN_EMIT_MS || 1000)),
+                },
+            },
+        );
+    } catch {
+        // Best effort diagnostics only.
+    }
 
     const port = process.env.PORT || 3000;
     await app.listen(port);

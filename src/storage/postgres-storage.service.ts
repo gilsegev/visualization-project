@@ -64,6 +64,11 @@ export type SystemLogRow = {
     context: string | null;
     task_id: string | null;
     batch_id: string | null;
+    event_id: string | null;
+    source_role: string | null;
+    source_pid: number | null;
+    source_worker_id: string | null;
+    metadata: any;
 };
 
 @Injectable()
@@ -755,7 +760,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         const cap = Math.max(1, Math.min(1000, Number(limit || 300)));
         if (Number.isFinite(afterId as number) && Number(afterId) > 0) {
             return this.queryRows<SystemLogRow>(
-                `SELECT id, created_at::text, level, message, context, task_id, batch_id
+                `SELECT id, created_at::text, level, message, context, task_id, batch_id, event_id, source_role, source_pid, source_worker_id, metadata
                  FROM system_logs
                  WHERE id > $1
                  ORDER BY id ASC
@@ -764,7 +769,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             );
         }
         return this.queryRows<SystemLogRow>(
-            `SELECT id, created_at::text, level, message, context, task_id, batch_id
+            `SELECT id, created_at::text, level, message, context, task_id, batch_id, event_id, source_role, source_pid, source_worker_id, metadata
              FROM system_logs
              ORDER BY id DESC
              LIMIT $1`,
@@ -884,11 +889,15 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         taskId?: string;
         batchId?: string;
         timestamp?: string;
+        eventId?: string;
+        source?: { role?: string; pid?: number; workerId?: string };
+        metadata?: any;
     }): Promise<void> {
         if (!this.pool) return;
         await this.query(
-            `INSERT INTO system_logs (created_at, level, message, context, task_id, batch_id)
-             VALUES ($1::timestamptz, $2, $3, $4, $5, $6)`,
+            `INSERT INTO system_logs (
+                created_at, level, message, context, task_id, batch_id, event_id, source_role, source_pid, source_worker_id, metadata
+            ) VALUES ($1::timestamptz, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)`,
             [
                 entry.timestamp || new Date().toISOString(),
                 entry.level || 'info',
@@ -896,6 +905,11 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 entry.context || null,
                 entry.taskId || null,
                 entry.batchId || null,
+                entry.eventId || null,
+                entry.source?.role || null,
+                Number.isFinite(Number(entry.source?.pid)) ? Number(entry.source?.pid) : null,
+                entry.source?.workerId || null,
+                entry.metadata ? JSON.stringify(entry.metadata) : null,
             ]
         );
     }
@@ -1023,7 +1037,12 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 message TEXT,
                 context TEXT,
                 task_id TEXT,
-                batch_id TEXT
+                batch_id TEXT,
+                event_id TEXT,
+                source_role TEXT,
+                source_pid INTEGER,
+                source_worker_id TEXT,
+                metadata JSONB
             );
             CREATE TABLE IF NOT EXISTS daily_usage (
                 id BIGSERIAL PRIMARY KEY,
@@ -1064,7 +1083,13 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ALTER TABLE tasks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
             ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS signature TEXT;
             ALTER TABLE worker_heartbeats ADD COLUMN IF NOT EXISTS metadata JSONB;
+            ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS event_id TEXT;
+            ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS source_role TEXT;
+            ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS source_pid INTEGER;
+            ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS source_worker_id TEXT;
+            ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
         `);
+        await this.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_event_id ON system_logs(event_id);`);
     }
 
     private toUsd(value: any): number {

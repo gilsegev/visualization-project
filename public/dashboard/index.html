@@ -198,7 +198,7 @@
                 <div class="flex-1 flex flex-col min-h-0 bg-black">
                     <!-- Tabs -->
                     <div class="flex border-b border-slate-700 bg-surface">
-                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'QUERY LAB']" :key="mode"
+                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'BATCH DIAG', 'QUERY LAB']" :key="mode"
                             @click="logMode = mode"
                             class="flex-1 px-2 py-2 text-[10px] font-mono font-bold transition-colors border-b-2"
                             :class="logMode === mode ? 'border-neon text-neon bg-neon/5' : 'border-transparent text-slate-500 hover:text-slate-300'">
@@ -367,6 +367,14 @@
                             <span v-if="log.taskId && logMode === 'VERBOSE'"
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.taskId.split('-').pop() }}
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.eventId"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
+                                {{ log.eventId }}
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.source && (log.source.role || log.source.pid)"
+                                class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
+                                {{ log.source.role }}#{{ log.source.pid }}
                             </span>
 
                             <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
@@ -777,6 +785,7 @@
                 const currentBatchId = ref(null);
                 const logContainer = ref(null);
                 const seenLogIds = new Set();
+                const seenEventIds = new Set();
 
                 const filteredLogs = computed(() => {
                     if (logMode.value === 'VERBOSE') {
@@ -790,6 +799,10 @@
                     if (logMode.value === 'BY ASSET') {
                         if (!selectedAssetFilter.value) return [];
                         return logs.value.filter(log => log.taskId === selectedAssetFilter.value);
+                    }
+                    if (logMode.value === 'BATCH DIAG') {
+                        if (!currentBatchId.value) return [];
+                        return logs.value.filter((log) => isCurrentBatchLog(log));
                     }
 
                     // HIGH LEVEL Logic
@@ -944,7 +957,7 @@
                     return `${n.toFixed(2)}s`;
                 };
 
-                const addLog = (level, message, context, taskId = null, batchId = null) => {
+                const addLog = (level, message, context, taskId = null, batchId = null, extra = {}) => {
                     // Check if already at bottom before adding new log
                     let autoScroll = true;
                     if (logContainer.value) {
@@ -954,7 +967,20 @@
                         autoScroll = scrollPos < 10;
                     }
 
-                    logs.value.push({ timestamp: Date.now(), level, message, context, taskId, batchId });
+                    const eventId = extra?.eventId ? String(extra.eventId) : null;
+                    if (eventId && seenEventIds.has(eventId)) return;
+                    if (eventId) seenEventIds.add(eventId);
+                    logs.value.push({
+                        timestamp: Date.now(),
+                        level,
+                        message,
+                        context,
+                        taskId,
+                        batchId,
+                        eventId,
+                        source: extra?.source || null,
+                        metadata: extra?.metadata || null,
+                    });
                     if (logs.value.length > 500) logs.value.shift();
 
                     nextTick(() => {
@@ -990,6 +1016,9 @@
                     const id = Number(row?.id || 0);
                     if (id && seenLogIds.has(id)) return;
                     if (id) seenLogIds.add(id);
+                    const eventId = String(row?.event_id || '').trim();
+                    if (eventId && seenEventIds.has(eventId)) return;
+                    if (eventId) seenEventIds.add(eventId);
                     const mapped = {
                         level: row?.level || 'info',
                         message: row?.message || '',
@@ -997,6 +1026,13 @@
                         taskId: row?.task_id || null,
                         batchId: row?.batch_id || null,
                         timestamp: row?.created_at || new Date().toISOString(),
+                        eventId: eventId || null,
+                        source: {
+                            role: row?.source_role || null,
+                            pid: row?.source_pid || null,
+                            workerId: row?.source_worker_id || null,
+                        },
+                        metadata: row?.metadata || null,
                     };
                     if (!isActiveBatchEvent(mapped)) return;
                     logs.value.push({
@@ -1006,6 +1042,9 @@
                         context: mapped.context,
                         taskId: mapped.taskId,
                         batchId: mapped.batchId,
+                        eventId: mapped.eventId,
+                        source: mapped.source,
+                        metadata: mapped.metadata,
                     });
                     if (logs.value.length > 500) logs.value.shift();
                 };
@@ -1054,8 +1093,26 @@
                 const selectedTask = ref(null);
 
                 const isActiveBatchEvent = (payload) => {
-                    if (!payload || !payload.batchId || !currentBatchId.value) return true;
-                    return payload.batchId === currentBatchId.value;
+                    if (!payload || !currentBatchId.value) return true;
+                    if (payload.batchId) return payload.batchId === currentBatchId.value;
+                    if (payload.taskId) {
+                        const task = tasks.value?.[payload.taskId];
+                        const taskBatchId = String(task?.batchId || task?.metadata?.batch_id || '').trim();
+                        if (taskBatchId) return taskBatchId === currentBatchId.value;
+                    }
+                    const context = String(payload.context || '').toLowerCase();
+                    return context === 'frontend' || context === 'system' || context === 'auth';
+                };
+
+                const isCurrentBatchLog = (log) => {
+                    if (!log || !currentBatchId.value) return false;
+                    if (log.batchId) return log.batchId === currentBatchId.value;
+                    if (log.taskId) {
+                        const task = tasks.value?.[log.taskId];
+                        const taskBatchId = String(task?.batchId || task?.metadata?.batch_id || '').trim();
+                        return taskBatchId === currentBatchId.value;
+                    }
+                    return false;
                 };
 
                 const deriveOutputDirFromUrl = (url) => {
@@ -1102,6 +1159,8 @@
                     tasks.value = {};
                     batch.value = { total: 0, completed: 0 };
                     currentBatchId.value = null;
+                    seenLogIds.clear();
+                    seenEventIds.clear();
                     selectedTask.value = null;
                     selectedAssetFilter.value = '';
                     logMode.value = 'HIGH LEVEL';
@@ -1363,7 +1422,14 @@
 
                     socket.on('system_log', (data) => {
                         if (!isActiveBatchEvent(data)) return;
-                        addLog(data.level, data.message, data.context, data.taskId, data.batchId || null);
+                        addLog(
+                            data.level,
+                            data.message,
+                            data.context,
+                            data.taskId,
+                            data.batchId || null,
+                            { eventId: data.eventId, source: data.source, metadata: data.metadata },
+                        );
                     });
 
                     socket.on('batch_progress', (data) => {
@@ -1404,6 +1470,7 @@
                                 tasks.value = {};
                                 logs.value = [];
                                 seenLogIds.clear();
+                                seenEventIds.clear();
                                 addLog('info', `Hydrating active batch ${inferredBatchId}`, 'System', null, inferredBatchId);
                             } else {
                                 return;
