@@ -4,7 +4,6 @@ import { hostname } from 'os';
 import { promisify } from 'util';
 import { ObservabilityGateway } from '../../observability/observability.gateway';
 import { PostgresStorageService } from '../../storage/postgres-storage.service';
-const treeKill = require('tree-kill');
 const execFileAsync = promisify(execFile);
 
 @Injectable()
@@ -113,7 +112,11 @@ export class WorkerHealthSupervisorService implements OnModuleInit, OnModuleDest
             }
             const out = await execFileAsync('ps', ['-p', String(pid), '-o', 'command='], { timeout: 2500 });
             return this.commandLooksLikeWorker(String(out?.stdout || ''));
-        } catch {
+        } catch (error: any) {
+            if (String(error?.code || '') === 'ENOENT') {
+                // Some minimal containers do not include `ps`; avoid false-positive GC in that case.
+                return true;
+            }
             return false;
         }
     }
@@ -128,7 +131,11 @@ export class WorkerHealthSupervisorService implements OnModuleInit, OnModuleDest
 
     private async cleanupWorker(workerId: string, pid: number | null, reason: string): Promise<void> {
         if (pid && this.isPidAlive(pid)) {
-            await new Promise<void>((resolve) => treeKill(pid, 'SIGKILL', () => resolve()));
+            try {
+                process.kill(pid, 'SIGKILL');
+            } catch {
+                // Ignore kill failures; DB cleanup below is still required.
+            }
         }
         const taskId = await this.storage.terminateWorkerAndRecoverTask(workerId, reason);
         this.observability.emitLog(
