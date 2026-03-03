@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Req, UseGuards, UsePipes, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import OpenAI from 'openai';
@@ -36,6 +36,7 @@ export class ImageGenController {
     }
 
     @Post('manifest')
+    @UsePipes(new ValidationPipe({ transform: true, whitelist: false, forbidNonWhitelisted: false }))
     async generateFromManifest(@Body() manifest: GenerateManifestDto, @Req() req: any) {
         enforceManifestLimits(manifest);
         const userId = Number(req?.authUser?.id);

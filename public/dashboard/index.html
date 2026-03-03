@@ -1274,7 +1274,12 @@
                             });
                             const data = await res.json();
                             if (res.ok && !data.error) addLog('success', 'Batch Job Started', 'API');
-                            else addLog('error', 'Batch Start Failed', data.error);
+                            else {
+                                const reason = data?.error
+                                    || (Array.isArray(data?.message) ? data.message.join('; ') : data?.message)
+                                    || `HTTP ${res.status}`;
+                                addLog('error', `Batch Start Failed: ${reason}`, 'API');
+                            }
 
                         } catch (err) {
                             addLog('error', 'Upload Failed', err.message);
