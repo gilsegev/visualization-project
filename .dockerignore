@@ -1,0 +1,24 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+node_modules
+dist
+
+# Generated/runtime artifacts
+public/generated-images
+*.log
+*.pid
+
+# Local debug/test artifacts
+debug_*.log
+debug_*.txt
+test_output_*.txt
+test_failure_log.txt
+start-all.log
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
