@@ -260,6 +260,18 @@
                                     <span class="text-slate-500">Selected Query:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
                                 </div>
+                                <div v-if="selectedAssetTask?.details?.chart_type" class="mt-0.5">
+                                    <span class="text-slate-500">Chart Type:</span>
+                                    <span class="ml-1 text-slate-200 uppercase">{{ selectedAssetTask.details.chart_type }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.chart_data_points !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">Data Points:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.chart_data_points }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.chart_labels_preview" class="mt-0.5">
+                                    <span class="text-slate-500">Labels:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.chart_labels_preview }}</span>
+                                </div>
                                 <div v-if="getValidationBrief(selectedAssetTask)" class="mt-1">
                                     <span class="text-slate-500 block">Validation Brief:</span>
                                     <div class="ml-2 text-slate-200 whitespace-pre-wrap break-words">{{ getValidationBrief(selectedAssetTask) }}</div>
@@ -339,9 +351,9 @@
 
 
                         <!-- Log Action Buttons -->
-                        <div class="absolute top-2 right-2 z-10 flex items-center gap-1">
+                        <div class="sticky top-1 z-20 ml-auto mb-2 w-fit flex items-center gap-1 bg-black/60 backdrop-blur px-1.5 py-1 rounded border border-slate-700">
                             <button @click="copyVisibleLogs"
-                                class="text-[9px] bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700">
+                                class="text-[9px] bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700 font-semibold">
                                 COPY LOG
                             </button>
                             <button @click="logs = []"
@@ -349,7 +361,7 @@
                                 CLEAR
                             </button>
                         </div>
-                        <div v-if="copyLogsState" class="absolute top-9 right-2 z-10 text-[9px] px-2 py-1 rounded border border-neon/40 bg-black/70 text-neon">
+                        <div v-if="copyLogsState" class="sticky top-10 z-20 ml-auto mb-2 w-fit text-[9px] px-2 py-1 rounded border border-neon/40 bg-black/70 text-neon">
                             {{ copyLogsState }}
                         </div>
 
