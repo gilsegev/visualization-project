@@ -925,9 +925,28 @@ ${text}`;
         const imagesStart = performance.now();
         this.logger.log('[StampingStrategy] Handling Versus Split Template...');
         const usedPrompts: string[] = [];
+        const sourcePayload: any = (task as any).payload || {};
 
         // Robust Mapping: handle different key variations from LLM
-        const subjects = blueprint.versus_subjects || blueprint.subjects || [{ name: 'Subject A' }, { name: 'Subject B' }];
+        let subjects = blueprint.versus_subjects || blueprint.subjects || [{ name: 'Subject A' }, { name: 'Subject B' }];
+
+        // Deterministic alignment for split-panel manifests.
+        // This avoids blueprint drift that can cause cross-side N/A rows and section misalignment.
+        const deterministic = this.buildDeterministicVersusFromPanels(sourcePayload);
+        if (deterministic) {
+            subjects = deterministic.subjects;
+            blueprint.comparison_items = deterministic.items;
+            if (!blueprint.center_topic) {
+                blueprint.center_topic = {
+                    title: sourcePayload?.title || 'Comparison',
+                    subtitle: sourcePayload?.bridgeElement || sourcePayload?.purpose || ''
+                };
+            }
+            if (!blueprint.verdict && sourcePayload?.bottomNote) {
+                blueprint.verdict = { title: 'Bottom Note', text: String(sourcePayload.bottomNote) };
+            }
+            this.observability.emitLog('info', 'Versus rows built deterministically from split_panel payload for alignment fidelity.', 'StampingStrategy', task.id);
+        }
 
         // Map comparison_items or items
         if (!blueprint.comparison_items) {
@@ -1040,6 +1059,84 @@ ${text}`;
                 image_prompts: usedPrompts
             }
         };
+    }
+
+    private buildDeterministicVersusFromPanels(payload: any): { subjects: any[]; items: any[] } | null {
+        const rawType = String(payload?.type || '').toLowerCase();
+        const panels = Array.isArray(payload?.panels) ? payload.panels : [];
+        if (!(rawType.includes('split_panel') || rawType.includes('comparison')) || panels.length < 2) {
+            return null;
+        }
+
+        const cleanText = (value: any): string => {
+            const text = String(value || '').replace(/\s+/g, ' ').trim();
+            // Known recurring corruption in sourced lesson text.
+            return text.replace(/scencomputer\s*t\/motion/gi, 'scent/motion');
+        };
+
+        const parsePanelCharacteristics = (characteristics: any[]): { pros: string[]; cons: string[]; other: string[] } => {
+            const out = { pros: [] as string[], cons: [] as string[], other: [] as string[] };
+            for (const raw of Array.isArray(characteristics) ? characteristics : []) {
+                const line = cleanText(raw);
+                if (!line) continue;
+                const proMatch = /^pros?\s*:\s*(.+)$/i.exec(line);
+                if (proMatch) {
+                    out.pros.push(cleanText(proMatch[1]));
+                    continue;
+                }
+                const conMatch = /^cons?\s*:\s*(.+)$/i.exec(line);
+                if (conMatch) {
+                    out.cons.push(cleanText(conMatch[1]));
+                    continue;
+                }
+                out.other.push(line);
+            }
+            return out;
+        };
+
+        const left = panels[0] || {};
+        const right = panels[1] || {};
+        const leftChars = parsePanelCharacteristics(left.characteristics);
+        const rightChars = parsePanelCharacteristics(right.characteristics);
+
+        const subjects = [
+            {
+                name: cleanText(left.label || left.side || 'Left'),
+                description: cleanText(left.summary || '')
+            },
+            {
+                name: cleanText(right.label || right.side || 'Right'),
+                description: cleanText(right.summary || '')
+            }
+        ];
+
+        const toRows = (metric: string, leftList: string[], rightList: string[]) => {
+            const rows: any[] = [];
+            const count = Math.max(leftList.length, rightList.length);
+            for (let i = 0; i < count; i += 1) {
+                const lv = cleanText(leftList[i] || '');
+                const rv = cleanText(rightList[i] || '');
+                if (!lv && !rv) continue;
+                rows.push({
+                    metric,
+                    values: [
+                        { value: lv || ' ', description: lv || '', score: 6 },
+                        { value: rv || ' ', description: rv || '', score: 6 }
+                    ]
+                });
+            }
+            return rows;
+        };
+
+        const items = [
+            ...toRows('Pros', leftChars.pros, rightChars.pros),
+            ...toRows('Cons', leftChars.cons, rightChars.cons),
+            ...toRows('Use Cases', (left.useCases || []).map(cleanText), (right.useCases || []).map(cleanText)),
+            ...toRows('Gear Callouts', (left.gearCallouts || []).map(cleanText), (right.gearCallouts || []).map(cleanText))
+        ];
+
+        if (items.length === 0) return null;
+        return { subjects, items };
     }
 
     private async handleSteps(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
