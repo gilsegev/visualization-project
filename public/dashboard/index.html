@@ -202,7 +202,7 @@
                             </div>
                             <div class="max-h-28 overflow-y-auto matrix-scroll">
                                 <div
-                                    v-for="row in (liveStats.database?.telemetry?.strategies_24h || [])"
+                                    v-for="row in strategyTelemetryRows"
                                     :key="`telemetry-${row.strategy}`"
                                     class="grid grid-cols-4 gap-1 px-2 py-1 text-[10px] font-mono border-b border-slate-800/60 last:border-b-0"
                                 >
@@ -211,7 +211,7 @@
                                     <div class="text-right text-slate-300">{{ Number(row.avg_latency_ms || 0).toFixed(0) }}</div>
                                     <div class="text-right text-danger">{{ row.total ? ((Number(row.failed || 0) * 100) / Number(row.total || 1)).toFixed(1) : '0.0' }}%</div>
                                 </div>
-                                <div v-if="!(liveStats.database?.telemetry?.strategies_24h || []).length" class="px-2 py-2 text-[10px] text-slate-500 font-mono">
+                                <div v-if="!strategyTelemetryRows.length" class="px-2 py-2 text-[10px] text-slate-500 font-mono">
                                     No strategy telemetry in last 24h.
                                 </div>
                             </div>
@@ -428,6 +428,18 @@
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.source.role }}#{{ log.source.pid }}
                             </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.user_id !== null && log.metadata.user_id !== undefined"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                user={{ log.metadata.user_id }}
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.latency_ms !== null && log.metadata.latency_ms !== undefined"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                latency={{ Number(log.metadata.latency_ms).toFixed(0) }}ms
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.provider_status"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                provider={{ log.metadata.provider_status }}
+                            </span>
 
                             <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
                                 class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
@@ -435,6 +447,9 @@
                             </span>
 
                             <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
+                            <div v-if="logMode === 'VERBOSE' && log.metadata" class="ml-2 mt-1 text-[10px] text-slate-500 font-mono">
+                                meta={{ JSON.stringify(log.metadata) }}
+                            </div>
                             <div v-if="extractUrls(log.message).length" class="ml-2 mt-1 space-y-0.5">
                                 <a v-for="(url, uIdx) in extractUrls(log.message)" :key="`log-url-${i}-${uIdx}`"
                                     :href="url" target="_blank" rel="noopener noreferrer"
@@ -892,6 +907,41 @@
                     return tasks.value?.[selectedAssetFilter.value] || null;
                 });
 
+                const strategyTelemetryRows = computed(() => {
+                    const dbRows = liveStats.value?.database?.telemetry?.strategies_24h;
+                    if (Array.isArray(dbRows) && dbRows.length) return dbRows;
+
+                    const byStrategy = new Map();
+                    for (const log of logs.value || []) {
+                        const md = log?.metadata || {};
+                        const strategyRaw = String(md.strategy || '').trim();
+                        if (!strategyRaw) continue;
+                        const status = String(md.provider_status || '').toLowerCase();
+                        if (status !== 'success' && status !== 'failed') continue;
+                        const key = strategyRaw.toUpperCase();
+                        if (!byStrategy.has(key)) {
+                            byStrategy.set(key, { strategy: key, total: 0, completed: 0, failed: 0, success_rate_pct: 0, avg_latency_ms: 0, _latencies: [] });
+                        }
+                        const row = byStrategy.get(key);
+                        row.total += 1;
+                        if (status === 'success') row.completed += 1;
+                        if (status === 'failed') row.failed += 1;
+                        const latency = Number(md.latency_ms);
+                        if (Number.isFinite(latency) && latency >= 0) row._latencies.push(latency);
+                    }
+
+                    return Array.from(byStrategy.values())
+                        .map((row) => {
+                            row.success_rate_pct = row.total ? (row.completed * 100) / row.total : 0;
+                            row.avg_latency_ms = row._latencies.length
+                                ? row._latencies.reduce((a, b) => a + b, 0) / row._latencies.length
+                                : 0;
+                            delete row._latencies;
+                            return row;
+                        })
+                        .sort((a, b) => b.total - a.total);
+                });
+
                 const batchStylingGuidance = computed(() => {
                     const all = Object.values(tasks.value || {});
                     for (const t of all) {
@@ -1048,7 +1098,16 @@
                     const ts = formatTime(log?.timestamp || Date.now());
                     const ctx = String(log?.context || 'SYSTEM').toUpperCase();
                     const message = String(log?.message || '');
-                    return `[${ts}]${ctx}: ${message}`;
+                    const suffix = [];
+                    if (log?.eventId) suffix.push(`event=${log.eventId}`);
+                    if (log?.taskId) suffix.push(`task=${log.taskId}`);
+                    const userId = log?.metadata?.user_id;
+                    const latencyMs = log?.metadata?.latency_ms;
+                    const providerStatus = log?.metadata?.provider_status;
+                    if (userId !== null && userId !== undefined) suffix.push(`user=${userId}`);
+                    if (latencyMs !== null && latencyMs !== undefined) suffix.push(`latency_ms=${Number(latencyMs).toFixed(0)}`);
+                    if (providerStatus) suffix.push(`provider_status=${providerStatus}`);
+                    return `[${ts}]${ctx}: ${message}${suffix.length ? ` | ${suffix.join(' ')}` : ''}`;
                 };
 
                 const copyVisibleLogs = async () => {
@@ -1610,6 +1669,7 @@
                     narrativeMetrics,
                     queueHealth,
                     liveStats,
+                    strategyTelemetryRows,
                     selectedAssetTask, batchStylingGuidance,
                     showAssetInspector,
                     logMode, selectedAssetFilter, filteredLogs,

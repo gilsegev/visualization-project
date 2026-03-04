@@ -710,35 +710,70 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             this.queryRows<StrategyTelemetryRow>(
                 `WITH strategy_runs AS (
                     SELECT
-                        UPPER(COALESCE(NULLIF(tr.metadata->>'strategy', ''), NULLIF(t.payload->>'type', ''), 'UNKNOWN')) AS strategy,
-                        tr.status,
-                        COALESCE(
-                            NULLIF(tr.metadata->'metrics'->>'total_ms', '')::double precision,
-                            EXTRACT(EPOCH FROM (tr.ended_at - tr.started_at)) * 1000
-                        ) AS latency_ms
-                    FROM task_runs tr
-                    LEFT JOIN tasks t ON t.task_id = tr.task_id
-                    WHERE tr.updated_at >= NOW() - INTERVAL '24 hours'
+                        UPPER(COALESCE(NULLIF(t.payload->>'type', ''), NULLIF(tr.metadata->>'strategy', ''), 'UNKNOWN')) AS strategy,
+                        COALESCE(NULLIF(t.queue_status, ''), NULLIF(tr.status, ''), 'unknown') AS status,
+                        CASE
+                            WHEN (tr.metadata->'metrics'->>'total_ms') ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN (tr.metadata->'metrics'->>'total_ms')::double precision
+                            WHEN tr.started_at IS NOT NULL AND tr.ended_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (tr.ended_at - tr.started_at)) * 1000
+                            ELSE NULL
+                        END AS latency_ms
+                    FROM tasks t
+                    LEFT JOIN task_runs tr ON tr.task_id = t.task_id
+                    WHERE t.updated_at >= NOW() - INTERVAL '24 hours'
                 )
                 SELECT
                     strategy,
                     COUNT(*)::int AS total,
-                    COUNT(*) FILTER (WHERE status = 'completed')::int AS completed,
-                    COUNT(*) FILTER (WHERE status = 'failed')::int AS failed,
-                    ROUND((COUNT(*) FILTER (WHERE status = 'completed')::numeric * 100.0) / NULLIF(COUNT(*), 0), 2)::float AS success_rate_pct,
-                    ROUND(COALESCE(AVG(latency_ms), 0), 2)::float AS avg_latency_ms
+                    COUNT(*) FILTER (WHERE status IN ('completed'))::int AS completed,
+                    COUNT(*) FILTER (WHERE status IN ('failed'))::int AS failed,
+                    ROUND((COUNT(*) FILTER (WHERE status IN ('completed'))::numeric * 100.0) / NULLIF(COUNT(*), 0), 2)::float AS success_rate_pct,
+                    ROUND(COALESCE(AVG(latency_ms)::numeric, 0), 2)::float AS avg_latency_ms
                 FROM strategy_runs
+                WHERE status IN ('completed', 'failed')
                 GROUP BY strategy
                 ORDER BY total DESC, strategy ASC
                 LIMIT 10`
             ),
         ]);
+        const telemetry = telemetryRows?.length
+            ? telemetryRows
+            : await this.queryRows<StrategyTelemetryRow>(
+                `WITH strategy_runs AS (
+                    SELECT
+                        UPPER(COALESCE(NULLIF(t.payload->>'type', ''), NULLIF(tr.metadata->>'strategy', ''), 'UNKNOWN')) AS strategy,
+                        COALESCE(NULLIF(t.queue_status, ''), NULLIF(tr.status, ''), 'unknown') AS status,
+                        CASE
+                            WHEN (tr.metadata->'metrics'->>'total_ms') ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN (tr.metadata->'metrics'->>'total_ms')::double precision
+                            WHEN tr.started_at IS NOT NULL AND tr.ended_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (tr.ended_at - tr.started_at)) * 1000
+                            ELSE NULL
+                        END AS latency_ms
+                    FROM tasks t
+                    LEFT JOIN task_runs tr ON tr.task_id = t.task_id
+                )
+                SELECT
+                    strategy,
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status IN ('completed'))::int AS completed,
+                    COUNT(*) FILTER (WHERE status IN ('failed'))::int AS failed,
+                    ROUND((COUNT(*) FILTER (WHERE status IN ('completed'))::numeric * 100.0) / NULLIF(COUNT(*), 0), 2)::float AS success_rate_pct,
+                    ROUND(COALESCE(AVG(latency_ms)::numeric, 0), 2)::float AS avg_latency_ms
+                FROM strategy_runs
+                WHERE status IN ('completed', 'failed')
+                GROUP BY strategy
+                ORDER BY total DESC, strategy ASC
+                LIMIT 10`
+            );
+
         return {
             tasks: taskRows[0] || { total: 0, today_completed: 0, today_failed: 0, avg_duration_seconds: 0 },
             batches: batchRows[0] || { total: 0, running: 0 },
             storage: dbRows[0] || { size_pretty: 'n/a', size_bytes: '0' },
             connections: connRows[0] || { total: 0, active: 0 },
-            telemetry: { strategies_24h: telemetryRows || [] },
+            telemetry: { strategies_24h: telemetry || [] },
         };
     }
 

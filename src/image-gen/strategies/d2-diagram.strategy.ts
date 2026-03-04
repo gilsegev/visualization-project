@@ -196,6 +196,7 @@ Constraints:
         const c4 = this.mixHex(fill, '#DEE1EB', 0.55);
         const c5 = this.mixHex(stroke, '#88DCF7', 0.35);
         const c6 = this.mixHex(stroke, '#E4DBFE', 0.45);
+        const nodeText = this.pickReadableTextColor(c6, text);
 
         const header = [
             'vars: {',
@@ -225,7 +226,7 @@ Constraints:
             '      stroke-dash: 4',
             '      border-radius: 14',
             '      font-size: 17',
-            `      font-color: "${text}"`,
+            `      font-color: "${nodeText}"`,
             '    }',
             '  }',
             '}',
