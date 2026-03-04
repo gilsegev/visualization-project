@@ -283,27 +283,27 @@ Constraints:
         const branchModel = this.extractBranchModel(payload);
         if (branchModel) {
             const lines: string[] = [];
-            lines.push(`top: "${this.escapeD2(branchModel.topTitle)}\\n${this.escapeD2(branchModel.topDesc)}" { shape: rectangle class: primary }`);
-            lines.push(`split: "${this.escapeD2(branchModel.splitTitle)}" { shape: rectangle class: primary }`);
+            lines.push(this.buildPrimaryNode('top', `${this.escapeD2(branchModel.topTitle)}\\n${this.escapeD2(branchModel.topDesc)}`));
+            lines.push(this.buildPrimaryNode('split', this.escapeD2(branchModel.splitTitle)));
             lines.push('top -> split');
 
             branchModel.branches.forEach((b, bi) => {
                 const headId = `b${bi + 1}_h`;
-                lines.push(`${headId}: "${this.escapeD2(b.name)}\\n${this.escapeD2(b.timeframe)}" { shape: rectangle class: primary }`);
+                lines.push(this.buildPrimaryNode(headId, `${this.escapeD2(b.name)}\\n${this.escapeD2(b.timeframe)}`));
                 lines.push(`split -> ${headId}`);
                 let prev = headId;
                 b.steps.forEach((s, si) => {
                     const id = `b${bi + 1}_s${si + 1}`;
-                    lines.push(`${id}: "${this.escapeD2(s)}" { shape: rectangle class: primary }`);
+                    lines.push(this.buildPrimaryNode(id, this.escapeD2(s)));
                     lines.push(`${prev} -> ${id}`);
                     prev = id;
                 });
                 lines.push(`${prev} -> merge`);
             });
 
-            lines.push(`merge: "${this.escapeD2(branchModel.mergeTitle)}\\n${this.escapeD2(branchModel.mergeDesc)}" { shape: rectangle class: primary }`);
+            lines.push(this.buildPrimaryNode('merge', `${this.escapeD2(branchModel.mergeTitle)}\\n${this.escapeD2(branchModel.mergeDesc)}`));
             if (branchModel.footer) {
-                lines.push(`footer: "${this.escapeD2(branchModel.footer)}" { shape: rectangle class: primary }`);
+                lines.push(this.buildPrimaryNode('footer', this.escapeD2(branchModel.footer)));
                 lines.push('merge -> footer');
             }
             return this.injectBranding(lines.join('\n'), theme);
@@ -324,11 +324,15 @@ Constraints:
         const nodes = flowNodes.map((n) => {
             const label = `${n.title}${n.description ? `\\n${n.description.slice(0, 90)}` : ''}`.replace(/"/g, '\'');
             const shape = /\b(user|actor|person|teacher|student|patient|client)\b/i.test(n.title) ? 'person' : 'rectangle';
-            return `${n.id}: "${label}" { shape: ${shape} class: primary }`;
+            return this.buildPrimaryNode(n.id, label, shape);
         });
         const edges = flowNodes.slice(0, -1).map((n, idx) => `${n.id} -> n${idx + 2}`);
         const body = [nodes.join('\n'), '', edges.join('\n')].join('\n');
         return this.injectBranding(body, theme);
+    }
+
+    private buildPrimaryNode(id: string, label: string, shape: 'rectangle' | 'person' = 'rectangle'): string {
+        return `${id}: "${label}" {\n  shape: ${shape}\n  class: primary\n}`;
     }
 
     private async runD2(inputPath: string, outputSvgPath: string, taskId: string): Promise<boolean> {
