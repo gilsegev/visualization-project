@@ -24,6 +24,12 @@ function requireBoolTrue(env, key, errors) {
   errors.push(`Expected ${key}=true for this runtime profile`);
 }
 
+function requireBoolSet(env, key, errors) {
+  const raw = String(env[key] ?? '').trim().toLowerCase();
+  if (raw === 'true' || raw === 'false') return;
+  errors.push(`Expected ${key} to be explicitly set to true or false`);
+}
+
 function requireIntRange(env, key, min, max, errors) {
   const parsed = toInt(env[key], NaN);
   if (Number.isFinite(parsed) && parsed >= min && parsed <= max) return;
@@ -38,8 +44,12 @@ function validateApp(env, errors, warnings) {
   requireNonEmpty(env, 'OPENROUTER_API_KEY', errors);
   requireNonEmpty(env, 'SILICONFLOW_API_KEY', errors);
   requireBoolTrue(env, 'POSTGRES_ENABLED', errors);
-  requireBoolTrue(env, 'DURABLE_QUEUE_ENABLED', errors);
+  requireBoolSet(env, 'DURABLE_QUEUE_ENABLED', errors);
   requireIntRange(env, 'WORKER_COUNT', 0, 64, errors);
+
+  if (!toBool(env.DURABLE_QUEUE_ENABLED, true)) {
+    warnings.push('DURABLE_QUEUE_ENABLED=false on app service; queue orchestration mode is disabled.');
+  }
 
   const hasSourceProvider = String(env.UNSPLASH_ACCESS_KEY || '').trim() || String(env.PIXABAY_API_KEY || '').trim();
   if (!hasSourceProvider) {
