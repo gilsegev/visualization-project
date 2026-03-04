@@ -164,7 +164,24 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         const timestamp = new Date().toISOString();
         const eventId = String(options?.eventId || this.nextEventId()).trim();
         const source = options?.source || this.source;
-        const metadata = options?.metadata || null;
+        const metadata = this.normalizeLogMetadata(options?.metadata);
+        const structured = {
+            timestamp,
+            level,
+            context: context || null,
+            message: message || '',
+            event_id: eventId,
+            task_id: taskId || null,
+            batch_id: batchId || null,
+            user_id: metadata?.user_id ?? null,
+            latency_ms: metadata?.latency_ms ?? null,
+            provider_status: metadata?.provider_status ?? null,
+            source_role: source?.role || null,
+            source_pid: source?.pid ?? null,
+            source_worker_id: source?.workerId || null,
+            metadata,
+        };
+        this.emitStructuredConsoleLog(structured);
         if (this.server) {
             this.server.emit('system_log', {
                 level,
@@ -175,10 +192,20 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                 timestamp,
                 eventId,
                 source,
-                metadata,
+                metadata: structured.metadata,
             });
         }
-        void this.storage.insertSystemLog({ level, message, context, taskId, batchId, timestamp, eventId, source, metadata });
+        void this.storage.insertSystemLog({
+            level,
+            message,
+            context,
+            taskId,
+            batchId,
+            timestamp,
+            eventId,
+            source,
+            metadata: structured.metadata
+        });
 
         if (level === 'error' || level === 'warn') {
             const fs = require('fs');
@@ -189,6 +216,34 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                 if (err) console.error('Failed to write to debug log:', err);
             });
         }
+    }
+
+    private normalizeLogMetadata(metadata?: Record<string, any> | null): Record<string, any> {
+        const base = metadata && typeof metadata === 'object' ? { ...metadata } : {};
+        return {
+            ...base,
+            user_id: this.toNumberOrNull(base.user_id),
+            latency_ms: this.toNumberOrNull(base.latency_ms),
+            provider_status: this.toStringOrNull(base.provider_status),
+        };
+    }
+
+    private emitStructuredConsoleLog(payload: Record<string, any>) {
+        try {
+            process.stdout.write(`${JSON.stringify(payload)}\n`);
+        } catch {
+            // no-op
+        }
+    }
+
+    private toNumberOrNull(value: any): number | null {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    private toStringOrNull(value: any): string | null {
+        const text = String(value ?? '').trim();
+        return text ? text : null;
     }
 
     /**

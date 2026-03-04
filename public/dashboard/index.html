@@ -191,6 +191,32 @@
                             <div class="text-danger">{{ liveStats.database?.tasks?.today_failed || 0 }}</div>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-1">STRATEGY TELEMETRY (24H)</div>
+                        <div class="rounded border border-slate-700 bg-black/30 overflow-hidden">
+                            <div class="grid grid-cols-4 gap-1 px-2 py-1 text-[9px] font-mono text-slate-500 border-b border-slate-700">
+                                <div>Strategy</div>
+                                <div class="text-right">Success</div>
+                                <div class="text-right">Avg ms</div>
+                                <div class="text-right">Err%</div>
+                            </div>
+                            <div class="max-h-28 overflow-y-auto matrix-scroll">
+                                <div
+                                    v-for="row in (liveStats.database?.telemetry?.strategies_24h || [])"
+                                    :key="`telemetry-${row.strategy}`"
+                                    class="grid grid-cols-4 gap-1 px-2 py-1 text-[10px] font-mono border-b border-slate-800/60 last:border-b-0"
+                                >
+                                    <div class="text-slate-200 truncate">{{ row.strategy }}</div>
+                                    <div class="text-right text-success">{{ Number(row.success_rate_pct || 0).toFixed(1) }}%</div>
+                                    <div class="text-right text-slate-300">{{ Number(row.avg_latency_ms || 0).toFixed(0) }}</div>
+                                    <div class="text-right text-danger">{{ row.total ? ((Number(row.failed || 0) * 100) / Number(row.total || 1)).toFixed(1) : '0.0' }}%</div>
+                                </div>
+                                <div v-if="!(liveStats.database?.telemetry?.strategies_24h || []).length" class="px-2 py-2 text-[10px] text-slate-500 font-mono">
+                                    No strategy telemetry in last 24h.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 </div>
 
