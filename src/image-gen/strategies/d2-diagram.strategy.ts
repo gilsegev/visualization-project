@@ -187,7 +187,6 @@ Constraints:
     }
 
     private injectBranding(script: string, theme: Theme): string {
-        const fontFamily = String(theme.font_name || 'Source Sans Pro').replace(/"/g, '');
         const fill = this.normalizeColor(theme.background_main, '#FAF9F6');
         const stroke = this.normalizeColor(theme.primary_accent, '#5B9A8B');
         const text = this.normalizeColor(theme.text_main, '#1A365D');
@@ -225,7 +224,6 @@ Constraints:
             '      stroke-width: 2',
             '      stroke-dash: 4',
             '      border-radius: 14',
-            `      font-family: "${fontFamily}"`,
             '      font-size: 17',
             `      font-color: "${text}"`,
             '    }',
