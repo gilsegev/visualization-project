@@ -191,6 +191,32 @@
                             <div class="text-danger">{{ liveStats.database?.tasks?.today_failed || 0 }}</div>
                         </div>
                     </div>
+                    <div class="mt-3">
+                        <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-1">STRATEGY TELEMETRY (24H)</div>
+                        <div class="rounded border border-slate-700 bg-black/30 overflow-hidden">
+                            <div class="grid grid-cols-4 gap-1 px-2 py-1 text-[9px] font-mono text-slate-500 border-b border-slate-700">
+                                <div>Strategy</div>
+                                <div class="text-right">Success</div>
+                                <div class="text-right">Avg ms</div>
+                                <div class="text-right">Err%</div>
+                            </div>
+                            <div class="max-h-28 overflow-y-auto matrix-scroll">
+                                <div
+                                    v-for="row in strategyTelemetryRows"
+                                    :key="`telemetry-${row.strategy}`"
+                                    class="grid grid-cols-4 gap-1 px-2 py-1 text-[10px] font-mono border-b border-slate-800/60 last:border-b-0"
+                                >
+                                    <div class="text-slate-200 truncate">{{ row.strategy }}</div>
+                                    <div class="text-right text-success">{{ Number(row.success_rate_pct || 0).toFixed(1) }}%</div>
+                                    <div class="text-right text-slate-300">{{ Number(row.avg_latency_ms || 0).toFixed(0) }}</div>
+                                    <div class="text-right text-danger">{{ row.total ? ((Number(row.failed || 0) * 100) / Number(row.total || 1)).toFixed(1) : '0.0' }}%</div>
+                                </div>
+                                <div v-if="!strategyTelemetryRows.length" class="px-2 py-2 text-[10px] text-slate-500 font-mono">
+                                    No strategy telemetry in last 24h.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 </div>
 
@@ -208,8 +234,13 @@
 
                     <!-- Filter Controls (for BY ASSET) -->
                     <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
-                        <div class="text-[10px] text-slate-500 mb-1">Tasks Available: {{ Object.keys(tasks || {}).length
-                            }}
+                        <div class="mb-1 flex items-center justify-between gap-2">
+                            <div class="text-[10px] text-slate-500">Tasks Available: {{ Object.keys(tasks || {}).length }}</div>
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors"
+                                @click="showAssetInspector = !showAssetInspector">
+                                {{ showAssetInspector ? 'Hide Inspector' : 'Show Inspector' }}
+                            </button>
                         </div>
                         <select v-model="selectedAssetFilter"
                             class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
@@ -220,7 +251,7 @@
                             </option>
                         </select>
 
-                        <div v-if="selectedAssetTask" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[30vh] overflow-y-auto matrix-scroll">
+                        <div v-if="selectedAssetTask && showAssetInspector" class="mt-2 rounded border border-slate-700 bg-black/40 p-2 max-h-[16vh] overflow-y-auto matrix-scroll">
                             <div class="text-[10px] text-slate-500 font-mono">SELECTED ASSET METRICS</div>
                             <div class="mt-1 text-[11px] font-mono text-slate-300">
                                 <div>
@@ -254,6 +285,18 @@
                                 <div v-if="selectedAssetTask?.details?.source_query" class="mt-0.5">
                                     <span class="text-slate-500">Selected Query:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.chart_type" class="mt-0.5">
+                                    <span class="text-slate-500">Chart Type:</span>
+                                    <span class="ml-1 text-slate-200 uppercase">{{ selectedAssetTask.details.chart_type }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.chart_data_points !== undefined" class="mt-0.5">
+                                    <span class="text-slate-500">Data Points:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.chart_data_points }}</span>
+                                </div>
+                                <div v-if="selectedAssetTask?.details?.chart_labels_preview" class="mt-0.5">
+                                    <span class="text-slate-500">Labels:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.chart_labels_preview }}</span>
                                 </div>
                                 <div v-if="getValidationBrief(selectedAssetTask)" class="mt-1">
                                     <span class="text-slate-500 block">Validation Brief:</span>
@@ -333,10 +376,19 @@
 
 
 
-                        <!-- Clear Button overlay -->
-                        <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition">
+                        <!-- Log Action Buttons -->
+                        <div class="sticky top-1 z-20 ml-auto mb-2 w-fit flex items-center gap-1 bg-black/60 backdrop-blur px-1.5 py-1 rounded border border-slate-700">
+                            <button @click="copyVisibleLogs"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700 font-semibold">
+                                COPY LOG
+                            </button>
                             <button @click="logs = []"
-                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700">CLEAR</button>
+                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700">
+                                CLEAR
+                            </button>
+                        </div>
+                        <div v-if="copyLogsState" class="sticky top-10 z-20 ml-auto mb-2 w-fit text-[9px] px-2 py-1 rounded border border-neon/40 bg-black/70 text-neon">
+                            {{ copyLogsState }}
                         </div>
 
                         <div v-if="logMode === 'QUERY LAB' && queryLabHistory.length" class="space-y-1">
@@ -376,6 +428,18 @@
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.source.role }}#{{ log.source.pid }}
                             </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.user_id !== null && log.metadata.user_id !== undefined"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                user={{ log.metadata.user_id }}
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.latency_ms !== null && log.metadata.latency_ms !== undefined"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                latency={{ Number(log.metadata.latency_ms).toFixed(0) }}ms
+                            </span>
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.provider_status"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                provider={{ log.metadata.provider_status }}
+                            </span>
 
                             <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
                                 class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
@@ -383,6 +447,9 @@
                             </span>
 
                             <span class="text-slate-300 ml-2 block sm:inline">{{ log.message }}</span>
+                            <div v-if="logMode === 'VERBOSE' && log.metadata" class="ml-2 mt-1 text-[10px] text-slate-500 font-mono">
+                                meta={{ JSON.stringify(log.metadata) }}
+                            </div>
                             <div v-if="extractUrls(log.message).length" class="ml-2 mt-1 space-y-0.5">
                                 <a v-for="(url, uIdx) in extractUrls(log.message)" :key="`log-url-${i}-${uIdx}`"
                                     :href="url" target="_blank" rel="noopener noreferrer"
@@ -768,11 +835,13 @@
                 // Log Views State
                 const logMode = ref('HIGH LEVEL'); // 'HIGH LEVEL' | 'VERBOSE' | 'BY ASSET'
                 const selectedAssetFilter = ref('');
+                const showAssetInspector = ref(false);
                 const queryLabInput = ref('dawn light tackle box lures');
                 const queryLabLoading = ref(false);
                 const queryLabError = ref('');
                 const queryLabResults = ref([]);
                 const queryLabHistory = ref([]);
+                const copyLogsState = ref('');
                 const liveStats = ref({
                     queue: { pending: 0, completed: 0, failed: 0 },
                     workers: [],
@@ -836,6 +905,41 @@
                         };
                     }
                     return tasks.value?.[selectedAssetFilter.value] || null;
+                });
+
+                const strategyTelemetryRows = computed(() => {
+                    const dbRows = liveStats.value?.database?.telemetry?.strategies_24h;
+                    if (Array.isArray(dbRows) && dbRows.length) return dbRows;
+
+                    const byStrategy = new Map();
+                    for (const log of logs.value || []) {
+                        const md = log?.metadata || {};
+                        const strategyRaw = String(md.strategy || '').trim();
+                        if (!strategyRaw) continue;
+                        const status = String(md.provider_status || '').toLowerCase();
+                        if (status !== 'success' && status !== 'failed') continue;
+                        const key = strategyRaw.toUpperCase();
+                        if (!byStrategy.has(key)) {
+                            byStrategy.set(key, { strategy: key, total: 0, completed: 0, failed: 0, success_rate_pct: 0, avg_latency_ms: 0, _latencies: [] });
+                        }
+                        const row = byStrategy.get(key);
+                        row.total += 1;
+                        if (status === 'success') row.completed += 1;
+                        if (status === 'failed') row.failed += 1;
+                        const latency = Number(md.latency_ms);
+                        if (Number.isFinite(latency) && latency >= 0) row._latencies.push(latency);
+                    }
+
+                    return Array.from(byStrategy.values())
+                        .map((row) => {
+                            row.success_rate_pct = row.total ? (row.completed * 100) / row.total : 0;
+                            row.avg_latency_ms = row._latencies.length
+                                ? row._latencies.reduce((a, b) => a + b, 0) / row._latencies.length
+                                : 0;
+                            delete row._latencies;
+                            return row;
+                        })
+                        .sort((a, b) => b.total - a.total);
                 });
 
                 const batchStylingGuidance = computed(() => {
@@ -988,6 +1092,55 @@
                             logContainer.value.scrollTop = logContainer.value.scrollHeight;
                         }
                     });
+                };
+
+                const serializeLogLine = (log) => {
+                    const ts = formatTime(log?.timestamp || Date.now());
+                    const ctx = String(log?.context || 'SYSTEM').toUpperCase();
+                    const message = String(log?.message || '');
+                    const suffix = [];
+                    if (log?.eventId) suffix.push(`event=${log.eventId}`);
+                    if (log?.taskId) suffix.push(`task=${log.taskId}`);
+                    const userId = log?.metadata?.user_id;
+                    const latencyMs = log?.metadata?.latency_ms;
+                    const providerStatus = log?.metadata?.provider_status;
+                    if (userId !== null && userId !== undefined) suffix.push(`user=${userId}`);
+                    if (latencyMs !== null && latencyMs !== undefined) suffix.push(`latency_ms=${Number(latencyMs).toFixed(0)}`);
+                    if (providerStatus) suffix.push(`provider_status=${providerStatus}`);
+                    return `[${ts}]${ctx}: ${message}${suffix.length ? ` | ${suffix.join(' ')}` : ''}`;
+                };
+
+                const copyVisibleLogs = async () => {
+                    let text = '';
+                    if (logMode.value === 'QUERY LAB') {
+                        text = queryLabHistory.value.map((h) =>
+                            `query="${h.query}" | clip avg=${h.clip_avg} max=${h.clip_max} min=${h.clip_min} | vision avg=${h.vision_avg} max=${h.vision_max} min=${h.vision_min}`
+                        ).join('\n');
+                    } else {
+                        text = filteredLogs.value.map(serializeLogLine).join('\n');
+                    }
+
+                    if (!String(text).trim()) {
+                        copyLogsState.value = 'No log text to copy';
+                        setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyLogsState.value = `Copied ${text.split('\n').length} line(s)`;
+                    } catch (e) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        copyLogsState.value = `Copied ${text.split('\n').length} line(s)`;
+                    }
+                    setTimeout(() => { copyLogsState.value = ''; }, 1500);
                 };
 
                 const applyTaskDelta = (row) => {
@@ -1516,10 +1669,13 @@
                     narrativeMetrics,
                     queueHealth,
                     liveStats,
+                    strategyTelemetryRows,
                     selectedAssetTask, batchStylingGuidance,
+                    showAssetInspector,
                     logMode, selectedAssetFilter, filteredLogs,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
+                    copyLogsState, copyVisibleLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, formatSeconds, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,

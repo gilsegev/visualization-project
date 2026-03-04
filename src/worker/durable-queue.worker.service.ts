@@ -96,6 +96,7 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         const estimatedCostUsd = this.estimateTaskCostUsd(task);
         const assetType = this.resolveDailyAssetType(task);
         const assetQuotaLimit = this.resolveDailyAssetQuotaLimit(assetType);
+        const strategyType = String(task?.type || task?.metadata?.task_type || 'unknown').toLowerCase();
         this.currentTaskId = taskId;
         await this.storage.setWorkerCurrentTask(this.workerId, taskId);
 
@@ -107,7 +108,9 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
         const perfStart = performance.now();
         this.logger.log(`Claimed task ${taskId} (attempt ${row.attempts}/${row.max_attempts})`);
         this.observability.emitProgress({ taskId, batchId, status: 'processing', stage: 'Starting Generation...' } as any);
-        this.observability.emitLog('info', `Worker claimed task (attempt ${row.attempts}/${row.max_attempts})`, 'Worker', taskId, batchId);
+        this.observability.emitLog('info', `Worker claimed task (attempt ${row.attempts}/${row.max_attempts})`, 'Worker', taskId, batchId, {
+            metadata: { user_id: userId, strategy: strategyType, provider_status: 'claimed' },
+        });
 
         try {
             await this.storage.recordTaskCost(taskId, {
@@ -197,6 +200,9 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 blueprint_prompt: result?.payload?.blueprint_prompt,
                 source_provider: result?.payload?.source_provider,
                 source_query: result?.payload?.source_query,
+                chart_type: result?.payload?.chart_type,
+                chart_data_points: result?.payload?.chart_data_points,
+                chart_labels_preview: result?.payload?.chart_labels_preview,
                 sourced_queries: result?.payload?.sourced_queries,
                 sourced_candidates: result?.payload?.sourced_candidates,
                 sourced_query_signals: result?.payload?.sourced_query_signals,
@@ -227,6 +233,9 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                     blueprint_prompt: result?.payload?.blueprint_prompt,
                     source_provider: result?.payload?.source_provider,
                     source_query: result?.payload?.source_query,
+                    chart_type: result?.payload?.chart_type,
+                    chart_data_points: result?.payload?.chart_data_points,
+                    chart_labels_preview: result?.payload?.chart_labels_preview,
                     sourced_queries: result?.payload?.sourced_queries,
                     sourced_candidates: result?.payload?.sourced_candidates,
                     sourced_query_signals: result?.payload?.sourced_query_signals,
@@ -242,7 +251,15 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 `Worker completed task in ${durationMs.toFixed(0)}ms | est_cost_usd=${estimatedCostUsd.toFixed(6)} actual_cost_usd=${actualCostUsd.toFixed(6)}`,
                 'Worker',
                 taskId,
-                batchId
+                batchId,
+                {
+                    metadata: {
+                        user_id: userId,
+                        strategy: strategyType,
+                        latency_ms: Number(durationMs.toFixed(2)),
+                        provider_status: 'success',
+                    }
+                }
             );
             this.logger.log(`Completed task ${taskId} in ${durationMs.toFixed(0)}ms`);
         } catch (error: any) {
@@ -271,7 +288,14 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
                 `Worker task ${disposition}: ${message}`,
                 'Worker',
                 taskId,
-                batchId
+                batchId,
+                {
+                    metadata: {
+                        user_id: userId,
+                        strategy: strategyType,
+                        provider_status: disposition === 'failed' ? 'failed' : 'requeued',
+                    }
+                }
             );
         } finally {
             clearInterval(heartbeat);

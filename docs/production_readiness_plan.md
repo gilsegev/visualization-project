@@ -366,7 +366,7 @@ Validation Evidence (2026-03-02)
 
     Path escape attempts now fail via sanitizer before filesystem write.
 
-8) Containerization and Service Topology (High)
+[done] 8) Containerization and Service Topology (High)
 1. Issue
 
 Runtime currently depends on local process conventions; deployment topology is not formalized for horizontal scaling.

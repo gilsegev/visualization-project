@@ -108,7 +108,7 @@ function ensureLinuxPlaywrightDeps() {
 
 ensureLinuxPlaywrightDeps();
 
-children.push(run('app', 'node', ['dist/src/main'], { PROCESS_ROLE: 'app' }, { fatal: true }));
+children.push(run('app', 'node', ['dist/main.js'], { PROCESS_ROLE: 'app' }, { fatal: true }));
 
 for (let i = 0; i < workerCount; i += 1) {
   const slot = String(i + 1);
@@ -116,7 +116,7 @@ for (let i = 0; i < workerCount; i += 1) {
     run(
       `worker-${slot}`,
       'node',
-      ['dist/src/worker/main'],
+      ['dist/worker/main.js'],
       {
         PROCESS_ROLE: 'worker',
         WORKER_SLOT: slot,

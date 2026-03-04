@@ -71,6 +71,15 @@ export type SystemLogRow = {
     metadata: any;
 };
 
+export type StrategyTelemetryRow = {
+    strategy: string;
+    total: number;
+    completed: number;
+    failed: number;
+    success_rate_pct: number;
+    avg_latency_ms: number;
+};
+
 @Injectable()
 export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PostgresStorageService.name);
@@ -650,7 +659,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 END AS healthy
              FROM worker_heartbeats
              WHERE
-                status = 'ACTIVE'
+                (status = 'ACTIVE' AND last_seen_at >= NOW() - (($1::text || ' seconds')::interval))
                 OR ($2::int > 0 AND status <> 'ACTIVE' AND last_seen_at >= NOW() - (($2::text || ' minutes')::interval))
              ORDER BY started_at DESC`,
             [timeoutSec, showDeadMinutes]
@@ -672,7 +681,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
 
     async getDatabaseHealthStats(): Promise<any> {
         if (!this.pool) return {};
-        const [taskRows, batchRows, dbRows, connRows] = await Promise.all([
+        const [taskRows, batchRows, dbRows, connRows, telemetryRows] = await Promise.all([
             this.queryRows<{ total: number; today_completed: number; today_failed: number; avg_duration_seconds: number }>(
                 `SELECT
                     COUNT(*)::int AS total,
@@ -698,12 +707,73 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                  FROM pg_stat_activity
                  WHERE datname = current_database()`
             ),
+            this.queryRows<StrategyTelemetryRow>(
+                `WITH strategy_runs AS (
+                    SELECT
+                        UPPER(COALESCE(NULLIF(t.payload->>'type', ''), NULLIF(tr.metadata->>'strategy', ''), 'UNKNOWN')) AS strategy,
+                        COALESCE(NULLIF(t.queue_status, ''), NULLIF(tr.status, ''), 'unknown') AS status,
+                        CASE
+                            WHEN (tr.metadata->'metrics'->>'total_ms') ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN (tr.metadata->'metrics'->>'total_ms')::double precision
+                            WHEN tr.started_at IS NOT NULL AND tr.ended_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (tr.ended_at - tr.started_at)) * 1000
+                            ELSE NULL
+                        END AS latency_ms
+                    FROM tasks t
+                    LEFT JOIN task_runs tr ON tr.task_id = t.task_id
+                    WHERE t.updated_at >= NOW() - INTERVAL '24 hours'
+                )
+                SELECT
+                    strategy,
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status IN ('completed'))::int AS completed,
+                    COUNT(*) FILTER (WHERE status IN ('failed'))::int AS failed,
+                    ROUND((COUNT(*) FILTER (WHERE status IN ('completed'))::numeric * 100.0) / NULLIF(COUNT(*), 0), 2)::float AS success_rate_pct,
+                    ROUND(COALESCE(AVG(latency_ms)::numeric, 0), 2)::float AS avg_latency_ms
+                FROM strategy_runs
+                WHERE status IN ('completed', 'failed')
+                GROUP BY strategy
+                ORDER BY total DESC, strategy ASC
+                LIMIT 10`
+            ),
         ]);
+        const telemetry = telemetryRows?.length
+            ? telemetryRows
+            : await this.queryRows<StrategyTelemetryRow>(
+                `WITH strategy_runs AS (
+                    SELECT
+                        UPPER(COALESCE(NULLIF(t.payload->>'type', ''), NULLIF(tr.metadata->>'strategy', ''), 'UNKNOWN')) AS strategy,
+                        COALESCE(NULLIF(t.queue_status, ''), NULLIF(tr.status, ''), 'unknown') AS status,
+                        CASE
+                            WHEN (tr.metadata->'metrics'->>'total_ms') ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN (tr.metadata->'metrics'->>'total_ms')::double precision
+                            WHEN tr.started_at IS NOT NULL AND tr.ended_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (tr.ended_at - tr.started_at)) * 1000
+                            ELSE NULL
+                        END AS latency_ms
+                    FROM tasks t
+                    LEFT JOIN task_runs tr ON tr.task_id = t.task_id
+                )
+                SELECT
+                    strategy,
+                    COUNT(*)::int AS total,
+                    COUNT(*) FILTER (WHERE status IN ('completed'))::int AS completed,
+                    COUNT(*) FILTER (WHERE status IN ('failed'))::int AS failed,
+                    ROUND((COUNT(*) FILTER (WHERE status IN ('completed'))::numeric * 100.0) / NULLIF(COUNT(*), 0), 2)::float AS success_rate_pct,
+                    ROUND(COALESCE(AVG(latency_ms)::numeric, 0), 2)::float AS avg_latency_ms
+                FROM strategy_runs
+                WHERE status IN ('completed', 'failed')
+                GROUP BY strategy
+                ORDER BY total DESC, strategy ASC
+                LIMIT 10`
+            );
+
         return {
             tasks: taskRows[0] || { total: 0, today_completed: 0, today_failed: 0, avg_duration_seconds: 0 },
             batches: batchRows[0] || { total: 0, running: 0 },
             storage: dbRows[0] || { size_pretty: 'n/a', size_bytes: '0' },
             connections: connRows[0] || { total: 0, active: 0 },
+            telemetry: { strategies_24h: telemetry || [] },
         };
     }
 
@@ -774,6 +844,31 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
              ORDER BY id DESC
              LIMIT $1`,
             [cap]
+        );
+    }
+
+    async querySystemLogs(filters: { taskId?: string; userId?: number; limit?: number }): Promise<SystemLogRow[]> {
+        if (!this.pool) return [];
+        const where: string[] = [];
+        const params: any[] = [];
+        if (filters.taskId) {
+            params.push(filters.taskId);
+            where.push(`task_id = $${params.length}`);
+        }
+        if (Number.isFinite(Number(filters.userId)) && Number(filters.userId) > 0) {
+            params.push(String(Number(filters.userId)));
+            where.push(`metadata->>'user_id' = $${params.length}`);
+        }
+        const cap = Math.max(1, Math.min(1000, Number(filters.limit || 200)));
+        params.push(cap);
+        const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+        return this.queryRows<SystemLogRow>(
+            `SELECT id, created_at::text, level, message, context, task_id, batch_id, event_id, source_role, source_pid, source_worker_id, metadata
+             FROM system_logs
+             ${clause}
+             ORDER BY id DESC
+             LIMIT $${params.length}`,
+            params
         );
     }
 
@@ -1090,6 +1185,7 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
         `);
         await this.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_event_id ON system_logs(event_id);`);
+        await this.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_metadata_user_id ON system_logs ((metadata->>'user_id'));`);
     }
 
     private toUsd(value: any): number {

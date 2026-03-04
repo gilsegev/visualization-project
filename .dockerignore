@@ -6,6 +6,8 @@
 
 node_modules
 dist
+videos
+*.webm
 
 # Generated/runtime artifacts
 public/generated-images
@@ -18,6 +20,10 @@ debug_*.txt
 test_output_*.txt
 test_failure_log.txt
 start-all.log
+server_debug*.log
+build_error.log
+test*.ts
+test*.js
 
 # OS/editor noise
 .DS_Store

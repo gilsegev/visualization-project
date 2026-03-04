@@ -5,6 +5,7 @@ import { BaseImageStrategy, ImageGenerationResult } from '../base-image.strategy
 import { ImageTask } from '../image-task.schema';
 import { LocalStorageService } from '../local-storage.service';
 import { BrowserService } from '../browser.service';
+import { ObservabilityGateway } from '../../observability/observability.gateway';
 
 @Injectable()
 export class DataVizStrategy extends BaseImageStrategy {
@@ -148,7 +149,8 @@ export class DataVizStrategy extends BaseImageStrategy {
 
   constructor(
     private readonly localStorage: LocalStorageService,
-    private readonly browserService: BrowserService
+    private readonly browserService: BrowserService,
+    private readonly observability: ObservabilityGateway
   ) {
     super();
   }
@@ -167,12 +169,24 @@ export class DataVizStrategy extends BaseImageStrategy {
     let chartData = payload.data || [];
     if (!Array.isArray(chartData) && typeof chartData === 'object') {
       if (Array.isArray(chartData.labels) && Array.isArray(chartData.values)) {
+        const values = chartData.values;
         chartData = chartData.labels.map((label: any, i: number) => ({
           label: label,
-          value: chartData.values[i]
+          value: values[i]
         }));
       }
     }
+
+    const rowCount = Array.isArray(chartData) ? chartData.length : 0;
+    const labelsPreview = Array.isArray(chartData)
+      ? chartData.slice(0, 6).map((row: any) => String(row?.label ?? '')).filter(Boolean).join(', ')
+      : '';
+    this.observability.emitLog(
+      'info',
+      `Chart config: type=${String(payload.chartType || 'bar')} format=${format} rows=${rowCount}${labelsPreview ? ` labels=${labelsPreview}` : ''}`,
+      'DataViz',
+      task.id
+    );
 
     if (isAnimated) {
       // Prompt 9: "Perform two captures"
@@ -198,6 +212,8 @@ export class DataVizStrategy extends BaseImageStrategy {
           image_prompts: [task.refined_prompt],
           blueprint_prompt: task.refined_prompt,
           chart_type: payload.chartType || 'bar',
+          chart_data_points: rowCount,
+          chart_labels_preview: labelsPreview,
           format,
         }
       };
@@ -218,6 +234,8 @@ export class DataVizStrategy extends BaseImageStrategy {
           image_prompts: [task.refined_prompt],
           blueprint_prompt: task.refined_prompt,
           chart_type: payload.chartType || 'bar',
+          chart_data_points: rowCount,
+          chart_labels_preview: labelsPreview,
           format,
         }
       };
@@ -553,8 +571,9 @@ export class DataVizStrategy extends BaseImageStrategy {
       await page.waitForTimeout(500);
 
       const buffer = await page.locator('#chart-container').screenshot();
-      const fileName = `task-${index ?? 'unknown'}-data_viz.png`;
+      const fileName = `task-${task.id}-data_viz.png`;
       const url = await this.localStorage.upload(buffer, fileName);
+      this.observability.emitLog('info', `Rendered static chart -> ${fileName}`, 'DataViz', task.id);
       return url;
     } finally {
       await page.close();
@@ -585,9 +604,10 @@ export class DataVizStrategy extends BaseImageStrategy {
       const videoPath = await page.video()?.path();
       if (!videoPath) throw new Error('Video file not found');
 
-      const promptFileName = `task-${index ?? 'unknown'}-data_viz.mp4`;
+      const promptFileName = `task-${task.id}-data_viz.mp4`;
       const buffer = fs.readFileSync(videoPath);
       const url = await this.localStorage.upload(buffer, promptFileName);
+      this.observability.emitLog('info', `Rendered animated chart -> ${promptFileName}`, 'DataViz', task.id);
 
       return url;
     } catch (e) {

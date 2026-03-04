@@ -57,9 +57,11 @@ export class D2DiagramStrategy extends BaseImageStrategy {
 
         const theme = this.resolveTheme(taskAny);
         this.observability.emitLog('info', `D2 strategy selected for template_type=${taskAny.metadata?.template_type || taskAny.payload?.type || 'unknown'}`, 'D2Strategy', task.id);
+        this.observability.emitLog('info', `D2 binary resolved to ${this.d2Bin} (configured=${this.d2ConfiguredBin})`, 'D2Strategy', task.id);
 
         const d2Start = performance.now();
-        const d2Script = await this.generateD2Script(task, theme);
+        const d2ScriptRaw = await this.generateD2Script(task, theme);
+        const d2Script = this.sanitizeGeneratedD2Script(d2ScriptRaw, task.id);
         const scriptPath = path.join(absoluteOutputDir, 'diagram.d2');
         const svgPath = path.join(absoluteOutputDir, 'diagram.svg');
         await fs.promises.writeFile(scriptPath, d2Script, 'utf8');
@@ -119,7 +121,8 @@ export class D2DiagramStrategy extends BaseImageStrategy {
     }
 
     private async generateD2Script(task: ImageTask, theme: Theme): Promise<string> {
-        const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR NODES/EDGES):\n${JSON.stringify(task.payload || {}, null, 2)}`;
+        const payload = task.payload || {};
+        const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR NODES/EDGES):\n${JSON.stringify(payload, null, 2)}`;
         const systemPrompt = `Return valid D2 script only. No markdown.
 Target types: flowchart, timeline, process_map.
 Constraints:
@@ -129,6 +132,18 @@ Constraints:
 - If groups are present, use containers with { }.
 - Keep labels concise and readable.
 - No decorative unicode or emojis.`;
+
+        // Structured timeline/process payloads are deterministic and should not be translated by LLM,
+        // because model-generated container graphs can produce unreadable layouts.
+        if (this.shouldUseDeterministicD2(payload)) {
+            this.observability.emitLog(
+                'info',
+                'Using deterministic D2 generator for structured payload.',
+                'D2Strategy',
+                task.id,
+            );
+            return this.buildDeterministicD2(payload, theme);
+        }
 
         try {
             const model = this.configService.get<string>('OPENROUTER_MODEL') || 'google/gemini-2.0-flash-001';
@@ -153,11 +168,25 @@ Constraints:
             this.observability.emitLog('warn', `D2 LLM translation failed; fallback generator used. reason=${message}`, 'D2Strategy', task.id);
         }
 
-        return this.buildDeterministicD2(task.payload || {}, theme);
+        return this.buildDeterministicD2(payload, theme);
+    }
+
+    private shouldUseDeterministicD2(payload: any): boolean {
+        const structure = payload?.structure || {};
+        const hasMilestones = Array.isArray(structure?.milestones) && structure.milestones.length > 0;
+        const hasBranches = Array.isArray(structure?.branches) && structure.branches.length > 0;
+        const hasProcessSteps = Array.isArray(structure?.steps) && structure.steps.length > 0;
+        const hasWellFormedItems = Array.isArray(payload?.items)
+            && payload.items.length > 0
+            && payload.items.every((item: any) => {
+                const title = String(item?.title || '').trim();
+                const description = String(item?.description || '').trim();
+                return Boolean(title || description);
+            });
+        return hasMilestones || hasBranches || hasProcessSteps || hasWellFormedItems;
     }
 
     private injectBranding(script: string, theme: Theme): string {
-        const fontFamily = String(theme.font_name || 'Source Sans Pro').replace(/"/g, '');
         const fill = this.normalizeColor(theme.background_main, '#FAF9F6');
         const stroke = this.normalizeColor(theme.primary_accent, '#5B9A8B');
         const text = this.normalizeColor(theme.text_main, '#1A365D');
@@ -167,6 +196,7 @@ Constraints:
         const c4 = this.mixHex(fill, '#DEE1EB', 0.55);
         const c5 = this.mixHex(stroke, '#88DCF7', 0.35);
         const c6 = this.mixHex(stroke, '#E4DBFE', 0.45);
+        const nodeText = this.pickReadableTextColor(c6, text);
 
         const header = [
             'vars: {',
@@ -195,9 +225,8 @@ Constraints:
             '      stroke-width: 2',
             '      stroke-dash: 4',
             '      border-radius: 14',
-            `      font-family: "${fontFamily}"`,
             '      font-size: 17',
-            `      font-color: "${text}"`,
+            `      font-color: "${nodeText}"`,
             '    }',
             '  }',
             '}',
@@ -206,31 +235,74 @@ Constraints:
         return `${header}\n${script}`;
     }
 
+    private sanitizeGeneratedD2Script(script: string, taskId: string): string {
+        const lines = String(script || '').split(/\r?\n/);
+        const kept: string[] = [];
+        let strippedCliDirectiveCount = 0;
+        let strippedMalformedEdgeCount = 0;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+                kept.push(line);
+                continue;
+            }
+
+            // Guard against LLMs emitting CLI flags inside the script body, e.g. "--layout: dagre".
+            if (/^--[a-z0-9_-]+\s*:/.test(trimmed) || /^--[a-z0-9_-]+(\s|=|$)/.test(trimmed)) {
+                strippedCliDirectiveCount += 1;
+                continue;
+            }
+
+            // Drop obviously malformed edge declarations (missing source or target).
+            if (trimmed.includes('->')) {
+                const edgeMatch = trimmed.match(/^(.+?)\s*->\s*(.+)$/);
+                if (!edgeMatch || !edgeMatch[1]?.trim() || !edgeMatch[2]?.trim()) {
+                    strippedMalformedEdgeCount += 1;
+                    continue;
+                }
+            }
+
+            kept.push(line);
+        }
+
+        if (strippedCliDirectiveCount > 0 || strippedMalformedEdgeCount > 0) {
+            this.observability.emitLog(
+                'warn',
+                `Sanitized generated D2 script: removed cli_directives=${strippedCliDirectiveCount}, malformed_edges=${strippedMalformedEdgeCount}`,
+                'D2Strategy',
+                taskId,
+            );
+        }
+
+        return kept.join('\n').trim() + '\n';
+    }
+
     private buildDeterministicD2(payload: any, theme: Theme): string {
         const branchModel = this.extractBranchModel(payload);
         if (branchModel) {
             const lines: string[] = [];
-            lines.push(`top: "${this.escapeD2(branchModel.topTitle)}\\n${this.escapeD2(branchModel.topDesc)}" { shape: rectangle class: primary }`);
-            lines.push(`split: "${this.escapeD2(branchModel.splitTitle)}" { shape: rectangle class: primary }`);
+            lines.push(this.buildPrimaryNode('top', `${this.escapeD2(branchModel.topTitle)}\\n${this.escapeD2(branchModel.topDesc)}`));
+            lines.push(this.buildPrimaryNode('split', this.escapeD2(branchModel.splitTitle)));
             lines.push('top -> split');
 
             branchModel.branches.forEach((b, bi) => {
                 const headId = `b${bi + 1}_h`;
-                lines.push(`${headId}: "${this.escapeD2(b.name)}\\n${this.escapeD2(b.timeframe)}" { shape: rectangle class: primary }`);
+                lines.push(this.buildPrimaryNode(headId, `${this.escapeD2(b.name)}\\n${this.escapeD2(b.timeframe)}`));
                 lines.push(`split -> ${headId}`);
                 let prev = headId;
                 b.steps.forEach((s, si) => {
                     const id = `b${bi + 1}_s${si + 1}`;
-                    lines.push(`${id}: "${this.escapeD2(s)}" { shape: rectangle class: primary }`);
+                    lines.push(this.buildPrimaryNode(id, this.escapeD2(s)));
                     lines.push(`${prev} -> ${id}`);
                     prev = id;
                 });
                 lines.push(`${prev} -> merge`);
             });
 
-            lines.push(`merge: "${this.escapeD2(branchModel.mergeTitle)}\\n${this.escapeD2(branchModel.mergeDesc)}" { shape: rectangle class: primary }`);
+            lines.push(this.buildPrimaryNode('merge', `${this.escapeD2(branchModel.mergeTitle)}\\n${this.escapeD2(branchModel.mergeDesc)}`));
             if (branchModel.footer) {
-                lines.push(`footer: "${this.escapeD2(branchModel.footer)}" { shape: rectangle class: primary }`);
+                lines.push(this.buildPrimaryNode('footer', this.escapeD2(branchModel.footer)));
                 lines.push('merge -> footer');
             }
             return this.injectBranding(lines.join('\n'), theme);
@@ -251,11 +323,15 @@ Constraints:
         const nodes = flowNodes.map((n) => {
             const label = `${n.title}${n.description ? `\\n${n.description.slice(0, 90)}` : ''}`.replace(/"/g, '\'');
             const shape = /\b(user|actor|person|teacher|student|patient|client)\b/i.test(n.title) ? 'person' : 'rectangle';
-            return `${n.id}: "${label}" { shape: ${shape} class: primary }`;
+            return this.buildPrimaryNode(n.id, label, shape);
         });
         const edges = flowNodes.slice(0, -1).map((n, idx) => `${n.id} -> n${idx + 2}`);
         const body = [nodes.join('\n'), '', edges.join('\n')].join('\n');
         return this.injectBranding(body, theme);
+    }
+
+    private buildPrimaryNode(id: string, label: string, shape: 'rectangle' | 'person' = 'rectangle'): string {
+        return `${id}: "${label}" {\n  shape: ${shape}\n  class: primary\n}`;
     }
 
     private async runD2(inputPath: string, outputSvgPath: string, taskId: string): Promise<boolean> {
@@ -283,24 +359,43 @@ Constraints:
     }
 
     private resolveD2Bin(configured: string): string {
-        const raw = String(configured || 'd2').trim() || 'd2';
-        const candidates = [
-            raw,
-            path.join(process.cwd(), 'tools', 'd2', 'd2.exe'),
-            path.join(process.cwd(), 'bin', 'd2.exe'),
-            path.join(process.cwd(), 'd2.exe'),
-        ];
-        if (process.platform === 'win32') {
-            const pathDirs = String(process.env.PATH || '').split(';').filter(Boolean);
-            for (const d of pathDirs) candidates.push(path.join(d, 'd2.exe'));
+        const raw = String(configured || 'd2').trim().replace(/^["']|["']$/g, '') || 'd2';
+        const candidates: string[] = [raw];
+
+        // Repository-local overrides (primarily for Windows/local dev).
+        candidates.push(path.join(process.cwd(), 'tools', 'd2', 'd2.exe'));
+        candidates.push(path.join(process.cwd(), 'bin', 'd2.exe'));
+        candidates.push(path.join(process.cwd(), 'd2.exe'));
+
+        // Deterministic Linux/macOS absolute fallbacks for containerized/runtime hosts.
+        candidates.push('/usr/local/bin/d2');
+        candidates.push('/usr/bin/d2');
+        candidates.push('/opt/homebrew/bin/d2');
+
+        // Resolve command-form binaries through PATH explicitly to avoid shell/runtime differences.
+        const pathDirs = String(process.env.PATH || '')
+            .split(path.delimiter)
+            .map((p) => p.trim())
+            .filter(Boolean);
+        const executableNames = process.platform === 'win32'
+            ? ['d2.exe', 'd2.cmd', 'd2.bat', 'd2']
+            : ['d2'];
+        for (const dir of pathDirs) {
+            for (const exe of executableNames) {
+                candidates.push(path.join(dir, exe));
+            }
         }
-        for (const c of candidates) {
+
+        for (const candidate of candidates) {
             try {
-                if (!c) continue;
-                if (!c.includes(path.sep)) return c; // command form ("d2")
-                if (fs.existsSync(c)) return c;
-            } catch { /* ignore */ }
+                if (!candidate) continue;
+                if (fs.existsSync(candidate)) return candidate;
+            } catch {
+                // continue probing
+            }
         }
+
+        // Fall back to command form; execFile will try PATH and surface ENOENT if missing.
         return raw;
     }
 
