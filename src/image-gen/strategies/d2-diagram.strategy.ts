@@ -57,6 +57,7 @@ export class D2DiagramStrategy extends BaseImageStrategy {
 
         const theme = this.resolveTheme(taskAny);
         this.observability.emitLog('info', `D2 strategy selected for template_type=${taskAny.metadata?.template_type || taskAny.payload?.type || 'unknown'}`, 'D2Strategy', task.id);
+        this.observability.emitLog('info', `D2 binary resolved to ${this.d2Bin} (configured=${this.d2ConfiguredBin})`, 'D2Strategy', task.id);
 
         const d2Start = performance.now();
         const d2ScriptRaw = await this.generateD2Script(task, theme);
@@ -327,24 +328,43 @@ Constraints:
     }
 
     private resolveD2Bin(configured: string): string {
-        const raw = String(configured || 'd2').trim() || 'd2';
-        const candidates = [
-            raw,
-            path.join(process.cwd(), 'tools', 'd2', 'd2.exe'),
-            path.join(process.cwd(), 'bin', 'd2.exe'),
-            path.join(process.cwd(), 'd2.exe'),
-        ];
-        if (process.platform === 'win32') {
-            const pathDirs = String(process.env.PATH || '').split(';').filter(Boolean);
-            for (const d of pathDirs) candidates.push(path.join(d, 'd2.exe'));
+        const raw = String(configured || 'd2').trim().replace(/^["']|["']$/g, '') || 'd2';
+        const candidates: string[] = [raw];
+
+        // Repository-local overrides (primarily for Windows/local dev).
+        candidates.push(path.join(process.cwd(), 'tools', 'd2', 'd2.exe'));
+        candidates.push(path.join(process.cwd(), 'bin', 'd2.exe'));
+        candidates.push(path.join(process.cwd(), 'd2.exe'));
+
+        // Deterministic Linux/macOS absolute fallbacks for containerized/runtime hosts.
+        candidates.push('/usr/local/bin/d2');
+        candidates.push('/usr/bin/d2');
+        candidates.push('/opt/homebrew/bin/d2');
+
+        // Resolve command-form binaries through PATH explicitly to avoid shell/runtime differences.
+        const pathDirs = String(process.env.PATH || '')
+            .split(path.delimiter)
+            .map((p) => p.trim())
+            .filter(Boolean);
+        const executableNames = process.platform === 'win32'
+            ? ['d2.exe', 'd2.cmd', 'd2.bat', 'd2']
+            : ['d2'];
+        for (const dir of pathDirs) {
+            for (const exe of executableNames) {
+                candidates.push(path.join(dir, exe));
+            }
         }
-        for (const c of candidates) {
+
+        for (const candidate of candidates) {
             try {
-                if (!c) continue;
-                if (!c.includes(path.sep)) return c; // command form ("d2")
-                if (fs.existsSync(c)) return c;
-            } catch { /* ignore */ }
+                if (!candidate) continue;
+                if (fs.existsSync(candidate)) return candidate;
+            } catch {
+                // continue probing
+            }
         }
+
+        // Fall back to command form; execFile will try PATH and surface ENOENT if missing.
         return raw;
     }
 
