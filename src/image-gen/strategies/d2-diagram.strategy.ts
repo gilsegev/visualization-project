@@ -121,7 +121,8 @@ export class D2DiagramStrategy extends BaseImageStrategy {
     }
 
     private async generateD2Script(task: ImageTask, theme: Theme): Promise<string> {
-        const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR NODES/EDGES):\n${JSON.stringify(task.payload || {}, null, 2)}`;
+        const payload = task.payload || {};
+        const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR NODES/EDGES):\n${JSON.stringify(payload, null, 2)}`;
         const systemPrompt = `Return valid D2 script only. No markdown.
 Target types: flowchart, timeline, process_map.
 Constraints:
@@ -131,6 +132,18 @@ Constraints:
 - If groups are present, use containers with { }.
 - Keep labels concise and readable.
 - No decorative unicode or emojis.`;
+
+        // Structured timeline/process payloads are deterministic and should not be translated by LLM,
+        // because model-generated container graphs can produce unreadable layouts.
+        if (this.shouldUseDeterministicD2(payload)) {
+            this.observability.emitLog(
+                'info',
+                'Using deterministic D2 generator for structured payload.',
+                'D2Strategy',
+                task.id,
+            );
+            return this.buildDeterministicD2(payload, theme);
+        }
 
         try {
             const model = this.configService.get<string>('OPENROUTER_MODEL') || 'google/gemini-2.0-flash-001';
@@ -155,7 +168,22 @@ Constraints:
             this.observability.emitLog('warn', `D2 LLM translation failed; fallback generator used. reason=${message}`, 'D2Strategy', task.id);
         }
 
-        return this.buildDeterministicD2(task.payload || {}, theme);
+        return this.buildDeterministicD2(payload, theme);
+    }
+
+    private shouldUseDeterministicD2(payload: any): boolean {
+        const structure = payload?.structure || {};
+        const hasMilestones = Array.isArray(structure?.milestones) && structure.milestones.length > 0;
+        const hasBranches = Array.isArray(structure?.branches) && structure.branches.length > 0;
+        const hasProcessSteps = Array.isArray(structure?.steps) && structure.steps.length > 0;
+        const hasWellFormedItems = Array.isArray(payload?.items)
+            && payload.items.length > 0
+            && payload.items.every((item: any) => {
+                const title = String(item?.title || '').trim();
+                const description = String(item?.description || '').trim();
+                return Boolean(title || description);
+            });
+        return hasMilestones || hasBranches || hasProcessSteps || hasWellFormedItems;
     }
 
     private injectBranding(script: string, theme: Theme): string {
