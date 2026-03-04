@@ -127,8 +127,12 @@ export class WorkerHealthSupervisorService implements OnModuleInit, OnModuleDest
     private commandLooksLikeWorker(commandLine: string): boolean {
         const cmd = String(commandLine || '').toLowerCase();
         return cmd.includes('dist/src/worker/main')
+            || cmd.includes('dist/worker/main')
+            || cmd.includes('dist/worker/main.js')
             || cmd.includes('src/worker/main.ts')
+            || cmd.includes('tools/start-worker-runtime.js')
             || cmd.includes('start:worker:dev')
+            || cmd.includes('start:worker:runtime')
             || cmd.includes('start:worker');
     }
 
