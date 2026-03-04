@@ -51,16 +51,16 @@ This gets you branch migration + IQC separation with minimal break risk.
 
 ### Stage 2 (Later)
 
-- `app-api` service: `npm start`, `DURABLE_QUEUE_ENABLED=false`
-- `app-worker` service: `npm run start:worker:runtime`, `DURABLE_QUEUE_ENABLED=true`
+- `visualization-project` (API/web): `npm run start:runtime`, `WORKER_COUNT=0`
+- `app-worker`: `npm run start:worker:runtime`, `DURABLE_QUEUE_ENABLED=true`, `PROCESS_ROLE=worker`
 - `image-quality-control`
 - PostgreSQL
 
-External object storage is required before this step.
+External object storage is recommended as the next hardening step.
 
 ## 3. Railway Setup Steps (UI)
 
-- In Railway project, set deploy branch to `containerization` (or merged `main` once merged).
+- In Railway project, set deploy branch to `main` (or your active release branch if running a staged cutover).
 - Keep current app service; update start command to:
 
 ```bash
@@ -73,7 +73,7 @@ npm run start:runtime
 - Set IQC service as internal only (no public route needed unless you want direct health checks).
 - Set env vars (below) in each service.
 - Deploy IQC first, then app service.
-- Confirm app service logs show `IQC_URL` reachable and worker tasks complete.
+- Confirm API logs show `app + 0 worker(s)` and worker-service logs show queue claims/completions.
 
 ## 4. Required Environment Variables
 
@@ -113,13 +113,13 @@ npm run start:runtime
 
 ### If/When Split (Stage 2)
 
-- `app-api`: `PROCESS_ROLE=app`, `DURABLE_QUEUE_ENABLED=false`
-- `app-worker`: `PROCESS_ROLE=worker`, `DURABLE_QUEUE_ENABLED=true`, `WORKER_COUNT=3` (or replicas model)
+- `visualization-project` (API): `PROCESS_ROLE=app`, `DURABLE_QUEUE_ENABLED=true`, `WORKER_COUNT=0`
+- `app-worker`: `PROCESS_ROLE=worker`, `DURABLE_QUEUE_ENABLED=true`, `WORKER_COUNT=1` on free tier (or replicas model)
 
 Important: use either:
 
-- 1 worker container with `WORKER_COUNT=3`, or
-- 3 worker replicas with `WORKER_COUNT=1`
+- 1 worker container with `WORKER_COUNT=N`, or
+- N worker replicas with `WORKER_COUNT=1`
 
 Do not multiply both accidentally.
 
@@ -134,7 +134,7 @@ After deploy:
 - Confirm in logs:
   - IQC scoring events appear
   - no `No sourced-image providers configured` unless keys are intentionally empty
-- Confirm worker count matches intended config.
+- Confirm API logs show no local workers (`app + 0 worker(s)`) and worker logs show active claims.
 - Confirm D2 renders with no `D2 executable not found`.
 - Confirm generated assets are viewable from UI.
 
@@ -160,4 +160,5 @@ Additional notes:
 
 - Dockerfile already includes Playwright deps and D2.
 - The `ALLOWED_ORIGINS` WebSocket gate is strict; include exact Railway domain(s) to avoid the auth disconnect you saw before.
+- Runtime startup now includes strict env validation in Railway/production contexts; missing required vars fail fast at process start.
 - If needed, this can be converted into a checked runbook file in `docs/` plus a Railway variable matrix template for service-by-service paste.

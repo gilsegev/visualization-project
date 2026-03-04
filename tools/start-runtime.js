@@ -1,6 +1,7 @@
 const { spawn, spawnSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { assertRuntimeEnv } = require('./runtime-env-validate');
 
 function toBool(v, fallback = false) {
   if (v == null || v === '') return fallback;
@@ -49,6 +50,7 @@ function shutdown(code = 0) {
 
 const durableQueueEnabled = toBool(process.env.DURABLE_QUEUE_ENABLED, true);
 const workerCount = durableQueueEnabled ? toInt(process.env.WORKER_COUNT, 1) : 0;
+assertRuntimeEnv('app');
 
 function ensureLinuxPlaywrightDeps() {
   if (process.platform !== 'linux') return;

@@ -1,4 +1,5 @@
 const http = require('http');
+const { assertRuntimeEnv } = require('../runtime-env-validate');
 
 const PORT = Number(process.env.IQC_PORT || process.env.CLIP_SCORER_PORT || 4310);
 const HOST = process.env.IQC_HOST || process.env.CLIP_SCORER_HOST || '0.0.0.0';
@@ -8,6 +9,10 @@ const OPENROUTER_API_KEY = String(process.env.OPENROUTER_API_KEY || '').trim();
 const OPENROUTER_MODEL = String(
   process.env.IQC_VISION_MODEL || process.env.OPENROUTER_VISION_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001',
 ).trim();
+process.env.IQC_PORT = String(PORT);
+process.env.OPENROUTER_MODEL = OPENROUTER_MODEL;
+process.env.OPENROUTER_VISION_MODEL = String(process.env.OPENROUTER_VISION_MODEL || process.env.IQC_VISION_MODEL || OPENROUTER_MODEL).trim();
+assertRuntimeEnv('iqc');
 
 const DEFAULT_NEGATIVE_LABELS = [
   'an unrelated image',
