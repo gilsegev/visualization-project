@@ -59,7 +59,8 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         this.observability.emitLog('info', `D2 strategy selected for template_type=${taskAny.metadata?.template_type || taskAny.payload?.type || 'unknown'}`, 'D2Strategy', task.id);
 
         const d2Start = performance.now();
-        const d2Script = await this.generateD2Script(task, theme);
+        const d2ScriptRaw = await this.generateD2Script(task, theme);
+        const d2Script = this.sanitizeGeneratedD2Script(d2ScriptRaw, task.id);
         const scriptPath = path.join(absoluteOutputDir, 'diagram.d2');
         const svgPath = path.join(absoluteOutputDir, 'diagram.svg');
         await fs.promises.writeFile(scriptPath, d2Script, 'utf8');
@@ -204,6 +205,49 @@ Constraints:
             ''
         ].join('\n');
         return `${header}\n${script}`;
+    }
+
+    private sanitizeGeneratedD2Script(script: string, taskId: string): string {
+        const lines = String(script || '').split(/\r?\n/);
+        const kept: string[] = [];
+        let strippedCliDirectiveCount = 0;
+        let strippedMalformedEdgeCount = 0;
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+                kept.push(line);
+                continue;
+            }
+
+            // Guard against LLMs emitting CLI flags inside the script body, e.g. "--layout: dagre".
+            if (/^--[a-z0-9_-]+\s*:/.test(trimmed) || /^--[a-z0-9_-]+(\s|=|$)/.test(trimmed)) {
+                strippedCliDirectiveCount += 1;
+                continue;
+            }
+
+            // Drop obviously malformed edge declarations (missing source or target).
+            if (trimmed.includes('->')) {
+                const edgeMatch = trimmed.match(/^(.+?)\s*->\s*(.+)$/);
+                if (!edgeMatch || !edgeMatch[1]?.trim() || !edgeMatch[2]?.trim()) {
+                    strippedMalformedEdgeCount += 1;
+                    continue;
+                }
+            }
+
+            kept.push(line);
+        }
+
+        if (strippedCliDirectiveCount > 0 || strippedMalformedEdgeCount > 0) {
+            this.observability.emitLog(
+                'warn',
+                `Sanitized generated D2 script: removed cli_directives=${strippedCliDirectiveCount}, malformed_edges=${strippedMalformedEdgeCount}`,
+                'D2Strategy',
+                taskId,
+            );
+        }
+
+        return kept.join('\n').trim() + '\n';
     }
 
     private buildDeterministicD2(payload: any, theme: Theme): string {
