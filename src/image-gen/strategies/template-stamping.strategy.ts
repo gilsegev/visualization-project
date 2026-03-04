@@ -945,6 +945,14 @@ ${text}`;
             if (!blueprint.verdict && sourcePayload?.bottomNote) {
                 blueprint.verdict = { title: 'Bottom Note', text: String(sourcePayload.bottomNote) };
             }
+            if (deterministic.truncationNotes.length > 0) {
+                const note = `Alignment note: ${deterministic.truncationNotes.join(' | ')}`;
+                if (!blueprint.verdict) {
+                    blueprint.verdict = { title: 'Bottom Note', text: note };
+                } else {
+                    blueprint.verdict.text = `${String(blueprint.verdict.text || '').trim()} ${note}`.trim();
+                }
+            }
             this.observability.emitLog('info', 'Versus rows built deterministically from split_panel payload for alignment fidelity.', 'StampingStrategy', task.id);
         }
 
@@ -1061,7 +1069,7 @@ ${text}`;
         };
     }
 
-    private buildDeterministicVersusFromPanels(payload: any): { subjects: any[]; items: any[] } | null {
+    private buildDeterministicVersusFromPanels(payload: any): { subjects: any[]; items: any[]; truncationNotes: string[] } | null {
         const rawType = String(payload?.type || '').toLowerCase();
         const panels = Array.isArray(payload?.panels) ? payload.panels : [];
         if (!(rawType.includes('split_panel') || rawType.includes('comparison')) || panels.length < 2) {
@@ -1110,9 +1118,16 @@ ${text}`;
             }
         ];
 
+        const truncationNotes: string[] = [];
+
         const toRows = (metric: string, leftList: string[], rightList: string[]) => {
             const rows: any[] = [];
-            const count = Math.max(leftList.length, rightList.length);
+            const count = Math.min(leftList.length, rightList.length);
+            if (leftList.length !== rightList.length) {
+                truncationNotes.push(
+                    `${metric} used ${count} aligned row(s) (left=${leftList.length}, right=${rightList.length})`,
+                );
+            }
             for (let i = 0; i < count; i += 1) {
                 const lv = cleanText(leftList[i] || '');
                 const rv = cleanText(rightList[i] || '');
@@ -1136,7 +1151,7 @@ ${text}`;
         ];
 
         if (items.length === 0) return null;
-        return { subjects, items };
+        return { subjects, items, truncationNotes };
     }
 
     private async handleSteps(task: ImageTask, blueprint: any, relativeOutputDir: string, theme: Theme, metrics: any): Promise<ImageGenerationResult> {
