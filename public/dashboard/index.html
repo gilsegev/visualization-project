@@ -338,10 +338,19 @@
 
 
 
-                        <!-- Clear Button overlay -->
-                        <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition">
+                        <!-- Log Action Buttons -->
+                        <div class="absolute top-2 right-2 z-10 opacity-0 hover:opacity-100 transition flex items-center gap-1">
+                            <button @click="copyVisibleLogs"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700">
+                                COPY LOG
+                            </button>
                             <button @click="logs = []"
-                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700">CLEAR</button>
+                                class="text-[9px] bg-slate-800 text-slate-400 px-2 py-1 rounded hover:bg-slate-700 border border-slate-700">
+                                CLEAR
+                            </button>
+                        </div>
+                        <div v-if="copyLogsState" class="absolute top-9 right-2 z-10 text-[9px] px-2 py-1 rounded border border-neon/40 bg-black/70 text-neon">
+                            {{ copyLogsState }}
                         </div>
 
                         <div v-if="logMode === 'QUERY LAB' && queryLabHistory.length" class="space-y-1">
@@ -779,6 +788,7 @@
                 const queryLabError = ref('');
                 const queryLabResults = ref([]);
                 const queryLabHistory = ref([]);
+                const copyLogsState = ref('');
                 const liveStats = ref({
                     queue: { pending: 0, completed: 0, failed: 0 },
                     workers: [],
@@ -994,6 +1004,46 @@
                             logContainer.value.scrollTop = logContainer.value.scrollHeight;
                         }
                     });
+                };
+
+                const serializeLogLine = (log) => {
+                    const ts = formatTime(log?.timestamp || Date.now());
+                    const ctx = String(log?.context || 'SYSTEM').toUpperCase();
+                    const message = String(log?.message || '');
+                    return `[${ts}]${ctx}: ${message}`;
+                };
+
+                const copyVisibleLogs = async () => {
+                    let text = '';
+                    if (logMode.value === 'QUERY LAB') {
+                        text = queryLabHistory.value.map((h) =>
+                            `query="${h.query}" | clip avg=${h.clip_avg} max=${h.clip_max} min=${h.clip_min} | vision avg=${h.vision_avg} max=${h.vision_max} min=${h.vision_min}`
+                        ).join('\n');
+                    } else {
+                        text = filteredLogs.value.map(serializeLogLine).join('\n');
+                    }
+
+                    if (!String(text).trim()) {
+                        copyLogsState.value = 'No log text to copy';
+                        setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                        return;
+                    }
+
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyLogsState.value = `Copied ${text.split('\n').length} line(s)`;
+                    } catch (e) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        copyLogsState.value = `Copied ${text.split('\n').length} line(s)`;
+                    }
+                    setTimeout(() => { copyLogsState.value = ''; }, 1500);
                 };
 
                 const applyTaskDelta = (row) => {
@@ -1527,6 +1577,7 @@
                     logMode, selectedAssetFilter, filteredLogs,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
+                    copyLogsState, copyVisibleLogs,
                     handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     formatTime, formatSeconds, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,

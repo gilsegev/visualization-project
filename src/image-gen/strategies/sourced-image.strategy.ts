@@ -41,8 +41,8 @@ export class SourcedImageStrategy extends BaseImageStrategy {
         this.taskTimeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
             ? configuredTimeoutMs
             : 90000;
-        this.disableClip = String(this.configService.get<string>('SOURCED_IMAGE_DISABLE_CLIP') || 'true').toLowerCase() === 'true';
-        this.disableVision = String(this.configService.get<string>('SOURCED_IMAGE_DISABLE_VISION') || 'true').toLowerCase() === 'true';
+        this.disableClip = String(this.configService.get<string>('SOURCED_IMAGE_DISABLE_CLIP') || 'false').toLowerCase() === 'true';
+        this.disableVision = String(this.configService.get<string>('SOURCED_IMAGE_DISABLE_VISION') || 'false').toLowerCase() === 'true';
         const degradedThreshold = Number(this.configService.get<string>('SOURCED_IMAGE_DEGRADED_VISION_THRESHOLD') || 35);
         this.degradedVisionThreshold = Number.isFinite(degradedThreshold)
             ? Math.max(0, Math.min(100, degradedThreshold))
