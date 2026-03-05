@@ -36,6 +36,19 @@ function requireIntRange(env, key, min, max, errors) {
   errors.push(`Expected ${key} to be an integer in [${min}, ${max}]`);
 }
 
+function validateObjectStorage(env, errors) {
+  const provider = String(env.OBJECT_STORE_PROVIDER || '').trim().toLowerCase();
+  if (provider !== 'r2' && provider !== 's3') {
+    errors.push('Expected OBJECT_STORE_PROVIDER to be set to r2 or s3 when DOC_PIPELINE_ENABLED=true');
+    return;
+  }
+  requireNonEmpty(env, 'S3_ENDPOINT', errors);
+  requireNonEmpty(env, 'S3_REGION', errors);
+  requireNonEmpty(env, 'S3_BUCKET', errors);
+  requireNonEmpty(env, 'S3_ACCESS_KEY_ID', errors);
+  requireNonEmpty(env, 'S3_SECRET_ACCESS_KEY', errors);
+}
+
 function validateApp(env, errors, warnings) {
   requireNonEmpty(env, 'DATABASE_URL', errors);
   requireNonEmpty(env, 'INITIAL_ADMIN_KEY', errors);
@@ -54,6 +67,10 @@ function validateApp(env, errors, warnings) {
   const hasSourceProvider = String(env.UNSPLASH_ACCESS_KEY || '').trim() || String(env.PIXABAY_API_KEY || '').trim();
   if (!hasSourceProvider) {
     warnings.push('No sourced-image provider key set (UNSPLASH_ACCESS_KEY or PIXABAY_API_KEY).');
+  }
+
+  if (toBool(env.DOC_PIPELINE_ENABLED, false)) {
+    validateObjectStorage(env, errors);
   }
 }
 
@@ -74,6 +91,10 @@ function validateWorker(env, errors, warnings) {
   const hasSourceProvider = String(env.UNSPLASH_ACCESS_KEY || '').trim() || String(env.PIXABAY_API_KEY || '').trim();
   if (!hasSourceProvider) {
     warnings.push('No sourced-image provider key set (UNSPLASH_ACCESS_KEY or PIXABAY_API_KEY).');
+  }
+
+  if (toBool(env.DOC_PIPELINE_ENABLED, false)) {
+    validateObjectStorage(env, errors);
   }
 }
 
