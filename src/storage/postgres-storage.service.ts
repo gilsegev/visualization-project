@@ -393,6 +393,39 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    async getDocumentJobStatusForUser(jobId: string, userId: number): Promise<{
+        job_id: string;
+        state: string;
+        queue_status: string;
+        attempts: number;
+        max_attempts: number;
+        updated_at: string;
+        doc_version_hash: string;
+    } | null> {
+        if (!this.pool || !jobId || !Number.isFinite(Number(userId))) return null;
+        const rows = await this.queryRows<any>(
+            `SELECT job_id, state, queue_status, attempts, max_attempts, updated_at::text, doc_version_hash
+             FROM document_jobs
+             WHERE job_id = $1 AND user_id = $2
+             LIMIT 1`,
+            [jobId, Number(userId)]
+        );
+        return rows[0] || null;
+    }
+
+    async getDocumentArtifactKeyForUser(jobId: string, userId: number, artifactType: string): Promise<string | null> {
+        if (!this.pool || !jobId || !artifactType || !Number.isFinite(Number(userId))) return null;
+        const rows = await this.queryRows<{ object_key: string }>(
+            `SELECT object_key
+             FROM document_artifacts
+             WHERE job_id = $1 AND user_id = $2 AND artifact_type = $3
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [jobId, Number(userId), artifactType]
+        );
+        return rows[0]?.object_key || null;
+    }
+
     async claimNextQueuedTask(workerId: string, leaseSeconds: number): Promise<QueueTaskRow | null> {
         if (!this.pool) return null;
         const client = await this.pool.connect();

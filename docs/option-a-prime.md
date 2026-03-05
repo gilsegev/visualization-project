@@ -122,7 +122,72 @@ Validation checks performed:
 
 ## Scope Guard (current)
 
-This change set is limited to Phase 2 DB and queue extensions (plus documentation and validation) only.
+This change set is limited to Phase 3 Intake API (zero-proxy ingestion), plus documentation and validation only.
+
+## Phase 3 Implementation: Intake API (Zero-Proxy Ingestion)
+
+This section records implementation of **Phase 3 only**.
+
+## Implemented (Phase 3)
+
+1. New document intake module:
+   - `src/documents/intake/document-intake.module.ts`
+2. New intake controller with guarded endpoints:
+   - `src/documents/intake/document-intake.controller.ts`
+   - `POST /documents/jobs`
+   - `POST /documents/jobs/:jobId/finalize`
+   - `GET /documents/jobs/:jobId/status`
+   - `GET /documents/jobs/:jobId/download-url`
+3. New intake service:
+   - `src/documents/intake/document-intake.service.ts`
+   - Draft job metadata generation
+   - Signed upload URL generation (direct-to-object-store)
+   - Finalize + queue flow
+   - Status and final download URL resolution
+4. Strict payload validation:
+   - `src/documents/intake/document-intake.validation.ts`
+   - Enforces `.docx` extension, required DOCX MIME, and `DOC_MAX_MB`
+   - Enforces `doc_version_hash` as SHA-256 hex
+5. DTO/type file:
+   - `src/documents/intake/document-intake.types.ts`
+6. App wiring:
+   - `src/app.module.ts` imports `DocumentIntakeModule`
+7. Storage read helpers for intake status/download:
+   - `src/storage/postgres-storage.service.ts`
+   - `getDocumentJobStatusForUser(...)`
+   - `getDocumentArtifactKeyForUser(...)`
+
+Zero-proxy guarantee in this phase:
+
+1. API issues signed upload URL.
+2. Client uploads directly to object storage.
+3. API finalize endpoint persists/queues metadata only.
+
+## Validation (Phase 3)
+
+Validation script:
+
+- `tools/validate-document-phase3-intake.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase3-intake.ts
+```
+
+Expected output:
+
+```text
+[phase3-intake-validation] PASS
+```
+
+Validation checks performed:
+
+1. Valid `.docx` payload accepted.
+2. Invalid extension/MIME rejected.
+3. Invalid `doc_version_hash` rejected.
+4. Intake routes exist for create/finalize/status/download.
+5. Signed upload URL flow is used in service layer.
 
 ## Phase 2 Implementation: DB and Queue Extensions
 
