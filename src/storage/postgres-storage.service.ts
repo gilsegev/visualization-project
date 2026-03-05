@@ -393,6 +393,29 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         );
     }
 
+    async upsertDocumentManifestValidation(input: {
+        jobId: string;
+        userId: number;
+        manifest: any;
+        valid: boolean;
+        errors?: string[];
+    }): Promise<void> {
+        if (!this.pool || !input?.jobId || !Number.isFinite(Number(input?.userId))) return;
+        const objectKey = `inline://documents/${input.jobId}/analysis/manifest.json`;
+        await this.upsertDocumentArtifact({
+            jobId: input.jobId,
+            userId: Number(input.userId),
+            artifactType: 'manifest_json',
+            objectKey,
+            metadata: {
+                valid: Boolean(input.valid),
+                errors: Array.isArray(input.errors) ? input.errors : [],
+                manifest_version: input?.manifest?.metadata?.manifest_version || 1,
+                manifest: input.manifest
+            }
+        });
+    }
+
     async getDocumentJobStatusForUser(jobId: string, userId: number): Promise<{
         job_id: string;
         state: string;

@@ -122,7 +122,64 @@ Validation checks performed:
 
 ## Scope Guard (current)
 
-This change set is limited to Phase 4 Analysis and Anchor Detection, plus documentation and validation only.
+This change set is limited to Phase 5 Visual Manifest Planning, plus documentation and validation only.
+
+## Phase 5 Implementation: Visual Manifest Planning
+
+This section records implementation of **Phase 5 only**.
+
+## Implemented (Phase 5)
+
+1. New planning package:
+   - `src/documents/planning/visual-manifest.types.ts`
+   - `src/documents/planning/visual-manifest.schema.ts`
+   - `src/documents/planning/visual-manifest-planner.service.ts`
+   - `src/documents/planning/index.ts`
+2. Manifest planner:
+   - Builds visual manifest from analysis anchors
+   - Maps to current `generateFromManifest`-compatible shape:
+     - `course`
+     - `lessons[].visualizations[]`
+3. Guardrails in planner:
+   - Enforces `maxAssets` (`DOC_MAX_ASSETS` fallback)
+   - Dedupes near-duplicate anchor text via normalized fingerprint
+4. Type mapping heuristics:
+   - `data_viz` for chart/metric/trend-like text
+   - `sourced_image` for scene/photo-like text
+   - default `infographic`
+5. Schema validation:
+   - Zod schema for manifest correctness
+   - Validation result returns `valid + errors[]`
+6. Persistence helper in storage:
+   - `upsertDocumentManifestValidation(...)` in `PostgresStorageService`
+   - Stores manifest + validation metadata as `manifest_json` artifact record
+7. Export wiring:
+   - `src/documents/index.ts` exports planning package
+
+## Validation (Phase 5)
+
+Validation script:
+
+- `tools/validate-document-phase5-planning.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase5-planning.ts
+```
+
+Expected output:
+
+```text
+[phase5-planning-validation] PASS
+```
+
+Validation checks performed:
+
+1. Planner output passes schema validation.
+2. Max-asset cap is enforced.
+3. Duplicate anchor-derived visuals are deduped.
+4. Output shape is compatible with lesson/visualizations manifest routing.
 
 ## Phase 4 Implementation: Analysis and Anchor Detection
 
