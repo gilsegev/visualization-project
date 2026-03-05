@@ -122,7 +122,58 @@ Validation checks performed:
 
 ## Scope Guard (current)
 
-This change set is limited to Phase 3 Intake API (zero-proxy ingestion), plus documentation and validation only.
+This change set is limited to Phase 4 Analysis and Anchor Detection, plus documentation and validation only.
+
+## Phase 4 Implementation: Analysis and Anchor Detection
+
+This section records implementation of **Phase 4 only**.
+
+## Implemented (Phase 4)
+
+1. New analysis package:
+   - `src/documents/analysis/document-analysis.types.ts`
+   - `src/documents/analysis/document-analysis.service.ts`
+   - `src/documents/analysis/index.ts`
+2. Document analysis capabilities:
+   - Plain-text paragraph extraction into stable paragraph nodes
+   - Structural section inference
+   - Static anchor map generation using:
+     - `xml_path_id` (deterministic path id)
+     - `paragraph_hash` (stable content hash)
+3. Deterministic anchor IDs:
+   - `anchor-{index}-{hash_prefix}` derived from paragraph hash and index
+4. Fallback anchor mode:
+   - If low-signal content, fallback anchors at start/mid/end
+5. LLM context-window preparation:
+   - `buildContextWindows(...)`
+   - Bounded windows with configurable radius (default +/- 2048 chars)
+6. Export wiring:
+   - `src/documents/index.ts` now exports the analysis package
+
+## Validation (Phase 4)
+
+Validation script:
+
+- `tools/validate-document-phase4-analysis.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase4-analysis.ts
+```
+
+Expected output:
+
+```text
+[phase4-analysis-validation] PASS
+```
+
+Validation checks performed:
+
+1. Paragraph and section extraction return expected structure.
+2. Static anchor map is deterministic for identical input.
+3. Context windows are generated per anchor and stay within bounds.
+4. Fallback anchor mode is triggered for low-signal content.
 
 ## Phase 3 Implementation: Intake API (Zero-Proxy Ingestion)
 
