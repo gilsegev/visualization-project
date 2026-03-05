@@ -353,9 +353,10 @@ Validation checks performed:
 2. Idempotency and queue indexes are present in schema SQL.
 3. Required Phase 2 queue/data methods exist in `PostgresStorageService`.
 
-## Proposed Next Phase: Document Processing Observability and Logging
+## Phase 6 Implementation: Document Processing Observability and Logging
 
-This phase is observability-first and should be implemented before broad document-processing rollout.
+This phase is observability-first and is now part of the numbered execution sequence immediately after Phase 5.
+All later phases are shifted down by one position.
 
 ### Objectives
 
@@ -364,7 +365,32 @@ This phase is observability-first and should be implemented before broad documen
 3. Expose quality signals (anchor stability, insertion integrity, asset relevance) for fast validation.
 4. Make failure recovery actionable with direct links to logs and artifacts.
 
-### Implementation Plan
+## Implemented (Phase 6)
+
+1. Live stats payload extension (non-breaking):
+   - `src/observability/observability.gateway.ts`
+   - Adds `live_stats.documents` block:
+     - `documents.queue` (`queued|processing|completed|failed`)
+     - `documents.recent_jobs`
+     - `documents.artifact_type_counts`
+2. Storage read APIs for document observability:
+   - `src/storage/postgres-storage.service.ts`
+   - `getDocumentQueueHealthStats()`
+   - `getRecentDocumentJobs(limit)`
+   - `getDocumentArtifactTypeCounts(limit)`
+3. Document intake lifecycle logging:
+   - `src/documents/intake/document-intake.service.ts`
+   - Emits structured logs for:
+     - draft creation
+     - upload URL issuance
+     - job queueing
+     - status reads
+     - download URL issuance
+4. Intake module dependency wiring:
+   - `src/documents/intake/document-intake.module.ts`
+   - Imports `ObservabilityModule` to emit document logs.
+
+### Implementation details (design intent)
 
 #### Step 1: Canonical Event Schema
 
@@ -529,3 +555,58 @@ Validation requirements:
 2. No rollout unless every failed job has forensic report + artifact index.
 3. No rollout unless dashboard live latency and metric freshness are within agreed bounds.
 4. No rollout unless alert tests pass and runbook drilldowns are validated.
+
+## Validation (Phase 6)
+
+Validation script:
+
+- `tools/validate-document-phase6-observability.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-observability.ts
+```
+
+Expected output:
+
+```text
+[phase6-observability-validation] PASS
+```
+
+## How To Use Updated Observability
+
+1. Start app and open existing observability dashboard as usual (no dashboard migration required).
+2. Trigger document flow:
+   - `POST /documents/jobs`
+   - upload directly to signed URL
+   - `POST /documents/jobs/:jobId/finalize`
+3. Watch websocket/live stats payload:
+   - inspect `live_stats.documents.queue` for queue movement
+   - inspect `live_stats.documents.recent_jobs` for per-job state/attempts
+   - inspect `live_stats.documents.artifact_type_counts` for manifest/output artifact trends
+4. Watch system logs stream:
+   - filter by `context=DocumentIntake`
+   - confirm lifecycle events for each job ID
+5. Correlate with API:
+   - `GET /documents/jobs/:jobId/status`
+   - confirm returned state matches `recent_jobs` and system logs.
+
+## How To Validate Quality For Phases 1-5 (using observability-first workflow)
+
+1. Phase 1 (Storage):
+   - Create draft job and confirm `DocumentIntake` log for upload URL issuance.
+   - Verify object key path shape in metadata/logs (`documents/{jobId}/input/source.docx`).
+2. Phase 2 (DB/Queue):
+   - Finalize job and confirm `documents.queue.queued` increments.
+   - Confirm job appears in `documents.recent_jobs` with attempts/max_attempts.
+3. Phase 3 (Intake API):
+   - Validate invalid MIME/size rejects.
+   - Validate successful create/finalize emits lifecycle logs and status is retrievable.
+4. Phase 4 (Analysis/Anchors):
+   - Run `tools/validate-document-phase4-analysis.ts`.
+   - Confirm deterministic anchor IDs and fallback mode behavior in validator output.
+5. Phase 5 (Manifest planning):
+   - Run `tools/validate-document-phase5-planning.ts`.
+   - Review generated sample manifests for relevance/dedupe/type mapping and approve thresholds.
+   - Persist manifest validation results and verify artifact counters include `manifest_json`.

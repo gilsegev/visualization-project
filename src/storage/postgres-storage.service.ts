@@ -104,6 +104,23 @@ export type StrategyTelemetryRow = {
     avg_latency_ms: number;
 };
 
+export type DocumentQueueHealthStats = {
+    queued: number;
+    processing: number;
+    completed: number;
+    failed: number;
+};
+
+export type DocumentJobObsRow = {
+    job_id: string;
+    user_id: number;
+    state: string;
+    queue_status: string;
+    attempts: number;
+    max_attempts: number;
+    updated_at: string;
+};
+
 @Injectable()
 export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PostgresStorageService.name);
@@ -1102,6 +1119,44 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             `SELECT id, created_at::text, level, message, context, task_id, batch_id, event_id, source_role, source_pid, source_worker_id, metadata
              FROM system_logs
              ORDER BY id DESC
+             LIMIT $1`,
+            [cap]
+        );
+    }
+
+    async getDocumentQueueHealthStats(): Promise<DocumentQueueHealthStats> {
+        if (!this.pool) return { queued: 0, processing: 0, completed: 0, failed: 0 };
+        const rows = await this.queryRows<DocumentQueueHealthStats>(
+            `SELECT
+                COUNT(*) FILTER (WHERE queue_status = 'queued')::int AS queued,
+                COUNT(*) FILTER (WHERE queue_status = 'processing')::int AS processing,
+                COUNT(*) FILTER (WHERE queue_status = 'completed')::int AS completed,
+                COUNT(*) FILTER (WHERE queue_status = 'failed')::int AS failed
+             FROM document_jobs`
+        );
+        return rows[0] || { queued: 0, processing: 0, completed: 0, failed: 0 };
+    }
+
+    async getRecentDocumentJobs(limit = 50): Promise<DocumentJobObsRow[]> {
+        if (!this.pool) return [];
+        const cap = Math.max(1, Math.min(200, Number(limit || 50)));
+        return this.queryRows<DocumentJobObsRow>(
+            `SELECT job_id, user_id, state, queue_status, attempts, max_attempts, updated_at::text
+             FROM document_jobs
+             ORDER BY updated_at DESC
+             LIMIT $1`,
+            [cap]
+        );
+    }
+
+    async getDocumentArtifactTypeCounts(limit = 20): Promise<Array<{ artifact_type: string; count: number }>> {
+        if (!this.pool) return [];
+        const cap = Math.max(1, Math.min(100, Number(limit || 20)));
+        return this.queryRows<Array<{ artifact_type: string; count: number }>[number]>(
+            `SELECT artifact_type, COUNT(*)::int AS count
+             FROM document_artifacts
+             GROUP BY artifact_type
+             ORDER BY count DESC
              LIMIT $1`,
             [cap]
         );

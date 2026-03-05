@@ -284,6 +284,11 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         queue: { pending: number; completed: number; failed: number };
         workers: any[];
         database: any;
+        documents?: {
+            queue: { queued: number; processing: number; completed: number; failed: number };
+            recent_jobs: any[];
+            artifact_type_counts: Array<{ artifact_type: string; count: number }>;
+        };
         recent?: { task_deltas?: any[]; logs?: any[] };
         timestamp: string;
     }) {
@@ -297,7 +302,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         if (!force && now - this.lastLiveStatsAt < this.liveStatsMinIntervalMs) return;
         this.lastLiveStatsAt = now;
 
-        const [queue, workers, database, taskDeltas, logDeltas] = await Promise.all([
+        const [queue, workers, database, taskDeltas, logDeltas, docQueue, docJobs, docArtifacts] = await Promise.all([
             this.storage.getQueueHealthStats(),
             this.storage.getWorkerHealthStats(this.workerTimeoutMs),
             this.storage.getDatabaseHealthStats(),
@@ -307,6 +312,9 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             target
                 ? this.storage.getRecentSystemLogs(null, 300)
                 : this.storage.getRecentSystemLogs(this.lastSystemLogId, 300),
+            this.storage.getDocumentQueueHealthStats(),
+            this.storage.getRecentDocumentJobs(50),
+            this.storage.getDocumentArtifactTypeCounts(20),
         ]);
 
         const orderedTaskDeltas = target ? [...taskDeltas].reverse() : taskDeltas;
@@ -317,6 +325,11 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             queue,
             workers,
             database,
+            documents: {
+                queue: docQueue,
+                recent_jobs: docJobs,
+                artifact_type_counts: docArtifacts,
+            },
             recent: { task_deltas: orderedTaskDeltas, logs: orderedLogDeltas },
             timestamp: new Date().toISOString()
         };

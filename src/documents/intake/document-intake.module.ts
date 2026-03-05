@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
 import { StorageModule } from '../../storage/storage.module';
+import { ObservabilityModule } from '../../observability/observability.module';
 import { DocumentIntakeController } from './document-intake.controller';
 import { DocumentIntakeService } from './document-intake.service';
 
 @Module({
-  imports: [AuthModule, StorageModule],
+  imports: [AuthModule, StorageModule, ObservabilityModule],
   controllers: [DocumentIntakeController],
   providers: [DocumentIntakeService]
 })
