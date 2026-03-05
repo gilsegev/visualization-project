@@ -23,6 +23,30 @@ export type QueueTaskRow = {
     details: any;
 };
 
+export type DocumentJobState =
+    | 'queued'
+    | 'analyzing'
+    | 'planning'
+    | 'generating_assets'
+    | 'inserting'
+    | 'packaging'
+    | 'completed'
+    | 'failed';
+
+export type DocumentJobRow = {
+    job_id: string;
+    user_id: number;
+    request_hash: string | null;
+    queue_status: 'queued' | 'processing' | 'completed' | 'failed';
+    state: DocumentJobState;
+    source_object_key: string;
+    doc_version_hash: string;
+    manifest_version: number;
+    attempts: number;
+    max_attempts: number;
+    metadata: any;
+};
+
 export type WorkerHeartbeatStatus = 'ACTIVE' | 'SHUTDOWN' | 'TERMINATED';
 
 export type WorkerHeartbeatRow = {
@@ -187,6 +211,186 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 ]
             );
         }
+    }
+
+    async enqueueDocumentJob(input: {
+        jobId: string;
+        userId: number;
+        requestHash?: string | null;
+        sourceObjectKey: string;
+        docVersionHash: string;
+        metadata?: any;
+        maxAttempts?: number;
+    }): Promise<void> {
+        if (!this.pool || !input?.jobId || !input?.userId) return;
+        await this.query(
+            `INSERT INTO document_jobs (
+                job_id, user_id, request_hash, queue_status, state, source_object_key, doc_version_hash,
+                manifest_version, attempts, max_attempts, available_at, metadata, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, 'queued', 'queued', $4, $5, 1, 0, $6, NOW(), $7::jsonb, NOW(), NOW()
+            )
+            ON CONFLICT (job_id) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                request_hash = COALESCE(EXCLUDED.request_hash, document_jobs.request_hash),
+                source_object_key = EXCLUDED.source_object_key,
+                doc_version_hash = EXCLUDED.doc_version_hash,
+                queue_status = 'queued',
+                state = 'queued',
+                max_attempts = EXCLUDED.max_attempts,
+                available_at = NOW(),
+                lease_owner = NULL,
+                lease_expires_at = NULL,
+                last_heartbeat_at = NULL,
+                metadata = COALESCE(document_jobs.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+                updated_at = NOW()`,
+            [
+                String(input.jobId).trim(),
+                Number(input.userId),
+                input.requestHash ? String(input.requestHash).trim() : null,
+                String(input.sourceObjectKey || '').trim(),
+                String(input.docVersionHash || '').trim(),
+                Math.max(1, Number(input.maxAttempts || 3)),
+                input.metadata ? JSON.stringify(input.metadata) : null
+            ]
+        );
+    }
+
+    async claimNextQueuedDocumentJob(workerId: string, leaseSeconds: number): Promise<DocumentJobRow | null> {
+        if (!this.pool) return null;
+        const client = await this.pool.connect();
+        try {
+            await client.query('BEGIN');
+            const selected = await client.query(
+                `SELECT job_id
+                 FROM document_jobs
+                 WHERE queue_status = 'queued'
+                   AND (available_at IS NULL OR available_at <= NOW())
+                 ORDER BY updated_at ASC
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT 1`
+            );
+            const jobId = selected.rows?.[0]?.job_id;
+            if (!jobId) {
+                await client.query('COMMIT');
+                return null;
+            }
+            const claimed = await client.query(
+                `UPDATE document_jobs
+                 SET queue_status = 'processing',
+                     attempts = COALESCE(attempts, 0) + 1,
+                     lease_owner = $2,
+                     lease_expires_at = NOW() + (($3::text || ' seconds')::interval),
+                     last_heartbeat_at = NOW(),
+                     updated_at = NOW()
+                 WHERE job_id = $1
+                 RETURNING job_id, user_id, request_hash, queue_status, state, source_object_key, doc_version_hash, manifest_version, attempts, max_attempts, metadata`,
+                [jobId, workerId, Math.max(30, leaseSeconds || 120)]
+            );
+            await client.query('COMMIT');
+            return claimed.rows?.[0] || null;
+        } catch (error: any) {
+            await client.query('ROLLBACK');
+            this.logger.warn(`Document queue claim failed: ${error?.message || error}`);
+            return null;
+        } finally {
+            client.release();
+        }
+    }
+
+    async updateDocumentJobState(jobId: string, state: DocumentJobState, metadata?: any): Promise<void> {
+        if (!this.pool || !jobId) return;
+        const isTerminal = state === 'completed' || state === 'failed';
+        await this.query(
+            `UPDATE document_jobs
+             SET state = $2,
+                 queue_status = CASE WHEN $2 = 'completed' THEN 'completed' WHEN $2 = 'failed' THEN 'failed' ELSE queue_status END,
+                 lease_owner = CASE WHEN $2 IN ('completed', 'failed') THEN NULL ELSE lease_owner END,
+                 lease_expires_at = CASE WHEN $2 IN ('completed', 'failed') THEN NULL ELSE lease_expires_at END,
+                 last_heartbeat_at = CASE WHEN $2 IN ('completed', 'failed') THEN NULL ELSE last_heartbeat_at END,
+                 metadata = COALESCE(metadata, '{}'::jsonb) || COALESCE($3::jsonb, '{}'::jsonb),
+                 updated_at = NOW()
+             WHERE job_id = $1`,
+            [jobId, state, metadata ? JSON.stringify(metadata) : null]
+        );
+        if (isTerminal) {
+            await this.query(
+                `UPDATE document_assets
+                 SET updated_at = NOW()
+                 WHERE job_id = $1`,
+                [jobId]
+            );
+        }
+    }
+
+    async upsertDocumentAsset(input: {
+        assetTaskId: string;
+        jobId: string;
+        userId: number;
+        anchorId?: string | null;
+        prompt?: string | null;
+        status?: 'queued' | 'running' | 'completed' | 'failed';
+        objectKey?: string | null;
+        metadata?: any;
+    }): Promise<void> {
+        if (!this.pool || !input?.assetTaskId || !input?.jobId) return;
+        await this.query(
+            `INSERT INTO document_assets (
+                asset_task_id, job_id, user_id, anchor_id, prompt, status, object_key, metadata, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW(), NOW()
+            )
+            ON CONFLICT (asset_task_id) DO UPDATE SET
+                anchor_id = COALESCE(EXCLUDED.anchor_id, document_assets.anchor_id),
+                prompt = COALESCE(EXCLUDED.prompt, document_assets.prompt),
+                status = COALESCE(EXCLUDED.status, document_assets.status),
+                object_key = COALESCE(EXCLUDED.object_key, document_assets.object_key),
+                metadata = COALESCE(document_assets.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+                updated_at = NOW()`,
+            [
+                input.assetTaskId,
+                input.jobId,
+                Number(input.userId || 0),
+                input.anchorId || null,
+                input.prompt || null,
+                input.status || 'queued',
+                input.objectKey || null,
+                input.metadata ? JSON.stringify(input.metadata) : null
+            ]
+        );
+    }
+
+    async upsertDocumentArtifact(input: {
+        jobId: string;
+        userId: number;
+        artifactType: string;
+        objectKey: string;
+        byteSize?: number | null;
+        checksumSha256?: string | null;
+        metadata?: any;
+    }): Promise<void> {
+        if (!this.pool || !input?.jobId || !input?.artifactType || !input?.objectKey) return;
+        await this.query(
+            `INSERT INTO document_artifacts (
+                job_id, user_id, artifact_type, object_key, byte_size, checksum_sha256, metadata, created_at, updated_at
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7::jsonb, NOW(), NOW()
+            )
+            ON CONFLICT (job_id, artifact_type, object_key) DO UPDATE SET
+                byte_size = COALESCE(EXCLUDED.byte_size, document_artifacts.byte_size),
+                checksum_sha256 = COALESCE(EXCLUDED.checksum_sha256, document_artifacts.checksum_sha256),
+                metadata = COALESCE(document_artifacts.metadata, '{}'::jsonb) || COALESCE(EXCLUDED.metadata, '{}'::jsonb),
+                updated_at = NOW()`,
+            [
+                input.jobId,
+                Number(input.userId || 0),
+                String(input.artifactType).trim().slice(0, 80),
+                input.objectKey,
+                Number.isFinite(Number(input.byteSize)) ? Number(input.byteSize) : null,
+                input.checksumSha256 || null,
+                input.metadata ? JSON.stringify(input.metadata) : null
+            ]
+        );
     }
 
     async claimNextQueuedTask(workerId: string, leaseSeconds: number): Promise<QueueTaskRow | null> {
@@ -1152,6 +1356,56 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 CONSTRAINT uq_daily_usage_user_asset_date
                     UNIQUE (user_id, asset_type, usage_date)
             );
+            CREATE TABLE IF NOT EXISTS document_jobs (
+                job_id TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                request_hash TEXT,
+                queue_status TEXT NOT NULL DEFAULT 'queued',
+                state TEXT NOT NULL DEFAULT 'queued',
+                source_object_key TEXT NOT NULL,
+                doc_version_hash TEXT NOT NULL,
+                manifest_version INTEGER NOT NULL DEFAULT 1,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 3,
+                lease_owner TEXT,
+                lease_expires_at TIMESTAMPTZ,
+                last_heartbeat_at TIMESTAMPTZ,
+                available_at TIMESTAMPTZ DEFAULT NOW(),
+                error_log TEXT,
+                metadata JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE TABLE IF NOT EXISTS document_assets (
+                asset_task_id TEXT PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                user_id BIGINT NOT NULL,
+                anchor_id TEXT,
+                prompt TEXT,
+                status TEXT NOT NULL DEFAULT 'queued',
+                object_key TEXT,
+                error_log TEXT,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                max_attempts INTEGER NOT NULL DEFAULT 3,
+                metadata JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT fk_document_assets_job FOREIGN KEY (job_id) REFERENCES document_jobs(job_id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS document_artifacts (
+                id BIGSERIAL PRIMARY KEY,
+                job_id TEXT NOT NULL,
+                user_id BIGINT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                object_key TEXT NOT NULL,
+                byte_size BIGINT,
+                checksum_sha256 TEXT,
+                metadata JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                CONSTRAINT fk_document_artifacts_job FOREIGN KEY (job_id) REFERENCES document_jobs(job_id) ON DELETE CASCADE,
+                CONSTRAINT uq_document_artifacts_key UNIQUE (job_id, artifact_type, object_key)
+            );
             CREATE INDEX IF NOT EXISTS idx_task_runs_batch_id ON task_runs(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_batch_id ON tasks(batch_id);
             CREATE INDEX IF NOT EXISTS idx_tasks_queue_pull ON tasks(queue_status, available_at, updated_at);
@@ -1161,6 +1415,12 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                 ON worker_heartbeats(current_task_id) WHERE current_task_id IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_system_logs_batch_task ON system_logs(batch_id, task_id);
             CREATE INDEX IF NOT EXISTS idx_daily_usage_user_date ON daily_usage(user_id, usage_date);
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_document_jobs_user_request_hash
+                ON document_jobs(user_id, request_hash) WHERE request_hash IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_document_jobs_queue_pull ON document_jobs(queue_status, available_at, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_document_jobs_user_created ON document_jobs(user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_document_assets_job_status ON document_assets(job_id, status, updated_at);
+            CREATE INDEX IF NOT EXISTS idx_document_artifacts_job_created ON document_artifacts(job_id, created_at DESC);
         `);
         await this.query(`
             ALTER TABLE users ADD COLUMN IF NOT EXISTS daily_quota NUMERIC(12,6) DEFAULT 25;
@@ -1183,6 +1443,22 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS source_pid INTEGER;
             ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS source_worker_id TEXT;
             ALTER TABLE system_logs ADD COLUMN IF NOT EXISTS metadata JSONB;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS request_hash TEXT;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS queue_status TEXT DEFAULT 'queued';
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS state TEXT DEFAULT 'queued';
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS source_object_key TEXT;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS doc_version_hash TEXT;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS manifest_version INTEGER DEFAULT 1;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS attempts INTEGER DEFAULT 0;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS max_attempts INTEGER DEFAULT 3;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS lease_owner TEXT;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMPTZ;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS available_at TIMESTAMPTZ DEFAULT NOW();
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS error_log TEXT;
+            ALTER TABLE document_jobs ADD COLUMN IF NOT EXISTS metadata JSONB;
+            ALTER TABLE document_assets ADD COLUMN IF NOT EXISTS metadata JSONB;
+            ALTER TABLE document_artifacts ADD COLUMN IF NOT EXISTS metadata JSONB;
         `);
         await this.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_event_id ON system_logs(event_id);`);
         await this.query(`CREATE INDEX IF NOT EXISTS idx_system_logs_metadata_user_id ON system_logs ((metadata->>'user_id'));`);

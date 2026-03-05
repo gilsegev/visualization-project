@@ -122,7 +122,63 @@ Validation checks performed:
 
 ## Scope Guard (current)
 
-This change set is limited to Phase 1 storage primitives and validation only.
+This change set is limited to Phase 2 DB and queue extensions (plus documentation and validation) only.
+
+## Phase 2 Implementation: DB and Queue Extensions
+
+This section records implementation of **Phase 2 only**.
+
+## Implemented (Phase 2)
+
+1. New document queue/data row types in storage service:
+   - `DocumentJobState`
+   - `DocumentJobRow`
+2. New schema objects in `PostgresStorageService.ensureSchema()`:
+   - `document_jobs`
+   - `document_assets`
+   - `document_artifacts`
+3. Idempotency and lookup indexes:
+   - `ux_document_jobs_user_request_hash` (partial unique on `(user_id, request_hash)`)
+   - `idx_document_jobs_queue_pull`
+   - `idx_document_jobs_user_created`
+   - `idx_document_assets_job_status`
+   - `idx_document_artifacts_job_created`
+4. Queue/storage methods added to `PostgresStorageService`:
+   - `enqueueDocumentJob(...)`
+   - `claimNextQueuedDocumentJob(...)`
+   - `updateDocumentJobState(...)`
+   - `upsertDocumentAsset(...)`
+   - `upsertDocumentArtifact(...)`
+5. Backward-compatible ALTER coverage added:
+   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` for key document columns.
+
+Primary file changed:
+
+- `src/storage/postgres-storage.service.ts`
+
+## Validation (Phase 2)
+
+Validation script:
+
+- `tools/validate-document-phase2-db.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase2-db.ts
+```
+
+Expected output:
+
+```text
+[phase2-db-validation] PASS
+```
+
+Validation checks performed:
+
+1. Document table DDL exists for `document_jobs`, `document_assets`, `document_artifacts`.
+2. Idempotency and queue indexes are present in schema SQL.
+3. Required Phase 2 queue/data methods exist in `PostgresStorageService`.
 
 ## Proposed Next Phase: Document Processing Observability and Logging
 
