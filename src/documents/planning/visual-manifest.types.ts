@@ -1,9 +1,13 @@
 export interface PlannedVisualization {
-  type: 'infographic' | 'sourced_image' | 'data_viz';
+  type: 'infographic' | 'sourced_image' | 'data_viz' | 'flowchart' | 'aesthetic_anchor';
   title: string;
   description: string;
   context: string;
   purpose: string;
+  prompt_template?: string;
+  mermaid_code?: string;
+  mermaid_valid?: boolean;
+  fallback_reason?: string;
 }
 
 export interface PlannedLesson {

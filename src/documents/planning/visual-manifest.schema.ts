@@ -6,13 +6,17 @@ function isNonEmpty(v: any, max = 4000): boolean {
 }
 
 function validateVisualization(v: PlannedVisualization, path: string, errors: string[]): void {
-  if (!['infographic', 'sourced_image', 'data_viz'].includes(String(v?.type || ''))) {
+  if (!['infographic', 'sourced_image', 'data_viz', 'flowchart', 'aesthetic_anchor'].includes(String(v?.type || ''))) {
     errors.push(`${path}.type is invalid`);
   }
   if (!isNonEmpty(v?.title, 300)) errors.push(`${path}.title is invalid`);
   if (!isNonEmpty(v?.description, 4000)) errors.push(`${path}.description is invalid`);
   if (!isNonEmpty(v?.context, 4000)) errors.push(`${path}.context is invalid`);
   if (!isNonEmpty(v?.purpose, 4000)) errors.push(`${path}.purpose is invalid`);
+  if (v?.prompt_template != null && !isNonEmpty(v?.prompt_template, 4000)) errors.push(`${path}.prompt_template is invalid`);
+  if (v?.mermaid_code != null && !isNonEmpty(v?.mermaid_code, 4000)) errors.push(`${path}.mermaid_code is invalid`);
+  if (v?.mermaid_valid != null && typeof v.mermaid_valid !== 'boolean') errors.push(`${path}.mermaid_valid must be boolean`);
+  if (v?.fallback_reason != null && !isNonEmpty(v?.fallback_reason, 1000)) errors.push(`${path}.fallback_reason is invalid`);
 }
 
 export function validateDocumentVisualManifest(manifest: DocumentVisualManifest): ManifestValidationResult {
