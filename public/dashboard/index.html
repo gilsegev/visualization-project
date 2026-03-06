@@ -663,6 +663,35 @@
                         </div>
                     </div>
 
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Active Jobs</div>
+                            <div v-if="!activeDocumentJobs.length" class="text-[10px] text-slate-600 font-mono italic">No active document jobs.</div>
+                            <div v-for="job in activeDocumentJobs" :key="`active-doc-${job.job_id}`"
+                                class="grid grid-cols-12 gap-2 py-1 border-b border-slate-800/60 last:border-b-0 text-[10px] font-mono">
+                                <button class="col-span-4 text-left text-neon underline truncate" @click="selectDocJob(job)">{{ job.job_id }}</button>
+                                <div class="col-span-1 text-slate-300">{{ job.user_id }}</div>
+                                <div class="col-span-2 text-slate-300">{{ job.state }}</div>
+                                <div class="col-span-2 text-slate-400">{{ Math.round(Number(job.elapsed_ms || 0) / 1000) }}s</div>
+                                <div class="col-span-2 text-slate-400 truncate">{{ job.worker_id || '-' }}</div>
+                                <div class="col-span-1 text-warning">{{ job.attempts }}/{{ job.max_attempts }}</div>
+                            </div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Stage Waterfall</div>
+                            <div v-if="!docStageWaterfallRows.length" class="text-[10px] text-slate-600 font-mono italic">No stage timing events for selected job.</div>
+                            <div v-for="row in docStageWaterfallRows" :key="`waterfall-${row.stage}`" class="mb-2">
+                                <div class="flex items-center justify-between text-[10px] font-mono mb-1">
+                                    <span class="text-slate-300 uppercase">{{ row.stage }}</span>
+                                    <span class="text-slate-200">{{ Math.round(row.duration_ms) }}ms</span>
+                                </div>
+                                <div class="w-full h-2 rounded bg-black/30 border border-slate-700 overflow-hidden">
+                                    <div class="h-full bg-neon/70" :style="{ width: `${row.bar_pct}%` }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
                         <div class="xl:col-span-2 bg-surface border border-slate-700 rounded-lg p-4">
                             <div class="text-[10px] text-slate-500 font-mono uppercase mb-3">Pipeline Stages</div>
@@ -687,6 +716,16 @@
                                     <div class="text-[10px] font-mono text-slate-300 mt-1">{{ stage.detail }}</div>
                                 </div>
                             </div>
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Queue Wait (ms)</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ docTimingSummary.queueWaitText }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Planning Duration (ms)</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ docTimingSummary.planningDurationText }}</div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="bg-surface border border-slate-700 rounded-lg p-4">
@@ -699,6 +738,55 @@
                                     class="block text-[10px] text-neon underline break-all mt-1">
                                     open artifact
                                 </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Failures</div>
+                            <div v-if="!docFailureSummary.length" class="text-[10px] text-slate-600 font-mono italic">No failure signals.</div>
+                            <div v-for="row in docFailureSummary" :key="`fail-${row.error_code}`" class="text-[10px] font-mono py-1 border-b border-slate-800/60 last:border-b-0">
+                                <div class="text-danger">{{ row.error_code }} <span class="text-slate-500">x{{ row.count }}</span></div>
+                                <div class="text-slate-400">stage={{ row.stage }} | deploy={{ row.deployment }}</div>
+                            </div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Throughput</div>
+                            <div class="grid grid-cols-3 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Jobs/Hr</div>
+                                    <div class="text-neon text-base font-bold">{{ throughputSummary.jobs_per_hour.toFixed(2) }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Assets/Job</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ throughputSummary.assets_per_job.toFixed(2) }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Success %</div>
+                                    <div class="text-success text-base font-bold">{{ throughputSummary.success_rate_pct.toFixed(1) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Quality</div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Anchor fallback %</div>
+                                    <div class="text-warning text-base font-bold">{{ qualitySummary.anchor_fallback_rate_pct.toFixed(1) }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Insertion fallback %</div>
+                                    <div class="text-warning text-base font-bold">{{ qualitySummary.insertion_fallback_rate_pct.toFixed(1) }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Avg asset quality</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ qualitySummary.avg_asset_quality_score.toFixed(3) }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Corruption/repair %</div>
+                                    <div class="text-danger text-base font-bold">{{ qualitySummary.corruption_repair_rate_pct.toFixed(1) }}</div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -736,7 +824,15 @@
                             </div>
                         </div>
                         <div class="bg-surface border border-slate-700 rounded-lg p-4">
-                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Manifest Artifact</div>
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="text-[10px] text-slate-500 font-mono uppercase">Manifest Artifact</div>
+                                <button
+                                    class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    @click="copyDocManifest"
+                                    :disabled="!docManifestPreview?.manifest">
+                                    COPY MANIFEST
+                                </button>
+                            </div>
                             <div v-if="!docManifestArtifact" class="text-[10px] text-slate-600 font-mono italic">No manifest_json artifact found.</div>
                             <pre v-else class="text-[10px] text-slate-300 font-mono whitespace-pre-wrap break-words max-h-[34vh] overflow-y-auto matrix-scroll">{{ JSON.stringify(docManifestPreview, null, 2) }}</pre>
                         </div>
@@ -748,13 +844,67 @@
                     </div>
 
                     <div class="bg-surface border border-slate-700 rounded-lg p-4">
-                        <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Execution Trace</div>
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase">Artifact Index Links</div>
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                @click="refreshSelectedDocArtifactIndex()"
+                                :disabled="!selectedDocJobId || docArtifactIndexLoading">
+                                {{ docArtifactIndexLoading ? 'LOADING...' : 'REFRESH INDEX' }}
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 text-[10px] font-mono">
+                            <a v-if="docArtifactIndexLinks.source_doc_url" :href="docArtifactIndexLinks.source_doc_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">source doc</a>
+                            <a v-if="docArtifactIndexLinks.backup_doc_url" :href="docArtifactIndexLinks.backup_doc_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">backup doc</a>
+                            <a v-if="docArtifactIndexLinks.failure_report_url" :href="docArtifactIndexLinks.failure_report_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">failure report</a>
+                            <a v-if="docArtifactIndexLinks.final_output_url" :href="docArtifactIndexLinks.final_output_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">final output</a>
+                            <a v-if="docArtifactIndexLinks.manifest_url" :href="docArtifactIndexLinks.manifest_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">manifest</a>
+                            <a v-if="docArtifactIndexLinks.analysis_url" :href="docArtifactIndexLinks.analysis_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">analysis</a>
+                        </div>
+                        <div class="mt-2 text-[10px] text-slate-500 font-mono" v-if="docArtifactIndex?.generated_at">
+                            index generated_at={{ docArtifactIndex.generated_at }}
+                        </div>
+                    </div>
+
+                    <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-2">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase">Execution Trace</div>
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                @click="copyDocExecutionTrace"
+                                :disabled="!visibleDocLogs.length">
+                                COPY EXECUTION TRACE
+                            </button>
+                        </div>
                         <div v-if="!visibleDocLogs.length" class="text-[10px] text-slate-600 font-mono italic">No trace lines yet...</div>
                         <div v-for="(log, idx) in visibleDocLogs" :key="`doc-trace-${idx}`"
                             class="text-[11px] font-mono py-1 border-b border-slate-800/60 last:border-b-0">
                             <span class="text-slate-600">[{{ formatTime(log.timestamp) }}]</span>
                             <span class="ml-1 text-neon">{{ log.context }}:</span>
                             <span class="ml-1 text-slate-200">{{ log.message }}</span>
+                            <div v-if="log.context === 'DocumentLLM' && log.metadata" class="mt-1 ml-5 text-[10px] font-mono space-y-1">
+                                <div class="text-slate-400">
+                                    model=<span class="text-slate-200">{{ log.metadata.model || '-' }}</span>
+                                    <span class="ml-2">tokens_in=<span class="text-slate-200">{{ log.metadata.prompt_tokens ?? '-' }}</span></span>
+                                    <span class="ml-2">tokens_out=<span class="text-slate-200">{{ log.metadata.completion_tokens ?? '-' }}</span></span>
+                                    <span class="ml-2">tokens_total=<span class="text-slate-200">{{ log.metadata.total_tokens ?? '-' }}</span></span>
+                                </div>
+                                <details v-if="log.metadata.system_prompt || log.metadata.user_prompt || log.metadata.raw_response" class="bg-black/20 border border-slate-800 rounded p-1">
+                                    <summary class="cursor-pointer text-slate-400">LLM payload</summary>
+                                    <div v-if="log.metadata.system_prompt" class="mt-1">
+                                        <div class="text-slate-500">system_prompt</div>
+                                        <pre class="text-slate-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto matrix-scroll">{{ log.metadata.system_prompt }}</pre>
+                                    </div>
+                                    <div v-if="log.metadata.user_prompt" class="mt-1">
+                                        <div class="text-slate-500">user_prompt</div>
+                                        <pre class="text-slate-300 whitespace-pre-wrap break-words max-h-48 overflow-y-auto matrix-scroll">{{ log.metadata.user_prompt }}</pre>
+                                    </div>
+                                    <div v-if="log.metadata.raw_response" class="mt-1">
+                                        <div class="text-slate-500">raw_response</div>
+                                        <pre class="text-slate-300 whitespace-pre-wrap break-words max-h-56 overflow-y-auto matrix-scroll">{{ log.metadata.raw_response }}</pre>
+                                    </div>
+                                </details>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1135,6 +1285,16 @@
                 const docJobDownloadLoading = ref(false);
                 const docJobArtifacts = ref([]);
                 const docJobArtifactsLoading = ref(false);
+                const docArtifactIndex = ref(null);
+                const docArtifactIndexLinks = ref({
+                    source_doc_url: null,
+                    backup_doc_url: null,
+                    failure_report_url: null,
+                    final_output_url: null,
+                    manifest_url: null,
+                    analysis_url: null,
+                });
+                const docArtifactIndexLoading = ref(false);
                 const lastDocArtifactsRefreshAt = ref(0);
                 const suppressLiveStats = ref(false);
                 const liveStats = ref({
@@ -1152,6 +1312,20 @@
                             avg_duration_ms: 0,
                             p95_duration_ms: 0,
                             flowchart_fallback_total: 0,
+                            doc_jobs_queued: 0,
+                            doc_jobs_inflight: 0,
+                            doc_assets_inflight: 0,
+                            stage_duration_ms: {},
+                            stage_duration_p50_ms: 0,
+                            stage_duration_p95_ms: 0,
+                            stage_duration_p99_ms: 0,
+                            retry_events_total: 0,
+                            anchor_fallback_total: 0,
+                            insertion_collision_total: 0,
+                            version_hash_mismatch_total: 0,
+                            flowchart_mermaid_invalid_total: 0,
+                            flowchart_mermaid_self_correct_total: 0,
+                            flowchart_mermaid_fallback_total: 0,
                         }
                     }
                 });
@@ -1385,6 +1559,119 @@
                         avg_duration_ms: Number(m.avg_duration_ms || 0),
                         p95_duration_ms: Number(m.p95_duration_ms || 0),
                         flowchart_fallback_total: Number(m.flowchart_fallback_total || 0),
+                        doc_jobs_queued: Number(m.doc_jobs_queued || 0),
+                        doc_jobs_inflight: Number(m.doc_jobs_inflight || 0),
+                        doc_assets_inflight: Number(m.doc_assets_inflight || 0),
+                        stage_duration_ms: (m.stage_duration_ms && typeof m.stage_duration_ms === 'object') ? m.stage_duration_ms : {},
+                        stage_duration_p50_ms: Number(m.stage_duration_p50_ms || 0),
+                        stage_duration_p95_ms: Number(m.stage_duration_p95_ms || 0),
+                        stage_duration_p99_ms: Number(m.stage_duration_p99_ms || 0),
+                        retry_events_total: Number(m.retry_events_total || 0),
+                        anchor_fallback_total: Number(m.anchor_fallback_total || 0),
+                        insertion_collision_total: Number(m.insertion_collision_total || 0),
+                        version_hash_mismatch_total: Number(m.version_hash_mismatch_total || 0),
+                        flowchart_mermaid_invalid_total: Number(m.flowchart_mermaid_invalid_total || 0),
+                        flowchart_mermaid_self_correct_total: Number(m.flowchart_mermaid_self_correct_total || 0),
+                        flowchart_mermaid_fallback_total: Number(m.flowchart_mermaid_fallback_total || 0),
+                    };
+                });
+
+                const activeDocumentJobs = computed(() => {
+                    const now = Date.now();
+                    return (recentDocumentJobs.value || [])
+                        .filter((job) => {
+                            const state = String(job?.state || '').toLowerCase();
+                            return state !== 'completed' && state !== 'failed';
+                        })
+                        .map((job) => {
+                            const id = String(job?.job_id || '').trim();
+                            const lastLog = (logs.value || []).find((log) => String(log?.metadata?.doc_job_id || '').trim() === id);
+                            const workerId = String(lastLog?.metadata?.worker_id || lastLog?.source?.workerId || '').trim() || '-';
+                            const updatedAt = Date.parse(String(job?.updated_at || ''));
+                            const elapsedMs = Number.isFinite(updatedAt) ? Math.max(0, now - updatedAt) : 0;
+                            return {
+                                ...job,
+                                worker_id: workerId,
+                                elapsed_ms: elapsedMs,
+                            };
+                        })
+                        .slice(0, 12);
+                });
+
+                const docStageWaterfallRows = computed(() => {
+                    const selectedId = String(selectedDocJobId.value || '').trim();
+                    if (!selectedId) return [];
+                    const rows = (visibleDocLogs.value || [])
+                        .filter((log) => String(log?.metadata?.doc_job_id || '').trim() === selectedId)
+                        .filter((log) => String(log?.metadata?.event_type || '') === 'stage_completed')
+                        .map((log) => ({
+                            stage: String(log?.metadata?.stage || '').trim(),
+                            duration_ms: Number(log?.metadata?.duration_ms || 0),
+                        }))
+                        .filter((row) => row.stage && Number.isFinite(row.duration_ms) && row.duration_ms >= 0);
+                    const maxMs = Math.max(1, ...rows.map((r) => r.duration_ms));
+                    return rows.map((row) => ({
+                        ...row,
+                        bar_pct: Math.max(4, Math.round((row.duration_ms / maxMs) * 100)),
+                    }));
+                });
+
+                const docFailureSummary = computed(() => {
+                    const source = (logs.value || []).filter((log) => {
+                        const docId = String(log?.metadata?.doc_job_id || '').trim();
+                        return !!docId && (log?.level === 'error' || String(log?.metadata?.event_type || '') === 'stage_failed');
+                    });
+                    const byCode = {};
+                    for (const log of source) {
+                        const code = String(log?.metadata?.error_code || 'unknown').trim() || 'unknown';
+                        const stage = String(log?.metadata?.stage || '-').trim() || '-';
+                        const deployment = String(log?.metadata?.deployment_id || '-').trim() || '-';
+                        if (!byCode[code]) byCode[code] = { error_code: code, count: 0, stage, deployment };
+                        byCode[code].count += 1;
+                        byCode[code].stage = stage || byCode[code].stage;
+                        byCode[code].deployment = deployment || byCode[code].deployment;
+                    }
+                    return Object.values(byCode).sort((a, b) => Number(b.count) - Number(a.count)).slice(0, 8);
+                });
+
+                const throughputSummary = computed(() => {
+                    const completed = Number(documentObsMetrics.value.completed_total || 0);
+                    const failed = Number(documentObsMetrics.value.failed_total || 0);
+                    const total = completed + failed;
+                    const successRatePct = total > 0 ? (completed / total) * 100 : 0;
+                    const recent = (recentDocumentJobs.value || []).map((j) => Date.parse(String(j?.updated_at || ''))).filter((v) => Number.isFinite(v));
+                    const spanMs = recent.length > 1 ? Math.max(1, Math.max(...recent) - Math.min(...recent)) : 3600000;
+                    const jobsPerHour = total > 0 ? (total * 3600000) / spanMs : 0;
+                    const totalArtifacts = (documentArtifactTypeCounts.value || []).reduce((sum, item) => sum + Number(item?.count || 0), 0);
+                    const assetsPerJob = completed > 0 ? totalArtifacts / completed : 0;
+                    return {
+                        jobs_per_hour: jobsPerHour,
+                        assets_per_job: assetsPerJob,
+                        success_rate_pct: successRatePct,
+                    };
+                });
+
+                const qualitySummary = computed(() => {
+                    const completed = Math.max(1, Number(documentObsMetrics.value.completed_total || 0));
+                    const anchorFallbackRate = (Number(documentObsMetrics.value.anchor_fallback_total || 0) / completed) * 100;
+                    const insertionFallbackRate = (Number(documentObsMetrics.value.insertion_collision_total || 0) / completed) * 100;
+                    const qualityScores = (logs.value || [])
+                        .map((log) => Number(log?.metadata?.quality_score ?? log?.metadata?.clip_score ?? NaN))
+                        .filter((score) => Number.isFinite(score));
+                    const avgAssetQuality = qualityScores.length
+                        ? qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length
+                        : 0;
+                    const repairSignals = (logs.value || []).filter((log) => {
+                        const code = String(log?.metadata?.error_code || '').toLowerCase();
+                        const msg = String(log?.message || '').toLowerCase();
+                        return code.includes('corruption') || code.includes('repair') || msg.includes('corruption') || msg.includes('repair prompt');
+                    }).length;
+                    const repairRate = (repairSignals / completed) * 100;
+                    return {
+                        anchor_fallback_rate_pct: anchorFallbackRate,
+                        insertion_fallback_rate_pct: insertionFallbackRate,
+                        avg_asset_quality_score: avgAssetQuality,
+                        corruption_repair_rate_pct: repairRate,
                     };
                 });
 
@@ -1404,16 +1691,24 @@
 
                 const visibleDocLogs = computed(() => {
                     const selectedId = String(selectedDocJobId.value || '').trim();
-                    const docLogs = (logs.value || []).filter((log) => {
+                    const baseDocLogs = (logs.value || []).filter((log) => {
                         const ctx = String(log?.context || '').toLowerCase();
                         const msg = String(log?.message || '');
                         const docId = String(log?.metadata?.doc_job_id || '').trim();
                         const looksDoc = ctx.includes('document') || ctx.includes('doc') || msg.toLowerCase().includes('document');
-                        if (!looksDoc && !docId) return false;
-                        if (!selectedId) return true;
-                        return docId === selectedId || msg.includes(selectedId);
+                        return looksDoc || !!docId;
                     });
-                    return docLogs.slice(-80).reverse();
+
+                    const scoped = !selectedId
+                        ? baseDocLogs
+                        : baseDocLogs.filter((log) => {
+                            const msg = String(log?.message || '');
+                            const docId = String(log?.metadata?.doc_job_id || '').trim();
+                            return docId === selectedId || msg.includes(selectedId);
+                        });
+
+                    const workingSet = scoped.length ? scoped : baseDocLogs;
+                    return workingSet.slice(-200).reverse();
                 });
 
                 const docPipelineStages = computed(() => {
@@ -1442,6 +1737,66 @@
                     });
                 });
 
+                const docTimingSummary = computed(() => {
+                    const selectedId = String(selectedDocJobId.value || '').trim();
+                    if (!selectedId) {
+                        return {
+                            queueWaitMs: null,
+                            planningDurationMs: null,
+                            queueWaitText: '-',
+                            planningDurationText: '-',
+                        };
+                    }
+                    const rows = (logs.value || []).filter((log) => {
+                        const msg = String(log?.message || '');
+                        const docId = String(log?.metadata?.doc_job_id || '').trim();
+                        return docId === selectedId || msg.includes(selectedId);
+                    });
+                    const toMs = (row) => {
+                        const ts = Number(row?.timestamp || 0);
+                        return Number.isFinite(ts) && ts > 0 ? ts : null;
+                    };
+
+                    const queuedAt = rows.find((row) => {
+                        const ctx = String(row?.context || '').toLowerCase();
+                        const msg = String(row?.message || '').toLowerCase();
+                        return ctx.includes('documentintake') && msg.includes('document job queued');
+                    });
+                    const claimedAt = rows.find((row) => {
+                        const ctx = String(row?.context || '').toLowerCase();
+                        const msg = String(row?.message || '').toLowerCase();
+                        return ctx.includes('documentworker') && msg.includes('worker claimed');
+                    });
+                    const planningStartAt = rows.find((row) => {
+                        const msg = String(row?.message || '').toLowerCase();
+                        return msg.includes('stage started: planning') || msg.includes('llm planning call started');
+                    });
+                    const planningDoneAt = rows.find((row) => {
+                        const msg = String(row?.message || '').toLowerCase();
+                        return msg.includes('stage completed: planning') || msg.includes('llm planning call completed');
+                    });
+
+                    const queueWaitMsRaw = (() => {
+                        const q = toMs(queuedAt);
+                        const c = toMs(claimedAt);
+                        if (q === null || c === null || c < q) return null;
+                        return c - q;
+                    })();
+                    const planningDurationMsRaw = (() => {
+                        const s = toMs(planningStartAt);
+                        const e = toMs(planningDoneAt);
+                        if (s === null || e === null || e < s) return null;
+                        return e - s;
+                    })();
+
+                    return {
+                        queueWaitMs: queueWaitMsRaw,
+                        planningDurationMs: planningDurationMsRaw,
+                        queueWaitText: queueWaitMsRaw === null ? '-' : String(Math.round(queueWaitMsRaw)),
+                        planningDurationText: planningDurationMsRaw === null ? '-' : String(Math.round(planningDurationMsRaw)),
+                    };
+                });
+
                 const docArtifactUrls = computed(() => {
                     const urls = [];
                     for (const log of visibleDocLogs.value) {
@@ -1455,25 +1810,69 @@
                 });
 
                 const docManifestArtifact = computed(() => {
-                    return (docJobArtifacts.value || []).find((a) => String(a?.artifact_type || '') === 'manifest_json') || null;
+                    return (docJobArtifacts.value || []).find((a) => {
+                        const t = String(a?.artifact_type || a?.artifactType || '').trim().toLowerCase();
+                        const k = String(a?.object_key || a?.objectKey || '').trim().toLowerCase();
+                        return t === 'manifest_json'
+                            || t.includes('manifest')
+                            || k.endsWith('/manifest.json')
+                            || k.includes('manifest.json');
+                    }) || null;
                 });
 
                 const docAnalysisArtifact = computed(() => {
-                    return (docJobArtifacts.value || []).find((a) => String(a?.artifact_type || '') === 'analysis_json') || null;
+                    return (docJobArtifacts.value || []).find((a) => {
+                        const t = String(a?.artifact_type || a?.artifactType || '').trim().toLowerCase();
+                        const k = String(a?.object_key || a?.objectKey || '').trim().toLowerCase();
+                        return t === 'analysis_json'
+                            || t.includes('analysis')
+                            || k.endsWith('/analysis.json')
+                            || k.includes('analysis.json');
+                    }) || null;
                 });
 
+                const normalizeArtifactMetadata = (raw) => {
+                    if (raw === null || raw === undefined) return {};
+                    if (typeof raw === 'string') {
+                        const text = raw.trim();
+                        if (!text) return {};
+                        try {
+                            const parsed = JSON.parse(text);
+                            return parsed && typeof parsed === 'object' ? parsed : {};
+                        } catch {
+                            return { raw_text: text };
+                        }
+                    }
+                    return typeof raw === 'object' ? raw : {};
+                };
+
                 const docManifestPreview = computed(() => {
-                    const metadata = docManifestArtifact.value?.metadata || {};
+                    const metadata = normalizeArtifactMetadata(docManifestArtifact.value?.metadata);
+                    let effectiveManifest = metadata?.manifest ?? metadata ?? null;
+                    if (
+                        effectiveManifest
+                        && typeof effectiveManifest === 'object'
+                        && effectiveManifest.manifest
+                        && !effectiveManifest.course
+                    ) {
+                        effectiveManifest = effectiveManifest.manifest;
+                    }
+                    const nested = normalizeArtifactMetadata(metadata?.manifest);
+                    const effectiveValid = metadata?.valid ?? nested?.valid;
+                    const effectiveErrors = Array.isArray(metadata?.errors)
+                        ? metadata.errors
+                        : (Array.isArray(nested?.errors) ? nested.errors : []);
+                    const effectiveVersion = metadata?.manifest_version ?? nested?.manifest_version ?? effectiveManifest?.metadata?.manifest_version ?? 1;
                     return {
-                        valid: metadata?.valid,
-                        errors: metadata?.errors || [],
-                        manifest_version: metadata?.manifest_version,
-                        manifest: metadata?.manifest || null
+                        valid: Boolean(effectiveValid),
+                        errors: effectiveErrors,
+                        manifest_version: effectiveVersion,
+                        manifest: effectiveManifest
                     };
                 });
 
                 const docAnalysisPreview = computed(() => {
-                    const metadata = docAnalysisArtifact.value?.metadata || {};
+                    const metadata = normalizeArtifactMetadata(docAnalysisArtifact.value?.metadata);
                     const anchors = Array.isArray(metadata?.anchors) ? metadata.anchors : [];
                     const sections = Array.isArray(metadata?.sections) ? metadata.sections : [];
                     const paragraphs = Array.isArray(metadata?.paragraphs) ? metadata.paragraphs : [];
@@ -1637,6 +2036,85 @@
                     setTimeout(() => { copyLogsState.value = ''; }, 1500);
                 };
 
+                const serializeDocLogLine = (log) => {
+                    const ts = formatTime(log?.timestamp || Date.now());
+                    const ctx = String(log?.context || 'Document').trim();
+                    const msg = String(log?.message || '').trim();
+                    const meta = log?.metadata || {};
+                    const detail = [];
+                    if (meta?.model) detail.push(`model=${meta.model}`);
+                    if (meta?.prompt_tokens !== null && meta?.prompt_tokens !== undefined) detail.push(`tokens_in=${meta.prompt_tokens}`);
+                    if (meta?.completion_tokens !== null && meta?.completion_tokens !== undefined) detail.push(`tokens_out=${meta.completion_tokens}`);
+                    if (meta?.total_tokens !== null && meta?.total_tokens !== undefined) detail.push(`tokens_total=${meta.total_tokens}`);
+                    if (meta?.error_code) detail.push(`error_code=${meta.error_code}`);
+                    if (meta?.error_message) detail.push(`error_message=${meta.error_message}`);
+                    return `[${ts}]${ctx}: ${msg}${detail.length ? ` | ${detail.join(' ')}` : ''}`;
+                };
+
+                const serializeDocLogPayload = (log) => {
+                    const meta = log?.metadata || {};
+                    const blocks = [];
+                    if (meta?.system_prompt) blocks.push(`system_prompt:\n${String(meta.system_prompt)}`);
+                    if (meta?.user_prompt) blocks.push(`user_prompt:\n${String(meta.user_prompt)}`);
+                    if (meta?.raw_response) blocks.push(`raw_response:\n${String(meta.raw_response)}`);
+                    if (meta?.cleaned_response) blocks.push(`cleaned_response:\n${String(meta.cleaned_response)}`);
+                    return blocks.join('\n\n');
+                };
+
+                const copyDocExecutionTrace = async () => {
+                    const chunks = visibleDocLogs.value.map((log) => {
+                        const header = serializeDocLogLine(log);
+                        const payload = serializeDocLogPayload(log);
+                        return payload ? `${header}\n${payload}` : header;
+                    });
+                    const text = chunks.join('\n\n');
+                    if (!String(text).trim()) {
+                        copyLogsState.value = 'No execution trace to copy';
+                        setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                        return;
+                    }
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyLogsState.value = `Copied execution trace (${chunks.length} event(s))`;
+                    } catch (e) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        copyLogsState.value = `Copied execution trace (${chunks.length} event(s))`;
+                    }
+                    setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                };
+
+                const copyDocManifest = async () => {
+                    const manifest = docManifestPreview.value?.manifest || null;
+                    if (!manifest) {
+                        copyLogsState.value = 'No manifest to copy';
+                        setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                        return;
+                    }
+                    const text = JSON.stringify(docManifestPreview.value, null, 2);
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyLogsState.value = 'Copied manifest JSON';
+                    } catch (e) {
+                        const ta = document.createElement('textarea');
+                        ta.value = text;
+                        ta.style.position = 'fixed';
+                        ta.style.left = '-9999px';
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        copyLogsState.value = 'Copied manifest JSON';
+                    }
+                    setTimeout(() => { copyLogsState.value = ''; }, 1500);
+                };
+
                 const applyTaskDelta = (row) => {
                     if (!row || !row.task_id) return;
                     const mapped = {
@@ -1759,13 +2237,15 @@
 
                 const isActiveBatchEvent = (payload) => {
                     if (!payload || !currentBatchId.value) return true;
+                    const context = String(payload.context || '').toLowerCase();
+                    const docJobId = String(payload?.metadata?.doc_job_id || '').trim();
+                    if (docJobId || context.includes('document') || context.includes('doc')) return true;
                     if (payload.batchId) return payload.batchId === currentBatchId.value;
                     if (payload.taskId) {
                         const task = tasks.value?.[payload.taskId];
                         const taskBatchId = String(task?.batchId || task?.metadata?.batch_id || '').trim();
                         if (taskBatchId) return taskBatchId === currentBatchId.value;
                     }
-                    const context = String(payload.context || '').toLowerCase();
                     return context === 'frontend' || context === 'system' || context === 'auth';
                 };
 
@@ -1832,6 +2312,15 @@
                     selectedDocJobStatus.value = null;
                     docJobDownloadUrl.value = '';
                     docJobArtifacts.value = [];
+                    docArtifactIndex.value = null;
+                    docArtifactIndexLinks.value = {
+                        source_doc_url: null,
+                        backup_doc_url: null,
+                        failure_report_url: null,
+                        final_output_url: null,
+                        manifest_url: null,
+                        analysis_url: null,
+                    };
                     queryLabResults.value = [];
                     queryLabHistory.value = [];
                     queryLabError.value = '';
@@ -1850,6 +2339,20 @@
                                 avg_duration_ms: 0,
                                 p95_duration_ms: 0,
                                 flowchart_fallback_total: 0,
+                                doc_jobs_queued: 0,
+                                doc_jobs_inflight: 0,
+                                doc_assets_inflight: 0,
+                                stage_duration_ms: {},
+                                stage_duration_p50_ms: 0,
+                                stage_duration_p95_ms: 0,
+                                stage_duration_p99_ms: 0,
+                                retry_events_total: 0,
+                                anchor_fallback_total: 0,
+                                insertion_collision_total: 0,
+                                version_hash_mismatch_total: 0,
+                                flowchart_mermaid_invalid_total: 0,
+                                flowchart_mermaid_self_correct_total: 0,
+                                flowchart_mermaid_fallback_total: 0,
                             }
                         }
                     };
@@ -2177,9 +2680,11 @@
                     };
                     docJobDownloadUrl.value = '';
                     void refreshSelectedDocArtifacts();
+                    void refreshSelectedDocArtifactIndex({ silent: true });
                 };
 
-                const refreshSelectedDocJobStatus = async () => {
+                const refreshSelectedDocJobStatus = async (opts = {}) => {
+                    const silent = Boolean(opts?.silent);
                     suppressLiveStats.value = false;
                     const id = String(selectedDocJobId.value || '').trim();
                     if (!id) return;
@@ -2191,13 +2696,13 @@
                             const reason = body?.error
                                 || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
                                 || `HTTP ${res.status}`;
-                            addLog('error', `Doc job status refresh failed (${id}): ${reason}`, 'DocumentIntake');
+                            if (!silent) addLog('error', `Doc job status refresh failed (${id}): ${reason}`, 'DocumentIntake');
                             return;
                         }
                         selectedDocJobStatus.value = body;
-                        addLog('info', `Doc job status refreshed (${id}) state=${body?.state} queue=${body?.queue_status}`, 'DocumentIntake');
+                        if (!silent) addLog('info', `Doc job status refreshed (${id}) state=${body?.state} queue=${body?.queue_status}`, 'DocumentIntake');
                     } catch (err) {
-                        addLog('error', `Doc job status refresh failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                        if (!silent) addLog('error', `Doc job status refresh failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
                     } finally {
                         docJobStatusLoading.value = false;
                     }
@@ -2227,7 +2732,8 @@
                     }
                 };
 
-                const refreshSelectedDocArtifacts = async () => {
+                const refreshSelectedDocArtifacts = async (opts = {}) => {
+                    const silent = Boolean(opts?.silent);
                     suppressLiveStats.value = false;
                     const id = String(selectedDocJobId.value || '').trim();
                     if (!id) return;
@@ -2239,16 +2745,57 @@
                             const reason = body?.error
                                 || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
                                 || `HTTP ${res.status}`;
-                            addLog('error', `Doc job artifacts failed (${id}): ${reason}`, 'DocumentIntake');
+                            if (!silent) addLog('error', `Doc job artifacts failed (${id}): ${reason}`, 'DocumentIntake');
                             return;
                         }
-                        docJobArtifacts.value = Array.isArray(body?.artifacts) ? body.artifacts : [];
+                        const rawArtifacts = Array.isArray(body?.artifacts) ? body.artifacts : [];
+                        docJobArtifacts.value = rawArtifacts.map((row) => ({
+                            ...row,
+                            artifact_type: String(row?.artifact_type || row?.artifactType || '').trim(),
+                            object_key: String(row?.object_key || row?.objectKey || '').trim(),
+                        }));
                         lastDocArtifactsRefreshAt.value = Date.now();
-                        addLog('info', `Doc job artifacts loaded (${id}) count=${docJobArtifacts.value.length}`, 'DocumentIntake');
+                        if (!silent) {
+                            const types = docJobArtifacts.value.map((a) => String(a?.artifact_type || '')).filter(Boolean).join(',');
+                            addLog('info', `Doc job artifacts loaded (${id}) count=${docJobArtifacts.value.length} types=${types || '-'}`, 'DocumentIntake');
+                        }
                     } catch (err) {
-                        addLog('error', `Doc job artifacts failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                        if (!silent) addLog('error', `Doc job artifacts failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
                     } finally {
                         docJobArtifactsLoading.value = false;
+                    }
+                };
+
+                const refreshSelectedDocArtifactIndex = async (opts = {}) => {
+                    const silent = Boolean(opts?.silent);
+                    suppressLiveStats.value = false;
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return;
+                    docArtifactIndexLoading.value = true;
+                    try {
+                        const res = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(id)}/artifact-index`, { method: 'GET' });
+                        const body = await res.json();
+                        if (!res.ok) {
+                            const reason = body?.error
+                                || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
+                                || `HTTP ${res.status}`;
+                            if (!silent) addLog('error', `Doc artifact index failed (${id}): ${reason}`, 'DocumentIntake');
+                            return;
+                        }
+                        docArtifactIndex.value = body?.index || null;
+                        docArtifactIndexLinks.value = body?.links || {
+                            source_doc_url: null,
+                            backup_doc_url: null,
+                            failure_report_url: null,
+                            final_output_url: null,
+                            manifest_url: null,
+                            analysis_url: null,
+                        };
+                        if (!silent) addLog('info', `Doc artifact index loaded (${id})`, 'DocumentIntake');
+                    } catch (err) {
+                        if (!silent) addLog('error', `Doc artifact index failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                    } finally {
+                        docArtifactIndexLoading.value = false;
                     }
                 };
 
@@ -2379,6 +2926,20 @@
                                     avg_duration_ms: 0,
                                     p95_duration_ms: 0,
                                     flowchart_fallback_total: 0,
+                                    doc_jobs_queued: 0,
+                                    doc_jobs_inflight: 0,
+                                    doc_assets_inflight: 0,
+                                    stage_duration_ms: {},
+                                    stage_duration_p50_ms: 0,
+                                    stage_duration_p95_ms: 0,
+                                    stage_duration_p99_ms: 0,
+                                    retry_events_total: 0,
+                                    anchor_fallback_total: 0,
+                                    insertion_collision_total: 0,
+                                    version_hash_mismatch_total: 0,
+                                    flowchart_mermaid_invalid_total: 0,
+                                    flowchart_mermaid_self_correct_total: 0,
+                                    flowchart_mermaid_fallback_total: 0,
                                 }
                             },
                             timestamp: data?.timestamp || null
@@ -2409,12 +2970,19 @@
 
                         if (canProcessBatchDeltas) {
                             for (const delta of taskDeltas) applyTaskDelta(delta);
-                            for (const delta of logDeltas) applyLogDelta(delta);
-                            if (logContainer.value) {
-                                const el = logContainer.value;
-                                const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
-                                if (scrollPos < 10) el.scrollTop = el.scrollHeight;
+                        }
+                        for (const delta of logDeltas) {
+                            const ctx = String(delta?.context || '').toLowerCase();
+                            const docJobId = String(delta?.metadata?.doc_job_id || '').trim();
+                            if (!canProcessBatchDeltas && !(docJobId || ctx.includes('document') || ctx.includes('doc'))) {
+                                continue;
                             }
+                            applyLogDelta(delta);
+                        }
+                        if (logContainer.value) {
+                            const el = logContainer.value;
+                            const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
+                            if (scrollPos < 10) el.scrollTop = el.scrollHeight;
                         }
                         const selectedId = String(selectedDocJobId.value || '').trim();
                         if (selectedId) {
@@ -2429,8 +2997,12 @@
                                     updated_at: latest?.updated_at || ''
                                 };
                                 const now = Date.now();
-                                if (!docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
-                                    void refreshSelectedDocArtifacts();
+                                const state = String(latest?.state || '').toLowerCase();
+                                const queue = String(latest?.queue_status || '').toLowerCase();
+                                const isTerminal = state === 'completed' || state === 'failed' || queue === 'completed' || queue === 'failed';
+                                if (!isTerminal && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
+                                    void refreshSelectedDocArtifacts({ silent: true });
+                                    void refreshSelectedDocArtifactIndex({ silent: true });
                                 }
                             }
                         } else if (logMode.value === 'DOC JOBS') {
@@ -2453,6 +3025,11 @@
                     recentDocumentJobs,
                     documentArtifactTypeCounts,
                     documentObsMetrics,
+                    activeDocumentJobs,
+                    docStageWaterfallRows,
+                    docFailureSummary,
+                    throughputSummary,
+                    qualitySummary,
                     liveStats,
                     strategyTelemetryRows,
                     selectedAssetTask, batchStylingGuidance,
@@ -2462,16 +3039,21 @@
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
                     copyLogsState, copyVisibleLogs,
+                    copyDocExecutionTrace, copyDocManifest,
                     selectedDocJobId,
                     selectedDocJob,
                     selectedDocJobStatus,
                     docJobDownloadUrl,
                     visibleDocLogs,
                     docPipelineStages,
+                    docTimingSummary,
                     docArtifactUrls,
                     assetGalleryTasks,
                     docJobArtifacts,
                     docJobArtifactsLoading,
+                    docArtifactIndex,
+                    docArtifactIndexLinks,
+                    docArtifactIndexLoading,
                     docManifestArtifact,
                     docAnalysisArtifact,
                     docManifestPreview,
@@ -2482,6 +3064,7 @@
                     selectDocJob,
                     refreshSelectedDocJobStatus,
                     refreshSelectedDocArtifacts,
+                    refreshSelectedDocArtifactIndex,
                     fetchSelectedDocJobDownloadUrl,
                     openSelectedDocJobDownloadUrl,
                     handleDrop: (e) => {

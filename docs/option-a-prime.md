@@ -8,7 +8,7 @@
 4. Phase 3: Intake API (Zero-Proxy Ingestion) (`implemented`)
 5. Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton) (`implemented baseline; needs deeper deterministic parser upgrades`)
 6. Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped) (`implemented baseline; needs intent-router/context-window upgrades`)
-7. Phase 6: Document Processing Observability and Logging (`implemented baseline; needs completion against doc-job artifact/quality visibility goals`)
+7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-4 implemented`)
 
 ## Scope and Progress Notes
 
@@ -547,6 +547,8 @@ Expected output:
 
 #### Step 4: Live Views (Operator Dashboard)
 
+Status: `implemented`
+
 1. Add live "Document Jobs" view:
    - active jobs table with `job_id`, user, stage, elapsed time, worker, retries
 2. Add stage waterfall panel:
@@ -565,6 +567,22 @@ Validation requirements:
 1. New jobs appear in live view within acceptable latency.
 2. Stage changes stream in real time.
 3. Dashboard links open corresponding logs and artifacts.
+
+Validation script:
+
+- `tools/validate-document-phase6-step4-live-views.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step4-live-views.ts
+```
+
+Expected output:
+
+```text
+[phase6-step4-live-views-validation] PASS
+```
 
 #### Step 5: Quality Scorecards per Job
 
