@@ -5,7 +5,8 @@ function assert(condition: boolean, message: string): void {
   if (!condition) throw new Error(message);
 }
 
-function run(): void {
+async function run(): Promise<void> {
+  process.env.DOC_PLANNING_USE_LLM = 'false';
   const analysis = new DocumentAnalysisService().analyzeFromPlainText([
     'FISHING BASICS',
     'Beginners can start with simple worm bait and bobber setup for still water.',
@@ -18,7 +19,7 @@ function run(): void {
   ].join('\n\n'));
 
   const planner = new VisualManifestPlannerService();
-  const manifest = planner.buildManifest({
+  const manifest = await planner.buildManifest({
     jobId: 'job-5',
     title: 'Phase 5 Plan',
     paragraphs: analysis.paragraphs,
@@ -34,7 +35,7 @@ function run(): void {
   assert(new Set(viz.map((v) => `${v.type}|${v.description}`)).size === viz.length, 'Dedupe failed');
   assert(viz.every((v) => !!v.prompt_template), 'Prompt templates must be populated');
 
-  const richManifest = planner.buildManifest({
+  const richManifest = await planner.buildManifest({
     jobId: 'job-5b',
     title: 'Phase 5 Plan Rich',
     paragraphs: analysis.paragraphs,
@@ -60,7 +61,75 @@ function run(): void {
     );
   }
 
+  const customManifest = await planner.buildManifest({
+    jobId: 'job-5c',
+    title: 'Context Window Route',
+    paragraphs: [{
+      xml_path_id: '/w:document/w:body/w:p[1]',
+      paragraph_hash: 'p1',
+      text: 'General process overview',
+      index: 0,
+      has_sequence: false,
+      has_data: false,
+      has_entity: false,
+      text_density: 0.4,
+      sequence_group_id: null,
+    }],
+    sections: [{
+      section_id: 'section-1',
+      heading: 'Overview',
+      paragraph_start: 0,
+      paragraph_end: 0,
+    }],
+    anchors: [{
+      anchor_id: 'anchor-1-test',
+      xml_path_id: '/w:document/w:body/w:p[1]',
+      paragraph_hash: 'p1',
+      paragraph_index: 0,
+      confidence: 0.7,
+      reason: 'paragraph_length_signal',
+    }],
+    contextWindows: [{
+      anchor_id: 'anchor-1-test',
+      before_chars: 0,
+      after_chars: 0,
+      content: 'Step 1. Prepare line. Step 2. Cast safely. Step 3. Set hook.',
+      paragraph_start_index: 0,
+      paragraph_end_index: 0,
+      window_mode: 'bounded',
+    }],
+    maxAssets: 1
+  });
+  const customType = customManifest.lessons[0].visualizations[0]?.type;
+  assert(customType === 'flowchart' || customType === 'aesthetic_anchor', 'Context window should drive procedural routing');
+
+  const mixedDoc = new DocumentAnalysisService().analyzeFromPlainText([
+    'ScribeFlow Integration Test Document',
+    'Introduction. The goal of this document is to provide a Gold Standard test case.',
+    'Step 1: Calibrate the CNC machine. Step 2: Secure the workpiece. Step 3: Load the G-code file. Step 4: Verify spindle speed.',
+    'Results. Q1: 12 units per hour. Q2: 20 units per hour. Q3: 18 units per hour.',
+    'Atmospheric Context. The workshop glowed with warm amber light and cedar-scented smoke drifted near the bench.'
+  ].join('\n\n'));
+  const mixedManifest = await planner.buildManifest({
+    jobId: 'job-5d',
+    title: 'Mixed Intent Doc',
+    paragraphs: mixedDoc.paragraphs,
+    sections: mixedDoc.sections,
+    anchors: mixedDoc.anchors,
+    contextWindows: mixedDoc.context_windows,
+    maxAssets: 6
+  });
+  const mixedVisuals = mixedManifest.lessons[0].visualizations;
+  assert(mixedVisuals.some((v) => v.type === 'flowchart' || v.type === 'aesthetic_anchor'), 'Expected procedural route in mixed doc');
+  assert(mixedVisuals.some((v) => v.type === 'data_viz'), 'Expected data route in mixed doc');
+  assert(mixedVisuals.some((v) => v.type === 'sourced_image'), 'Expected atmospheric route in mixed doc');
+  const flowcharts = mixedVisuals.filter((v) => v.type === 'flowchart');
+  assert(flowcharts.length <= 1, 'Overlap dedupe should avoid duplicate flowcharts for one sequence range');
+  for (const f of flowcharts) {
+    assert(String(f.description || '').length <= 500, 'Flowchart description should be capped');
+  }
+
   console.log('[phase5-planning-validation] PASS');
 }
 
-run();
+void run();

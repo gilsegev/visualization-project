@@ -1675,6 +1675,10 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         return this.enabled;
     }
 
+    isOperational(): boolean {
+        return !!this.pool;
+    }
+
     async validateApiKey(apiKey: string): Promise<AuthUser | null> {
         if (!this.pool) return null;
         const hash = this.hashKey(apiKey);

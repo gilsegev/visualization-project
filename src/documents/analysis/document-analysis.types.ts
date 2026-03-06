@@ -40,5 +40,6 @@ export interface DocumentAnalysisResult {
   paragraphs: ParagraphNode[];
   sections: SectionNode[];
   anchors: AnchorCandidate[];
+  context_windows?: ContextWindow[];
   used_fallback_anchor_mode: boolean;
 }

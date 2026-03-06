@@ -185,8 +185,9 @@ export class DocumentAnalysisService {
     const paragraphs = this.extractParagraphsFromPlainText(text);
     const sections = this.buildSections(paragraphs);
     const anchors = this.buildStaticAnchorMap(paragraphs);
+    const contextWindows = this.buildContextWindows(paragraphs, anchors);
     const usedFallback = anchors.some((a) => a.reason === 'fallback_position');
-    return { paragraphs, sections, anchors, used_fallback_anchor_mode: usedFallback };
+    return { paragraphs, sections, anchors, context_windows: contextWindows, used_fallback_anchor_mode: usedFallback };
   }
 
   private assignSequenceGroups(paragraphs: ParagraphNode[]): void {

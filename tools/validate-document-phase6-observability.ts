@@ -23,6 +23,13 @@ function run(): void {
   assert(includes('src/storage/postgres-storage.service.ts', 'async getDocumentObservabilityMetrics('), 'document metrics method missing');
   assert(includes('src/documents/intake/document-intake.service.ts', "context: 'DocumentIntake'") || includes('src/documents/intake/document-intake.service.ts', "'DocumentIntake'"), 'document intake logs missing');
   assert(includes('src/documents/intake/document-intake.service.ts', 'emitDocumentEvent'), 'document intake canonical events missing');
+  assert(includes('src/worker/document-queue.worker.service.ts', 'extractPlainText(sourceBytes)'), 'doc worker must extract text from DOCX bytes');
+  assert(includes('src/worker/document-queue.worker.service.ts', 'contextWindows: analysisResult.context_windows'), 'doc worker must pass context windows to planner');
+  assert(includes('src/worker/document-queue.worker.service.ts', "LLM planning call started job="), 'doc worker must emit LLM planning start log');
+  assert(includes('src/worker/document-queue.worker.service.ts', "LLM planning call completed job="), 'doc worker must emit LLM planning completion log');
+  assert(includes('src/worker/document-queue.worker.service.ts', "context: 'DocumentLLM'") || includes('src/worker/document-queue.worker.service.ts', "'DocumentLLM'"), 'doc worker LLM logs must use DocumentLLM context');
+  assert(includes('src/worker/document-queue.worker.service.ts', "doc_job_id: jobId"), 'doc worker LLM logs must carry doc_job_id metadata');
+  assert(!includes('src/worker/document-queue.worker.service.ts', "analyzeFromPlainText(fileName.replace(/\\.docx$/i, ''))"), 'doc worker must not analyze filename as document text');
   assert(includes('public/dashboard/index.html', 'FLOWCHART FALLBACKS'), 'dashboard flowchart fallback metric card missing');
   assert(includes('public/dashboard/index.html', 'documentObsMetrics'), 'dashboard document metrics binding missing');
   console.log('[phase6-observability-validation] PASS');

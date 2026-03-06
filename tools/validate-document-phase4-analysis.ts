@@ -21,6 +21,8 @@ function run(): void {
   assert(a1.paragraphs.length >= 4, 'Expected paragraph extraction');
   assert(a1.sections.length >= 1, 'Expected section extraction');
   assert(a1.anchors.length >= 1, 'Expected static anchors');
+  assert(Array.isArray(a1.context_windows), 'Expected context windows in analysis output');
+  assert(a1.context_windows!.length === a1.anchors.length, 'Expected one context window per anchor');
   assert(a1.anchors[0].anchor_id === a2.anchors[0].anchor_id, 'Anchor map must be deterministic');
 
   const windows = service.buildContextWindows(a1.paragraphs, a1.anchors, 2048);

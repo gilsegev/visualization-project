@@ -18,11 +18,19 @@ import { TemplateStampingService } from '../image-gen/services/template-stamping
 import { LocalClipService } from '../image-gen/services/local-clip.service';
 import { BrowserService } from '../image-gen/browser.service';
 import { DurableQueueWorkerService } from './durable-queue.worker.service';
+import { DocumentQueueWorkerService } from './document-queue.worker.service';
+import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
+import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
+import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
 
 @Module({
     imports: [ConfigModule.forRoot({ isGlobal: true }), StorageModule, ObservabilityModule],
     providers: [
         DurableQueueWorkerService,
+        DocumentQueueWorkerService,
+        DocumentAnalysisService,
+        DocxTextExtractorService,
+        VisualManifestPlannerService,
         ImageStrategyFactory,
         LocalStorageService,
         VisualConceptStrategy,
