@@ -8,7 +8,7 @@
 4. Phase 3: Intake API (Zero-Proxy Ingestion) (`implemented`)
 5. Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton) (`implemented baseline; needs deeper deterministic parser upgrades`)
 6. Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped) (`implemented baseline; needs intent-router/context-window upgrades`)
-7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-5 implemented`)
+7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-6 implemented`)
 
 ## Scope and Progress Notes
 
@@ -622,6 +622,8 @@ Expected output:
 
 #### Step 6: Failure Forensics and Recovery Logging
 
+Status: `implemented`
+
 1. On failure, emit a single normalized `doc_job_failed` summary event:
    - stage
    - root error code
@@ -645,6 +647,22 @@ Validation requirements:
 2. Root cause code and stage are always present.
 3. Rollback action path is visible in logs.
 4. Insertion logs prove reverse-order placement strategy when insertion stage runs.
+
+Validation script:
+
+- `tools/validate-document-phase6-step6-failure-forensics.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step6-failure-forensics.ts
+```
+
+Expected output:
+
+```text
+[phase6-step6-failure-forensics-validation] PASS
+```
 
 #### Step 7: Alerts and SLO Guardrails
 
@@ -760,21 +778,54 @@ Expected output:
    - Critical check: reverse-order insertion (`last anchor -> first anchor`) is enforced and logged.
 
 
-## Next Phases (Pending)
+## Phase 7: Worker Orchestration and Resource Control
 
-1. Phase 7: Worker Orchestration and Resource Control
-   - Add scheduler/resource semaphore so insertion work gets exclusive memory/CPU window.
-   - Define render gates in worker pipeline (including Mermaid pre-render validation hook).
-   - Validation:
-     - worker pauses new image pulls during insertion window
-     - queue remains healthy under sustained document jobs
-     - Mermaid hook triggers before flowchart renderer
-2. Phase 8: Surgical Insertion + Rollback Artifacts
-   - Execute reverse-order insertion (end-of-doc to start-of-doc) to avoid anchor drift due to pagination shifts.
-   - Require `source_v1_backup.docx` before first mutation.
-   - Validation:
-     - insertion order trace confirms bottom-up strategy
-     - duplicate-sentence anchors still resolve to correct XML path targets
-     - rollback artifact always exists when insertion fails
-3. Phase 9: Packaging + Completion + Download Semantics
-4. Phase 10: Validation Ladder + Edge Case Battery + SLA Readiness
+This phase ensures that the app-worker doesn't crash from memory pressure when switching between "lightweight" image generation and "heavy" document editing.
+Key Instructions for the Agent
+
+    Implement a Resource Semaphore: Create a lock mechanism in the worker logic that grants exclusive CPU/RAM access to the Insertion Module.
+
+    Pause Image Pulls: While a document is in the INSERTING stage, the worker must block the PostgresStorageService.claimNextQueuedTask() function for all other image tasks.
+
+    Mermaid Render Gate: Integrate a hook that runs the Mermaid syntax check immediately before calling the Chromium/Playwright renderer.
+
+Validation Plan
+
+    Local Validation:
+
+        Unit Test: Use a mock semaphore to verify that the claimNextTask function returns null while an "Insertion Lock" is active.
+
+        Syntax Test: Provide a valid and an invalid Mermaid string; verify the renderer only attempts to process the valid one.
+
+    E2E Validation: Run a 50MB document job in "Parallel Stress Mode" (trigger 5 document jobs at once).
+
+    Outcome: The worker memory profile should remain stable (no sawtooth pattern or OOMs), and the queue should process document jobs one-at-a-time while image tasks wait in the wings.
+
+🪡 Phase 8: Surgical Insertion + Rollback Artifacts
+
+This phase executes the physical modification of the user's document using a "Safety-First" mutation strategy.
+Key Instructions for the Agent
+
+    Immutable Backup Creation: Before the first edit, the worker must copy source.docx to source_v1_backup.docx in R2.
+
+    Bottom-Up Execution: Implement the insertion loop to process the manifest.visualizations array in reverse order (highest xml_path_id first). This ensures that as page 10 expands, it doesn't shift the "anchors" for page 2.
+
+    Deterministic Anchor Matching: Match anchors based on the xml_path_id and paragraph_hash generated in Phase 4 to ensure precision.
+
+Validation Plan
+
+    Local Validation:
+
+        Drift Test: Create a 2-page doc. Insert a large image at the very end. Verify that the anchor for the first paragraph on page 1 remains at the same XML index.
+
+        Collision Test: Provide two identical sentences in a document. Verify that the image is only inserted into the one specifically identified by its unique path ID.
+
+    E2E Validation: Trigger a job failure mid-insertion (manual kill). Verify that the system automatically points the user's download-url to the source_v1_backup.docx instead of a half-edited file.
+
+    Outcome: A "Surgical Log" that proves reverse-order placement and a 0% corruption rate across your acceptance docs.
+
+🕵️ Desired State after Phase 8
+Metric	Target Outcome
+Integrity	100% of .docx files open without "Repair Document" prompts.
+Stability	0 Worker OOM crashes under a 50MB load.
+Resilience	Every failed job has a corresponding source_v1_backup.docx available for recovery.

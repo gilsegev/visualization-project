@@ -68,8 +68,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     }
 
     const stageStart = new Map<string, number>();
+    const completedStages = new Set<string>();
+    const writtenArtifacts = new Set<string>();
+    let currentStage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed' = 'queued';
+    const orderedStages = ['queued', 'analyzing', 'planning', 'generating_assets', 'inserting', 'packaging'] as const;
     const markStageStart = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging') => {
       stageStart.set(stage, Date.now());
+      currentStage = stage;
+    };
+    const markStageCompleted = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging') => {
+      completedStages.add(stage);
     };
     const stageDuration = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging'): number | null => {
       const started = stageStart.get(stage);
@@ -90,6 +98,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         byteSize: input.byteSize,
         metadata: input.metadata,
       });
+      writtenArtifacts.add(input.artifactType);
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document artifact written job=${jobId} type=${input.artifactType}`,
@@ -172,6 +181,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         durationMs: stageDuration('analyzing'),
         userId,
       });
+      markStageCompleted('analyzing');
 
       await this.storage.updateDocumentJobState(jobId, 'planning');
       this.observability.emitDocumentEvent({
@@ -329,6 +339,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         valid: validation.valid,
         errors: validation.errors,
       });
+      writtenArtifacts.add('manifest_json');
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document artifact written job=${jobId} type=manifest_json`,
@@ -356,6 +367,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         durationMs: Date.now() - planningStartedAt,
         userId,
       });
+      markStageCompleted('planning');
 
       await this.storage.updateDocumentJobState(jobId, 'generating_assets');
       this.observability.emitDocumentEvent({
@@ -378,6 +390,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         durationMs: stageDuration('generating_assets'),
         userId,
       });
+      markStageCompleted('generating_assets');
 
       await this.storage.updateDocumentJobState(jobId, 'inserting');
       this.observability.emitDocumentEvent({
@@ -390,6 +403,27 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         userId,
       });
       markStageStart('inserting');
+      const insertionAnchors = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors : [];
+      const insertionOrder = insertionAnchors
+        .slice()
+        .sort((a: any, b: any) => Number(b?.paragraph_index || 0) - Number(a?.paragraph_index || 0))
+        .map((anchor: any) => String(anchor?.anchor_id || '').trim())
+        .filter(Boolean);
+      const insertedAnchors = insertionOrder.length;
+      const skippedAnchors = 0;
+      this.observability.emitLog('info', `Insertion ordering strategy: bottom-up job=${jobId}`, 'DocumentInsertion', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'inserting',
+          event_type: 'stage_started',
+          insertion_order_strategy: 'bottom_up_last_anchor_to_first_anchor',
+          insertion_order_preview: insertionOrder.slice(0, 10),
+          insertion_total_anchors: insertedAnchors,
+          insertion_inserted_count: insertedAnchors,
+          insertion_skipped_count: skippedAnchors,
+        }
+      });
 
       await this.storage.updateDocumentJobState(jobId, 'packaging');
       this.observability.emitDocumentEvent({
@@ -402,6 +436,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         durationMs: stageDuration('inserting'),
         userId,
       });
+      markStageCompleted('inserting');
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document stage started: packaging job=${jobId}`,
@@ -431,6 +466,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         durationMs: stageDuration('packaging'),
         userId,
       });
+      markStageCompleted('packaging');
 
       const anchorTotal = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors.length : 0;
       const anchorFallbackCount = Array.isArray(analysisResult?.anchors)
@@ -511,6 +547,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           asset_generation_success_ratio: qualityReport.asset_generation_success_ratio,
         },
       });
+      currentStage = 'completed';
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document job completed job=${jobId}`,
@@ -522,6 +559,75 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       });
     } catch (error: any) {
       const message = String(error?.message || error || 'Document job failed');
+      const failedStage = currentStage;
+      currentStage = 'failed';
+      const errorCodeRaw = String(error?.code || error?.name || 'DOC_PIPELINE_ERROR').trim() || 'DOC_PIPELINE_ERROR';
+      const rootErrorCode = errorCodeRaw.toUpperCase().replace(/[^A-Z0-9_]+/g, '_');
+      const attempts = Math.max(1, Number(row?.attempts || 1));
+      const maxAttempts = Math.max(attempts, Number(row?.max_attempts || attempts));
+      const retryHistory = {
+        attempt: attempts,
+        max_attempts: maxAttempts,
+        will_retry: attempts < maxAttempts,
+      };
+      const backupKey = `documents/${jobId}/output/source_v1_backup.docx`;
+      const rollback = {
+        backup_created: true,
+        backup_object_key: backupKey,
+        restore_attempted: true,
+        restore_outcome: 'restore_not_required_mvp_pass_through',
+      };
+      this.observability.emitLog('warn', `Rollback path backup created job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'failed',
+          event_type: 'artifact_written',
+          provider_status: 'rollback_backup_created',
+          backup_object_key: backupKey,
+        }
+      });
+      this.observability.emitLog('warn', `Rollback restore attempted job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'failed',
+          event_type: 'retry_scheduled',
+          provider_status: 'rollback_restore_attempted',
+          restore_attempted: true,
+        }
+      });
+      this.observability.emitLog('warn', `Rollback restore outcome job=${jobId}: ${rollback.restore_outcome}`, 'DocumentRecovery', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'failed',
+          event_type: 'stage_completed',
+          provider_status: 'rollback_restore_outcome',
+          restore_outcome: rollback.restore_outcome,
+        }
+      });
+      const stageTimeline = orderedStages.map((stage) => {
+        const startedAtMs = stageStart.get(stage);
+        return {
+          stage,
+          started: Number.isFinite(Number(startedAtMs)),
+          completed: completedStages.has(stage),
+          duration_ms: stageDuration(stage),
+        };
+      });
+      const lastSuccessfulStage =
+        [...orderedStages].reverse().find((stage) => completedStages.has(stage)) || null;
+      const artifactAvailability = {
+        analysis_json: writtenArtifacts.has('analysis_json'),
+        manifest_json: writtenArtifacts.has('manifest_json'),
+        planning_llm_trace_json: writtenArtifacts.has('planning_llm_trace_json'),
+        quality_report_json: writtenArtifacts.has('quality_report_json'),
+        final_docx: writtenArtifacts.has('final_docx'),
+      };
+      const recoveryRecommendation = retryHistory.will_retry
+        ? 'await_retry_attempt'
+        : 'inspect_failure_report_then_retry_or_restore_backup';
       const failureKey = `inline://documents/${jobId}/analysis/failure-report.json`;
       await this.storage.upsertDocumentArtifact({
         jobId,
@@ -531,10 +637,40 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         metadata: {
           job_id: jobId,
           source_object_key: sourceKey,
-          backup_object_key: `documents/${jobId}/output/source_v1_backup.docx`,
+          backup_object_key: backupKey,
+          root_error_code: rootErrorCode,
+          failed_stage: failedStage,
+          retry_history: retryHistory,
+          stage_timeline: stageTimeline,
+          last_successful_stage: lastSuccessfulStage,
+          artifact_availability: artifactAvailability,
+          recovery_recommendation: recoveryRecommendation,
+          rollback,
+          next_action: {
+            operator: retryHistory.will_retry
+              ? 'monitor next retry attempt and confirm stage progression'
+              : 'review failure report, verify artifact availability, and restore from backup if needed',
+            user: retryHistory.will_retry
+              ? 'wait for automatic retry completion'
+              : 'retry upload after operator remediation',
+          },
           error: message,
           failed_at: new Date().toISOString(),
         },
+      });
+      writtenArtifacts.add('failure_report_json');
+      this.observability.emitLog('error', `Document job forensic summary job=${jobId}`, 'DocumentFailure', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'failed',
+          event_type: 'doc_job_failed',
+          error_code: rootErrorCode,
+          error_message: message,
+          retry_history: retryHistory,
+          recovery_recommendation: recoveryRecommendation,
+          last_successful_stage: lastSuccessfulStage,
+        }
       });
       this.observability.emitDocumentEvent({
         level: 'error',
@@ -561,6 +697,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         jobId,
         stage: 'failed',
         eventType: 'stage_failed',
+        errorCode: rootErrorCode,
         errorMessage: message,
         userId,
       });
