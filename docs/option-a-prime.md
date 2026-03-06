@@ -9,6 +9,7 @@
 5. Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton) (`implemented baseline; needs deeper deterministic parser upgrades`)
 6. Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped) (`implemented baseline; needs intent-router/context-window upgrades`)
 7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-6 implemented`)
+8. Phase 7: Worker Orchestration and Resource Control (`implemented`)
 
 ## Scope and Progress Notes
 
@@ -781,7 +782,28 @@ Expected output:
 ## Phase 7: Worker Orchestration and Resource Control
 
 This phase ensures that the app-worker doesn't crash from memory pressure when switching between "lightweight" image generation and "heavy" document editing.
-Key Instructions for the Agent
+Status: `implemented`
+
+### Implemented
+
+1. Added shared worker resource semaphore:
+   - `src/worker/worker-resource-semaphore.service.ts`
+   - Provides insertion lock acquire/release/read APIs.
+2. Wired semaphore into worker module:
+   - `src/worker/worker.module.ts`
+3. Added insertion lock lifecycle in document worker:
+   - `src/worker/document-queue.worker.service.ts`
+   - Acquires lock before insertion work and releases in `finally`.
+   - Emits lock acquire/release observability logs.
+4. Added image-queue pull pause while insertion lock is active:
+   - `src/worker/durable-queue.worker.service.ts`
+   - Loop pauses before `claimNextQueuedTask(...)` when insertion lock is active.
+5. Added Mermaid render gate before renderer call:
+   - `src/image-gen/strategies/d2-diagram.strategy.ts`
+   - If `mermaid_code` is provided and invalid, renderer call is blocked with explicit log and error.
+   - Valid Mermaid logs a gate pass event.
+
+### Validation Plan
 
     Implement a Resource Semaphore: Create a lock mechanism in the worker logic that grants exclusive CPU/RAM access to the Insertion Module.
 
@@ -800,6 +822,22 @@ Validation Plan
     E2E Validation: Run a 50MB document job in "Parallel Stress Mode" (trigger 5 document jobs at once).
 
     Outcome: The worker memory profile should remain stable (no sawtooth pattern or OOMs), and the queue should process document jobs one-at-a-time while image tasks wait in the wings.
+
+Validation script:
+
+- `tools/validate-document-phase7-worker-orchestration.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase7-worker-orchestration.ts
+```
+
+Expected output:
+
+```text
+[phase7-worker-orchestration-validation] PASS
+```
 
 🪡 Phase 8: Surgical Insertion + Rollback Artifacts
 

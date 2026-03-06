@@ -78,6 +78,7 @@ export class D2DiagramStrategy extends BaseImageStrategy {
         const width = Math.max(1400, Number(dims.width) || 1400);
         const height = Math.max(900, Number(dims.height) || 900);
         const reviewHtml = this.buildReviewHtml(theme, width, height);
+        this.assertMermaidRenderGate(taskAny, task.id);
         const screenshotBuffer = await this.browserService.screenshotHtml(reviewHtml, absoluteOutputDir, { width, height });
         const posterUrl = await this.localStorage.save(path.join(relativeOutputDir, 'poster.png'), screenshotBuffer);
 
@@ -332,6 +333,28 @@ Constraints:
 
     private buildPrimaryNode(id: string, label: string, shape: 'rectangle' | 'person' = 'rectangle'): string {
         return `${id}: "${label}" {\n  shape: ${shape}\n  class: primary\n}`;
+    }
+
+    private assertMermaidRenderGate(taskAny: any, taskId: string): void {
+        const payloadMermaid = String(taskAny?.payload?.mermaid_code || '').trim();
+        const metadataMermaid = String(taskAny?.metadata?.mermaid_code || '').trim();
+        const code = payloadMermaid || metadataMermaid;
+        if (!code) return;
+        if (this.isMermaidSyntaxValid(code)) {
+            this.observability.emitLog('info', 'Mermaid render gate passed before renderer call', 'D2Strategy', taskId);
+            return;
+        }
+        this.observability.emitLog('warn', 'Mermaid render gate blocked renderer call due to invalid syntax', 'D2Strategy', taskId);
+        throw new Error('Mermaid render gate blocked renderer call due to invalid syntax');
+    }
+
+    private isMermaidSyntaxValid(code: string): boolean {
+        const lines = String(code || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+        if (!lines.length) return false;
+        if (!/^flowchart\s+(TB|TD|LR|RL|BT)\b/i.test(lines[0])) return false;
+        const hasEdge = lines.some((l) => /-->\s*/.test(l));
+        if (!hasEdge) return false;
+        return !lines.some((l) => /-->\s*$/.test(l));
     }
 
     private async runD2(inputPath: string, outputSvgPath: string, taskId: string): Promise<boolean> {

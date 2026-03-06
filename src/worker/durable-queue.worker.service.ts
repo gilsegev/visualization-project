@@ -4,6 +4,7 @@ import { hostname } from 'os';
 import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
 import { DailyUsageAssetType, PostgresStorageService, QueueTaskRow } from '../storage/postgres-storage.service';
 import { ObservabilityGateway } from '../observability/observability.gateway';
+import { WorkerResourceSemaphoreService } from './worker-resource-semaphore.service';
 
 @Injectable()
 export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -36,11 +37,13 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     private janitorTimer: NodeJS.Timeout | null = null;
     private workerHeartbeatTimer: NodeJS.Timeout | null = null;
     private currentTaskId: string | null = null;
+    private lastInsertionPauseLogAt = 0;
 
     constructor(
         private readonly storage: PostgresStorageService,
         private readonly strategyFactory: ImageStrategyFactory,
         private readonly observability: ObservabilityGateway,
+        private readonly semaphore: WorkerResourceSemaphoreService,
     ) {}
 
     async onModuleInit(): Promise<void> {
@@ -74,6 +77,22 @@ export class DurableQueueWorkerService implements OnModuleInit, OnModuleDestroy 
     private async loop(): Promise<void> {
         while (this.running) {
             try {
+                if (this.semaphore.isInsertionLockActive()) {
+                    const now = Date.now();
+                    if ((now - this.lastInsertionPauseLogAt) > 5000) {
+                        const snapshot = this.semaphore.getInsertionLockSnapshot();
+                        this.observability.emitLog('warn', 'Image queue pulls paused: document insertion lock is active', 'Worker', undefined, undefined, {
+                            metadata: {
+                                event_kind: 'resource_semaphore_pause',
+                                lock_owner: snapshot.owner,
+                                lock_acquired_at: snapshot.acquired_at,
+                            }
+                        });
+                        this.lastInsertionPauseLogAt = now;
+                    }
+                    await this.sleep(this.pollMs);
+                    continue;
+                }
                 const row = await this.storage.claimNextQueuedTask(this.workerId, this.leaseSeconds);
                 if (!row) {
                     await this.sleep(this.pollMs);

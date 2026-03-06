@@ -19,6 +19,7 @@ import { LocalClipService } from '../image-gen/services/local-clip.service';
 import { BrowserService } from '../image-gen/browser.service';
 import { DurableQueueWorkerService } from './durable-queue.worker.service';
 import { DocumentQueueWorkerService } from './document-queue.worker.service';
+import { WorkerResourceSemaphoreService } from './worker-resource-semaphore.service';
 import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
@@ -28,6 +29,7 @@ import { VisualManifestPlannerService } from '../documents/planning/visual-manif
     providers: [
         DurableQueueWorkerService,
         DocumentQueueWorkerService,
+        WorkerResourceSemaphoreService,
         DocumentAnalysisService,
         DocxTextExtractorService,
         VisualManifestPlannerService,

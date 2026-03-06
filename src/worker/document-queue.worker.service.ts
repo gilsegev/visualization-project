@@ -6,6 +6,7 @@ import { VisualManifestPlannerService } from '../documents/planning/visual-manif
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { DocumentObjectKeyLayout, R2ObjectStorageService } from '../storage/object-storage';
+import { WorkerResourceSemaphoreService } from './worker-resource-semaphore.service';
 
 @Injectable()
 export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -23,6 +24,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     private readonly docxTextExtractor: DocxTextExtractorService,
     private readonly planner: VisualManifestPlannerService,
     private readonly observability: ObservabilityGateway,
+    private readonly semaphore: WorkerResourceSemaphoreService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -403,40 +405,73 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         userId,
       });
       markStageStart('inserting');
-      const insertionAnchors = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors : [];
-      const insertionOrder = insertionAnchors
-        .slice()
-        .sort((a: any, b: any) => Number(b?.paragraph_index || 0) - Number(a?.paragraph_index || 0))
-        .map((anchor: any) => String(anchor?.anchor_id || '').trim())
-        .filter(Boolean);
-      const insertedAnchors = insertionOrder.length;
-      const skippedAnchors = 0;
-      this.observability.emitLog('info', `Insertion ordering strategy: bottom-up job=${jobId}`, 'DocumentInsertion', undefined, undefined, {
+      const insertionLockWaitMs = Math.max(1000, Number(process.env.DOC_INSERTION_LOCK_WAIT_MS || 30000));
+      const insertionLockStart = Date.now();
+      const insertionLockOwner = `doc-insert-${jobId}`;
+      let insertionLockAcquired = false;
+      while (!insertionLockAcquired && (Date.now() - insertionLockStart) <= insertionLockWaitMs) {
+        insertionLockAcquired = this.semaphore.acquireInsertionLock(insertionLockOwner);
+        if (!insertionLockAcquired) await this.sleep(250);
+      }
+      if (!insertionLockAcquired) {
+        throw new Error(`Insertion resource semaphore timeout after ${insertionLockWaitMs}ms`);
+      }
+      this.observability.emitLog('info', `Insertion resource lock acquired job=${jobId}`, 'DocumentWorker', undefined, undefined, {
         metadata: {
           user_id: userId,
           doc_job_id: jobId,
           stage: 'inserting',
           event_type: 'stage_started',
-          insertion_order_strategy: 'bottom_up_last_anchor_to_first_anchor',
-          insertion_order_preview: insertionOrder.slice(0, 10),
-          insertion_total_anchors: insertedAnchors,
-          insertion_inserted_count: insertedAnchors,
-          insertion_skipped_count: skippedAnchors,
+          provider_status: 'resource_lock_acquired',
         }
       });
+      try {
+        const insertionAnchors = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors : [];
+        const insertionOrder = insertionAnchors
+          .slice()
+          .sort((a: any, b: any) => Number(b?.paragraph_index || 0) - Number(a?.paragraph_index || 0))
+          .map((anchor: any) => String(anchor?.anchor_id || '').trim())
+          .filter(Boolean);
+        const insertedAnchors = insertionOrder.length;
+        const skippedAnchors = 0;
+        this.observability.emitLog('info', `Insertion ordering strategy: bottom-up job=${jobId}`, 'DocumentInsertion', undefined, undefined, {
+          metadata: {
+            user_id: userId,
+            doc_job_id: jobId,
+            stage: 'inserting',
+            event_type: 'stage_started',
+            insertion_order_strategy: 'bottom_up_last_anchor_to_first_anchor',
+            insertion_order_preview: insertionOrder.slice(0, 10),
+            insertion_total_anchors: insertedAnchors,
+            insertion_inserted_count: insertedAnchors,
+            insertion_skipped_count: skippedAnchors,
+          }
+        });
 
-      await this.storage.updateDocumentJobState(jobId, 'packaging');
-      this.observability.emitDocumentEvent({
-        level: 'info',
-        message: `Document stage completed: inserting job=${jobId}`,
-        context: 'DocumentWorker',
-        jobId,
-        stage: 'inserting',
-        eventType: 'stage_completed',
-        durationMs: stageDuration('inserting'),
-        userId,
-      });
-      markStageCompleted('inserting');
+        await this.storage.updateDocumentJobState(jobId, 'packaging');
+        this.observability.emitDocumentEvent({
+          level: 'info',
+          message: `Document stage completed: inserting job=${jobId}`,
+          context: 'DocumentWorker',
+          jobId,
+          stage: 'inserting',
+          eventType: 'stage_completed',
+          durationMs: stageDuration('inserting'),
+          userId,
+        });
+        markStageCompleted('inserting');
+      } finally {
+        this.semaphore.releaseInsertionLock(insertionLockOwner);
+        this.observability.emitLog('info', `Insertion resource lock released job=${jobId}`, 'DocumentWorker', undefined, undefined, {
+          metadata: {
+            user_id: userId,
+            doc_job_id: jobId,
+            stage: 'inserting',
+            event_type: 'stage_completed',
+            provider_status: 'resource_lock_released',
+          }
+        });
+      }
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document stage started: packaging job=${jobId}`,
