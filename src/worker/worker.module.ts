@@ -23,6 +23,7 @@ import { WorkerResourceSemaphoreService } from './worker-resource-semaphore.serv
 import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
+import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
 
 @Module({
     imports: [ConfigModule.forRoot({ isGlobal: true }), StorageModule, ObservabilityModule],
@@ -33,6 +34,7 @@ import { VisualManifestPlannerService } from '../documents/planning/visual-manif
         DocumentAnalysisService,
         DocxTextExtractorService,
         VisualManifestPlannerService,
+        DocxSurgicalInserterService,
         ImageStrategyFactory,
         LocalStorageService,
         VisualConceptStrategy,

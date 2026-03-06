@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import { hostname } from 'os';
 import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
+import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
@@ -22,6 +23,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     private readonly objectStorage: R2ObjectStorageService,
     private readonly analysis: DocumentAnalysisService,
     private readonly docxTextExtractor: DocxTextExtractorService,
+    private readonly inserter: DocxSurgicalInserterService,
     private readonly planner: VisualManifestPlannerService,
     private readonly observability: ObservabilityGateway,
     private readonly semaphore: WorkerResourceSemaphoreService,
@@ -64,6 +66,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     const meta = row?.metadata || {};
     const fileName = String(meta?.file_name || 'source.docx').trim() || 'source.docx';
     const sourceKey = String(row?.source_object_key || '').trim();
+    const backupKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'source_v1_backup.docx' });
     if (!sourceKey) {
       await this.storage.updateDocumentJobState(jobId, 'failed', { error: 'Missing source object key' });
       return;
@@ -72,6 +75,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     const stageStart = new Map<string, number>();
     const completedStages = new Set<string>();
     const writtenArtifacts = new Set<string>();
+    let backupCreated = false;
     let currentStage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed' = 'queued';
     const orderedStages = ['queued', 'analyzing', 'planning', 'generating_assets', 'inserting', 'packaging'] as const;
     const markStageStart = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging') => {
@@ -116,6 +120,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         jobId,
         userId,
         sourceObjectKey: sourceKey,
+        backupObjectKey: backupCreated ? backupKey : undefined,
       });
     };
 
@@ -425,7 +430,22 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           provider_status: 'resource_lock_acquired',
         }
       });
+      let outputDocxBytes = sourceBytes;
       try {
+        if (!backupCreated) {
+          await this.uploadObject(backupKey, sourceBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+          backupCreated = true;
+          await writeArtifact({
+            artifactType: 'backup_docx',
+            objectKey: backupKey,
+            byteSize: sourceBytes.byteLength,
+            stage: 'inserting',
+            metadata: {
+              immutable_backup: true,
+              created_before_first_edit: true,
+            },
+          });
+        }
         const insertionAnchors = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors : [];
         const insertionOrder = insertionAnchors
           .slice()
@@ -445,6 +465,30 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             insertion_total_anchors: insertedAnchors,
             insertion_inserted_count: insertedAnchors,
             insertion_skipped_count: skippedAnchors,
+          }
+        });
+        const insertionResult = await this.inserter.insertVisuals({
+          sourceBytes,
+          manifest,
+          anchors: analysisResult.anchors || [],
+        });
+        outputDocxBytes = insertionResult.outputBytes;
+        await writeArtifact({
+          artifactType: 'surgical_log_json',
+          objectKey: `inline://documents/${jobId}/analysis/surgical-log.json`,
+          stage: 'inserting',
+          metadata: insertionResult.surgicalLog,
+        });
+        this.observability.emitLog('info', `Surgical insertion completed job=${jobId} inserted=${insertionResult.surgicalLog.inserted} skipped=${insertionResult.surgicalLog.skipped}`, 'DocumentInsertion', undefined, undefined, {
+          metadata: {
+            user_id: userId,
+            doc_job_id: jobId,
+            stage: 'inserting',
+            event_type: 'stage_completed',
+            insertion_strategy: insertionResult.surgicalLog.strategy,
+            inserted_count: insertionResult.surgicalLog.inserted,
+            skipped_count: insertionResult.surgicalLog.skipped,
+            collision_count: insertionResult.surgicalLog.collisions,
           }
         });
 
@@ -484,11 +528,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       markStageStart('packaging');
 
       const finalKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'final.docx' });
-      await this.uploadObject(finalKey, sourceBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      await this.uploadObject(finalKey, outputDocxBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       await writeArtifact({
         artifactType: 'final_docx',
         objectKey: finalKey,
-        byteSize: sourceBytes.byteLength,
+        byteSize: outputDocxBytes.byteLength,
         stage: 'packaging',
       });
       this.observability.emitDocumentEvent({
@@ -520,7 +564,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       const insertionCollisionCount = 0;
       const formattingIntegrityChecks = {
         source_present: Boolean(sourceKey),
-        final_docx_nonzero: Number(sourceBytes.byteLength) > 0,
+        final_docx_nonzero: Number(outputDocxBytes.byteLength) > 0,
         extension_valid: finalKey.toLowerCase().endsWith('.docx'),
       };
       const qualityScore = Number(
@@ -605,31 +649,30 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         max_attempts: maxAttempts,
         will_retry: attempts < maxAttempts,
       };
-      const backupKey = `documents/${jobId}/output/source_v1_backup.docx`;
       const rollback = {
-        backup_created: true,
+        backup_created: backupCreated,
         backup_object_key: backupKey,
-        restore_attempted: true,
-        restore_outcome: 'restore_not_required_mvp_pass_through',
+        restore_attempted: backupCreated,
+        restore_outcome: backupCreated ? 'restored_final_pointer_to_backup' : 'backup_unavailable',
       };
-      this.observability.emitLog('warn', `Rollback path backup created job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
+      this.observability.emitLog(backupCreated ? 'warn' : 'error', backupCreated ? `Rollback path backup created job=${jobId}` : `Rollback path backup missing job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
         metadata: {
           user_id: userId,
           doc_job_id: jobId,
           stage: 'failed',
           event_type: 'artifact_written',
-          provider_status: 'rollback_backup_created',
+          provider_status: backupCreated ? 'rollback_backup_created' : 'rollback_backup_missing',
           backup_object_key: backupKey,
         }
       });
-      this.observability.emitLog('warn', `Rollback restore attempted job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
+      this.observability.emitLog(backupCreated ? 'warn' : 'error', backupCreated ? `Rollback restore attempted job=${jobId}` : `Rollback restore skipped (backup unavailable) job=${jobId}`, 'DocumentRecovery', undefined, undefined, {
         metadata: {
           user_id: userId,
           doc_job_id: jobId,
           stage: 'failed',
           event_type: 'retry_scheduled',
-          provider_status: 'rollback_restore_attempted',
-          restore_attempted: true,
+          provider_status: backupCreated ? 'rollback_restore_attempted' : 'rollback_restore_skipped',
+          restore_attempted: backupCreated,
         }
       });
       this.observability.emitLog('warn', `Rollback restore outcome job=${jobId}: ${rollback.restore_outcome}`, 'DocumentRecovery', undefined, undefined, {
@@ -657,12 +700,27 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         analysis_json: writtenArtifacts.has('analysis_json'),
         manifest_json: writtenArtifacts.has('manifest_json'),
         planning_llm_trace_json: writtenArtifacts.has('planning_llm_trace_json'),
+        backup_docx: writtenArtifacts.has('backup_docx'),
+        surgical_log_json: writtenArtifacts.has('surgical_log_json'),
         quality_report_json: writtenArtifacts.has('quality_report_json'),
         final_docx: writtenArtifacts.has('final_docx'),
       };
       const recoveryRecommendation = retryHistory.will_retry
         ? 'await_retry_attempt'
         : 'inspect_failure_report_then_retry_or_restore_backup';
+      if (backupCreated) {
+        await this.storage.upsertDocumentArtifact({
+          jobId,
+          userId,
+          artifactType: 'final_docx',
+          objectKey: backupKey,
+          metadata: {
+            recovery_mode: 'backup_pointer',
+            recovery_reason: message,
+          },
+        });
+        writtenArtifacts.add('final_docx');
+      }
       const failureKey = `inline://documents/${jobId}/analysis/failure-report.json`;
       await this.storage.upsertDocumentArtifact({
         jobId,
@@ -721,7 +779,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         jobId,
         userId,
         sourceObjectKey: sourceKey,
-        backupObjectKey: `documents/${jobId}/output/source_v1_backup.docx`,
+        backupObjectKey: backupKey,
         failureReportKey: failureKey,
       });
       await this.storage.updateDocumentJobState(jobId, 'failed', { error: message });
