@@ -529,6 +529,22 @@ Validation requirements:
 2. Every failed job has source + backup + failure report links.
 3. Artifact URLs resolve and expire according to policy.
 
+Validation script:
+
+- `tools/validate-document-phase6-step3-artifact-index.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step3-artifact-index.ts
+```
+
+Expected output:
+
+```text
+[phase6-step3-artifact-index-validation] PASS
+```
+
 #### Step 4: Live Views (Operator Dashboard)
 
 1. Add live "Document Jobs" view:

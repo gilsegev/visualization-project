@@ -325,6 +325,8 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         userId?: number | null;
         batchId?: string;
         eventId?: string;
+        objectKey?: string | null;
+        byteSize?: number | null;
     }) {
         const eventId = String(data.eventId || this.nextEventId()).trim();
         const severity =
@@ -371,6 +373,8 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                     worker_id: event.worker_id,
                     source_pid: event.pid,
                     timestamp_iso: event.timestamp_iso,
+                    object_key: this.toStringOrNull(data.objectKey),
+                    byte_size: this.toNumberOrNull(data.byteSize),
                 },
             }
         );

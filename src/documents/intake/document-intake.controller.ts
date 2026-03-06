@@ -45,4 +45,9 @@ export class DocumentIntakeController {
   async artifacts(@Param('jobId') jobId: string, @Req() req: any) {
     return this.intake.getArtifacts(Number(req?.authUser?.id), jobId);
   }
+
+  @Get(':jobId/artifact-index')
+  async artifactIndex(@Param('jobId') jobId: string, @Req() req: any) {
+    return this.intake.getArtifactIndex(Number(req?.authUser?.id), jobId);
+  }
 }

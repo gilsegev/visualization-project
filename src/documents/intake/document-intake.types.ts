@@ -27,3 +27,15 @@ export interface DocumentArtifactResponseItem {
   created_at: string;
   signed_url?: string | null;
 }
+
+export interface DocumentArtifactIndexResponse {
+  index: any;
+  links: {
+    source_doc_url: string | null;
+    backup_doc_url: string | null;
+    failure_report_url: string | null;
+    final_output_url: string | null;
+    manifest_url: string | null;
+    analysis_url: string | null;
+  };
+}

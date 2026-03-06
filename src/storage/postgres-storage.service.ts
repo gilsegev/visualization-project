@@ -153,6 +153,25 @@ export type DocumentArtifactObsRow = {
     created_at: string;
 };
 
+export type DocumentArtifactIndex = {
+    job_id: string;
+    generated_at: string;
+    source_doc_key: string | null;
+    backup_doc_key: string | null;
+    failure_report_key: string | null;
+    final_output_key: string | null;
+    manifest_key: string | null;
+    analysis_key: string | null;
+    asset_keys: string[];
+    artifacts: Array<{
+        artifact_type: string;
+        object_key: string;
+        byte_size: number | null;
+        checksum_sha256: string | null;
+        created_at: string;
+    }>;
+};
+
 @Injectable()
 export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(PostgresStorageService.name);
@@ -507,6 +526,75 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
              ORDER BY created_at DESC`,
             [jobId, Number(userId)]
         );
+    }
+
+    async getDocumentJobSourceForUser(jobId: string, userId: number): Promise<string | null> {
+        if (!this.pool || !jobId || !Number.isFinite(Number(userId))) return null;
+        const rows = await this.queryRows<{ source_object_key: string }>(
+            `SELECT source_object_key
+             FROM document_jobs
+             WHERE job_id = $1 AND user_id = $2
+             LIMIT 1`,
+            [jobId, Number(userId)]
+        );
+        return rows[0]?.source_object_key || null;
+    }
+
+    async getDocumentArtifactIndexForUser(jobId: string, userId: number): Promise<DocumentArtifactIndex | null> {
+        if (!this.pool || !jobId || !Number.isFinite(Number(userId))) return null;
+        const rows = await this.queryRows<{ metadata: any }>(
+            `SELECT metadata
+             FROM document_artifacts
+             WHERE job_id = $1 AND user_id = $2 AND artifact_type = 'artifact_index_json'
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [jobId, Number(userId)]
+        );
+        return (rows[0]?.metadata as DocumentArtifactIndex) || null;
+    }
+
+    async rebuildDocumentArtifactIndex(input: {
+        jobId: string;
+        userId: number;
+        sourceObjectKey?: string | null;
+        backupObjectKey?: string | null;
+        failureReportKey?: string | null;
+    }): Promise<DocumentArtifactIndex | null> {
+        if (!this.pool || !input?.jobId || !Number.isFinite(Number(input?.userId))) return null;
+        const artifacts = await this.listDocumentArtifactsForUser(input.jobId, input.userId);
+        const rows = (artifacts || []).filter((a) => String(a?.artifact_type || '') !== 'artifact_index_json');
+        const assetKeys = rows
+            .filter((a) => String(a?.artifact_type || '').endsWith('_asset') || String(a?.artifact_type || '').includes('image'))
+            .map((a) => String(a.object_key || ''))
+            .filter(Boolean);
+        const latestByType = (type: string): string | null =>
+            rows.find((a) => String(a?.artifact_type || '') === type)?.object_key || null;
+        const index: DocumentArtifactIndex = {
+            job_id: input.jobId,
+            generated_at: new Date().toISOString(),
+            source_doc_key: input.sourceObjectKey || null,
+            backup_doc_key: input.backupObjectKey || null,
+            failure_report_key: input.failureReportKey || latestByType('failure_report_json'),
+            final_output_key: latestByType('final_docx'),
+            manifest_key: latestByType('manifest_json'),
+            analysis_key: latestByType('analysis_json'),
+            asset_keys: assetKeys,
+            artifacts: rows.map((row) => ({
+                artifact_type: row.artifact_type,
+                object_key: row.object_key,
+                byte_size: row.byte_size,
+                checksum_sha256: row.checksum_sha256,
+                created_at: row.created_at,
+            })),
+        };
+        await this.upsertDocumentArtifact({
+            jobId: input.jobId,
+            userId: input.userId,
+            artifactType: 'artifact_index_json',
+            objectKey: `inline://documents/${input.jobId}/analysis/artifact-index.json`,
+            metadata: index,
+        });
+        return index;
     }
 
     async claimNextQueuedTask(workerId: string, leaseSeconds: number): Promise<QueueTaskRow | null> {

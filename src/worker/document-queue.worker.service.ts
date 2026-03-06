@@ -118,27 +118,17 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         throw new Error('DOCX text extraction returned empty content');
       }
       const analysisResult = this.analysis.analyzeFromPlainText(analysisInput);
-      await this.storage.upsertDocumentArtifact({
-        jobId,
-        userId,
+      await writeArtifact({
         artifactType: 'analysis_json',
         objectKey: `inline://documents/${jobId}/analysis/analysis.json`,
+        stage: 'analyzing',
         metadata: {
           ...analysisResult,
           extraction: {
             source: 'word/document.xml',
             extracted_char_count: analysisInput.length
           }
-        }
-      });
-      this.observability.emitDocumentEvent({
-        level: 'info',
-        message: `Document analysis artifact written job=${jobId}`,
-        context: 'DocumentWorker',
-        jobId,
-        stage: 'analyzing',
-        eventType: 'artifact_written',
-        userId,
+        },
       });
       this.observability.emitDocumentEvent({
         level: 'info',
@@ -288,17 +278,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         });
       }
       if (llmTraceEvents.length) {
-        await this.storage.upsertDocumentArtifact({
-          jobId,
-          userId,
+        await writeArtifact({
           artifactType: 'planning_llm_trace_json',
           objectKey: `inline://documents/${jobId}/analysis/planning-llm-trace.json`,
+          stage: 'planning',
           metadata: {
             job_id: jobId,
             model: planningModel,
             event_count: llmTraceEvents.length,
             events: llmTraceEvents,
-          }
+          },
         });
       }
       await this.storage.upsertDocumentManifestValidation({
@@ -307,6 +296,21 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         manifest,
         valid: validation.valid,
         errors: validation.errors,
+      });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document artifact written job=${jobId} type=manifest_json`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'planning',
+        eventType: 'artifact_written',
+        userId,
+        objectKey: `inline://documents/${jobId}/analysis/manifest.json`,
+      });
+      await this.storage.rebuildDocumentArtifactIndex({
+        jobId,
+        userId,
+        sourceObjectKey: sourceKey,
       });
       this.observability.emitDocumentEvent({
         level: validation.valid ? 'info' : 'warn',
@@ -379,21 +383,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
       const finalKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'final.docx' });
       await this.uploadObject(finalKey, sourceBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      await this.storage.upsertDocumentArtifact({
-        jobId,
-        userId,
+      await writeArtifact({
         artifactType: 'final_docx',
         objectKey: finalKey,
         byteSize: sourceBytes.byteLength,
-      });
-      this.observability.emitDocumentEvent({
-        level: 'info',
-        message: `Document final artifact written job=${jobId}`,
-        context: 'DocumentWorker',
-        jobId,
         stage: 'packaging',
-        eventType: 'artifact_written',
-        userId,
       });
       this.observability.emitDocumentEvent({
         level: 'info',
@@ -421,6 +415,37 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       });
     } catch (error: any) {
       const message = String(error?.message || error || 'Document job failed');
+      const failureKey = `inline://documents/${jobId}/analysis/failure-report.json`;
+      await this.storage.upsertDocumentArtifact({
+        jobId,
+        userId,
+        artifactType: 'failure_report_json',
+        objectKey: failureKey,
+        metadata: {
+          job_id: jobId,
+          source_object_key: sourceKey,
+          backup_object_key: `documents/${jobId}/output/source_v1_backup.docx`,
+          error: message,
+          failed_at: new Date().toISOString(),
+        },
+      });
+      this.observability.emitDocumentEvent({
+        level: 'error',
+        message: `Document failure report written job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'failed',
+        eventType: 'artifact_written',
+        userId,
+        objectKey: failureKey,
+      });
+      await this.storage.rebuildDocumentArtifactIndex({
+        jobId,
+        userId,
+        sourceObjectKey: sourceKey,
+        backupObjectKey: `documents/${jobId}/output/source_v1_backup.docx`,
+        failureReportKey: failureKey,
+      });
       await this.storage.updateDocumentJobState(jobId, 'failed', { error: message });
       this.observability.emitDocumentEvent({
         level: 'error',
@@ -457,3 +482,35 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
+    const writeArtifact = async (input: {
+      artifactType: string;
+      objectKey: string;
+      byteSize?: number | null;
+      metadata?: any;
+      stage: 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
+    }) => {
+      await this.storage.upsertDocumentArtifact({
+        jobId,
+        userId,
+        artifactType: input.artifactType,
+        objectKey: input.objectKey,
+        byteSize: input.byteSize,
+        metadata: input.metadata,
+      });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document artifact written job=${jobId} type=${input.artifactType}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: input.stage,
+        eventType: 'artifact_written',
+        userId,
+        objectKey: input.objectKey,
+        byteSize: input.byteSize ?? null,
+      });
+      await this.storage.rebuildDocumentArtifactIndex({
+        jobId,
+        userId,
+        sourceObjectKey: sourceKey,
+      });
+    };

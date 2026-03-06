@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { createDocVersionHash } from '../contracts/doc-version-hash';
 import { DocumentObjectKeyLayout, R2ObjectStorageService } from '../../storage/object-storage';
 import { PostgresStorageService } from '../../storage/postgres-storage.service';
-import { CreateDocumentJobDto, DocumentArtifactResponseItem, DocumentJobStatusResponse } from './document-intake.types';
+import { CreateDocumentJobDto, DocumentArtifactIndexResponse, DocumentArtifactResponseItem, DocumentJobStatusResponse } from './document-intake.types';
 import { docxMimeType, validateCreateDocumentJobPayload, validateDocVersionHash } from './document-intake.validation';
 import { ObservabilityGateway } from '../../observability/observability.gateway';
 
@@ -147,5 +147,50 @@ export class DocumentIntakeService {
       metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'artifacts' }
     });
     return { artifacts };
+  }
+
+  async getArtifactIndex(userId: number, jobId: string): Promise<DocumentArtifactIndexResponse> {
+    const row = await this.storage.getDocumentJobStatusForUser(jobId, userId);
+    if (!row) throw new NotFoundException('Document job not found');
+    const sourceObjectKey = await this.storage.getDocumentJobSourceForUser(jobId, userId);
+    let index = await this.storage.getDocumentArtifactIndexForUser(jobId, userId);
+    if (!index) {
+      index = await this.storage.rebuildDocumentArtifactIndex({
+        jobId,
+        userId,
+        sourceObjectKey,
+      });
+    }
+    const toLink = (key?: string | null): string | null => {
+      const text = String(key || '').trim();
+      if (!text || text.startsWith('inline://')) return null;
+      return this.objectStorage.getSignedDownloadUrl(text, { expiresSeconds: 900 });
+    };
+    const links = {
+      source_doc_url: toLink(index?.source_doc_key || sourceObjectKey),
+      backup_doc_url: toLink(index?.backup_doc_key || null),
+      failure_report_url: toLink(index?.failure_report_key || null),
+      final_output_url: toLink(index?.final_output_key || null),
+      manifest_url: toLink(index?.manifest_key || null),
+      analysis_url: toLink(index?.analysis_key || null),
+    };
+    this.observability.emitLog('info', `Document artifact index read job=${jobId}`, 'DocumentIntake', undefined, undefined, {
+      metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'artifact_index' }
+    });
+    return {
+      index: index || {
+        job_id: jobId,
+        generated_at: new Date().toISOString(),
+        source_doc_key: sourceObjectKey || null,
+        backup_doc_key: null,
+        failure_report_key: null,
+        final_output_key: null,
+        manifest_key: null,
+        analysis_key: null,
+        asset_keys: [],
+        artifacts: [],
+      },
+      links,
+    };
   }
 }
