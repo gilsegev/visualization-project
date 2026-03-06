@@ -3,6 +3,11 @@ export interface ParagraphNode {
   paragraph_hash: string;
   text: string;
   index: number;
+  has_sequence: boolean;
+  has_data: boolean;
+  has_entity: boolean;
+  text_density: number;
+  sequence_group_id?: string | null;
 }
 
 export interface SectionNode {
@@ -26,6 +31,9 @@ export interface ContextWindow {
   before_chars: number;
   after_chars: number;
   content: string;
+  paragraph_start_index: number;
+  paragraph_end_index: number;
+  window_mode: 'bounded' | 'sequence_expanded';
 }
 
 export interface DocumentAnalysisResult {
