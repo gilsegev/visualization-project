@@ -10,6 +10,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
+import { buildDocumentEvent } from '../documents/observability/document-event.schema';
 
 type ObservabilitySource = {
     role: 'app' | 'worker' | 'unknown';
@@ -174,11 +175,17 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             task_id: taskId || null,
             batch_id: batchId || null,
             doc_job_id: this.toStringOrNull(metadata?.doc_job_id),
+            asset_task_id: this.toStringOrNull(metadata?.asset_task_id),
             stage: this.toStringOrNull(metadata?.stage),
             event_type: this.toStringOrNull(metadata?.event_type),
+            severity: this.toStringOrNull(metadata?.severity),
             duration_ms: this.toNumberOrNull(metadata?.duration_ms),
             error_code: this.toStringOrNull(metadata?.error_code),
             error_message: this.toStringOrNull(metadata?.error_message),
+            deployment_id: this.toStringOrNull(metadata?.deployment_id),
+            service_role: this.toStringOrNull(metadata?.service_role),
+            worker_id: this.toStringOrNull(metadata?.worker_id),
+            timestamp_iso: this.toStringOrNull(metadata?.timestamp_iso),
             user_id: metadata?.user_id ?? null,
             latency_ms: metadata?.latency_ms ?? null,
             provider_status: metadata?.provider_status ?? null,
@@ -229,11 +236,17 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         return {
             ...base,
             doc_job_id: this.toStringOrNull(base.doc_job_id),
+            asset_task_id: this.toStringOrNull(base.asset_task_id),
             stage: this.toStringOrNull(base.stage),
             event_type: this.toStringOrNull(base.event_type),
+            severity: this.toStringOrNull(base.severity),
             duration_ms: this.toNumberOrNull(base.duration_ms),
             error_code: this.toStringOrNull(base.error_code),
             error_message: this.toStringOrNull(base.error_message),
+            deployment_id: this.toStringOrNull(base.deployment_id),
+            service_role: this.toStringOrNull(base.service_role),
+            worker_id: this.toStringOrNull(base.worker_id),
+            timestamp_iso: this.toStringOrNull(base.timestamp_iso),
             user_id: this.toNumberOrNull(base.user_id),
             latency_ms: this.toNumberOrNull(base.latency_ms),
             provider_status: this.toStringOrNull(base.provider_status),
@@ -293,10 +306,11 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
     }
 
     emitDocumentEvent(data: {
-        level: 'info' | 'warn' | 'error' | 'success';
+        level: 'debug' | 'info' | 'warn' | 'error' | 'success';
         message: string;
         context?: string;
         jobId: string;
+        assetTaskId?: string | null;
         stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
         eventType:
             | 'stage_started'
@@ -310,22 +324,53 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         errorMessage?: string;
         userId?: number | null;
         batchId?: string;
+        eventId?: string;
     }) {
+        const eventId = String(data.eventId || this.nextEventId()).trim();
+        const severity =
+            data.level === 'success'
+                ? 'info'
+                : data.level;
+        const event = buildDocumentEvent({
+            eventId,
+            jobId: data.jobId,
+            assetTaskId: data.assetTaskId || null,
+            userId: Number.isFinite(Number(data.userId)) ? Number(data.userId) : null,
+            stage: data.stage,
+            eventType: data.eventType,
+            severity,
+            durationMs: data.durationMs,
+            errorCode: data.errorCode || null,
+            errorMessage: data.errorMessage || null,
+            deploymentId: process.env.RAILWAY_DEPLOYMENT_ID || process.env.DEPLOYMENT_ID || null,
+            serviceRole: this.source?.role || process.env.SERVICE_ROLE || null,
+            workerId: this.source?.workerId || process.env.WORKER_ID || null,
+            pid: this.source?.pid || process.pid,
+            timestampIso: new Date().toISOString(),
+        });
         this.emitLog(
-            data.level,
+            severity,
             data.message,
             data.context || 'DocumentPipeline',
             undefined,
             data.batchId,
             {
+                eventId: event.event_id,
                 metadata: {
-                    doc_job_id: data.jobId,
-                    stage: data.stage,
-                    event_type: data.eventType,
-                    duration_ms: Number.isFinite(Number(data.durationMs)) ? Number(data.durationMs) : null,
-                    error_code: data.errorCode || null,
-                    error_message: data.errorMessage || null,
-                    user_id: Number.isFinite(Number(data.userId)) ? Number(data.userId) : null,
+                    doc_job_id: event.job_id,
+                    asset_task_id: event.asset_task_id,
+                    stage: event.stage,
+                    event_type: event.event_type,
+                    severity: event.severity,
+                    duration_ms: event.duration_ms,
+                    error_code: event.error_code,
+                    error_message: event.error_message,
+                    user_id: event.user_id,
+                    deployment_id: event.deployment_id,
+                    service_role: event.service_role,
+                    worker_id: event.worker_id,
+                    source_pid: event.pid,
+                    timestamp_iso: event.timestamp_iso,
                 },
             }
         );

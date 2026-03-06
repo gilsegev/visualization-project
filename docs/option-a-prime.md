@@ -1,8 +1,26 @@
-# Option A-prime: Phase 0 Implementation
+# Option A-prime Master Plan
 
-This file tracks implementation status for **Phase 0 only** (Scope Lock and Contracts).
+## Phase Status
 
-## Implemented
+1. Phase 0: Scope Lock and Contracts (`implemented`)
+2. Phase 1: Storage Layer (R2 / S3-compatible) (`implemented`)
+3. Phase 2: DB and Queue Extensions (`implemented`)
+4. Phase 3: Intake API (Zero-Proxy Ingestion) (`implemented`)
+5. Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton) (`implemented baseline; needs deeper deterministic parser upgrades`)
+6. Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped) (`implemented baseline; needs intent-router/context-window upgrades`)
+7. Phase 6: Document Processing Observability and Logging (`implemented baseline; needs completion against doc-job artifact/quality visibility goals`)
+
+## Scope and Progress Notes
+
+- This document is the canonical, ordered implementation log and master execution reference for Option A-prime.
+- Phase numbering is strictly sequential and authoritative.
+- Future work should continue from this order; do not append out-of-order phase sections.
+
+## Phase 0: Scope Lock and Contracts
+
+This section tracks implementation status for **Phase 0** (Scope Lock and Contracts).
+
+### Implemented
 
 1. Contract types added:
    - `src/documents/contracts/document-job.contract.ts`
@@ -22,7 +40,7 @@ This file tracks implementation status for **Phase 0 only** (Scope Lock and Cont
 5. Export barrel added:
    - `src/documents/index.ts`
 
-## Validation (Phase 0 design checks)
+### Validation
 
 Validation script:
 
@@ -48,15 +66,12 @@ Expected output:
 [phase0-validation] PASS
 ```
 
-## Scope Guard
 
-The initial change set implemented Phase 0 only. The current change set extends implementation through Phase 1 storage only.
-
-## Phase 1 Implementation: Storage Layer (R2 / S3-compatible)
+## Phase 1: Storage Layer (R2 / S3-compatible)
 
 This section records implementation of **Phase 1 only**.
 
-## Implemented (Phase 1)
+### Implemented
 
 1. Object storage contracts:
    - `src/storage/object-storage/object-storage.interface.ts`
@@ -96,7 +111,7 @@ This section records implementation of **Phase 1 only**.
    - `S3_SECRET_ACCESS_KEY`
    - `S3_FORCE_PATH_STYLE`
 
-## Validation (Phase 1)
+### Validation
 
 Validation script:
 
@@ -119,124 +134,71 @@ Validation checks performed:
 1. Key layout matches required directory contract.
 2. Signed URL contains required SigV4 query parameters.
 3. Signed URL path matches expected bucket/object key structure.
+4. Bucket CORS policy allows browser `PUT` from approved frontend origins (no wildcard in production).
 
-## Scope Guard (current)
 
-This change set is limited to Phase 5 Visual Manifest Planning, plus documentation and validation only.
+## Phase 2: DB and Queue Extensions
 
-## Phase 5 Implementation: Visual Manifest Planning
+This section records implementation of **Phase 2 only**.
 
-This section records implementation of **Phase 5 only**.
+### Implemented
 
-## Implemented (Phase 5)
+1. New document queue/data row types in storage service:
+   - `DocumentJobState`
+   - `DocumentJobRow`
+2. New schema objects in `PostgresStorageService.ensureSchema()`:
+   - `document_jobs`
+   - `document_assets`
+   - `document_artifacts`
+3. Idempotency and lookup indexes:
+   - `ux_document_jobs_user_request_hash` (partial unique on `(user_id, request_hash)`)
+   - `idx_document_jobs_queue_pull`
+   - `idx_document_jobs_user_created`
+   - `idx_document_assets_job_status`
+   - `idx_document_artifacts_job_created`
+4. Queue/storage methods added to `PostgresStorageService`:
+   - `enqueueDocumentJob(...)`
+   - `claimNextQueuedDocumentJob(...)`
+   - `updateDocumentJobState(...)`
+   - `upsertDocumentAsset(...)`
+   - `upsertDocumentArtifact(...)`
+5. Backward-compatible ALTER coverage added:
+   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` for key document columns.
 
-1. New planning package:
-   - `src/documents/planning/visual-manifest.types.ts`
-   - `src/documents/planning/visual-manifest.schema.ts`
-   - `src/documents/planning/visual-manifest-planner.service.ts`
-   - `src/documents/planning/index.ts`
-2. Manifest planner:
-   - Builds visual manifest from analysis anchors
-   - Maps to current `generateFromManifest`-compatible shape:
-     - `course`
-     - `lessons[].visualizations[]`
-3. Guardrails in planner:
-   - Enforces `maxAssets` (`DOC_MAX_ASSETS` fallback)
-   - Dedupes near-duplicate anchor text via normalized fingerprint
-4. Type mapping heuristics:
-   - `data_viz` for chart/metric/trend-like text
-   - `sourced_image` for scene/photo-like text
-   - default `infographic`
-5. Schema validation:
-   - Zod schema for manifest correctness
-   - Validation result returns `valid + errors[]`
-6. Persistence helper in storage:
-   - `upsertDocumentManifestValidation(...)` in `PostgresStorageService`
-   - Stores manifest + validation metadata as `manifest_json` artifact record
-7. Export wiring:
-   - `src/documents/index.ts` exports planning package
+Primary file changed:
 
-## Validation (Phase 5)
+- `src/storage/postgres-storage.service.ts`
+
+### Validation
 
 Validation script:
 
-- `tools/validate-document-phase5-planning.ts`
+- `tools/validate-document-phase2-db.ts`
 
 Run command:
 
 ```bash
-npx ts-node --transpile-only tools/validate-document-phase5-planning.ts
+npx ts-node --transpile-only tools/validate-document-phase2-db.ts
 ```
 
 Expected output:
 
 ```text
-[phase5-planning-validation] PASS
+[phase2-db-validation] PASS
 ```
 
 Validation checks performed:
 
-1. Planner output passes schema validation.
-2. Max-asset cap is enforced.
-3. Duplicate anchor-derived visuals are deduped.
-4. Output shape is compatible with lesson/visualizations manifest routing.
+1. Document table DDL exists for `document_jobs`, `document_assets`, `document_artifacts`.
+2. Idempotency and queue indexes are present in schema SQL.
+3. Required Phase 2 queue/data methods exist in `PostgresStorageService`.
+4. `request_hash` composition includes `docVersionHash` so same request on different document versions is not deduped incorrectly.
 
-## Phase 4 Implementation: Analysis and Anchor Detection
-
-This section records implementation of **Phase 4 only**.
-
-## Implemented (Phase 4)
-
-1. New analysis package:
-   - `src/documents/analysis/document-analysis.types.ts`
-   - `src/documents/analysis/document-analysis.service.ts`
-   - `src/documents/analysis/index.ts`
-2. Document analysis capabilities:
-   - Plain-text paragraph extraction into stable paragraph nodes
-   - Structural section inference
-   - Static anchor map generation using:
-     - `xml_path_id` (deterministic path id)
-     - `paragraph_hash` (stable content hash)
-3. Deterministic anchor IDs:
-   - `anchor-{index}-{hash_prefix}` derived from paragraph hash and index
-4. Fallback anchor mode:
-   - If low-signal content, fallback anchors at start/mid/end
-5. LLM context-window preparation:
-   - `buildContextWindows(...)`
-   - Bounded windows with configurable radius (default +/- 2048 chars)
-6. Export wiring:
-   - `src/documents/index.ts` now exports the analysis package
-
-## Validation (Phase 4)
-
-Validation script:
-
-- `tools/validate-document-phase4-analysis.ts`
-
-Run command:
-
-```bash
-npx ts-node --transpile-only tools/validate-document-phase4-analysis.ts
-```
-
-Expected output:
-
-```text
-[phase4-analysis-validation] PASS
-```
-
-Validation checks performed:
-
-1. Paragraph and section extraction return expected structure.
-2. Static anchor map is deterministic for identical input.
-3. Context windows are generated per anchor and stay within bounds.
-4. Fallback anchor mode is triggered for low-signal content.
-
-## Phase 3 Implementation: Intake API (Zero-Proxy Ingestion)
+## Phase 3: Intake API (Zero-Proxy Ingestion)
 
 This section records implementation of **Phase 3 only**.
 
-## Implemented (Phase 3)
+### Implemented
 
 1. New document intake module:
    - `src/documents/intake/document-intake.module.ts`
@@ -271,7 +233,7 @@ Zero-proxy guarantee in this phase:
 2. Client uploads directly to object storage.
 3. API finalize endpoint persists/queues metadata only.
 
-## Validation (Phase 3)
+### Validation
 
 Validation script:
 
@@ -297,63 +259,132 @@ Validation checks performed:
 4. Intake routes exist for create/finalize/status/download.
 5. Signed upload URL flow is used in service layer.
 
-## Phase 2 Implementation: DB and Queue Extensions
+## Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton)
 
-This section records implementation of **Phase 2 only**.
+This section records implementation of **Phase 4 only**.
 
-## Implemented (Phase 2)
+### Implemented
 
-1. New document queue/data row types in storage service:
-   - `DocumentJobState`
-   - `DocumentJobRow`
-2. New schema objects in `PostgresStorageService.ensureSchema()`:
-   - `document_jobs`
-   - `document_assets`
-   - `document_artifacts`
-3. Idempotency and lookup indexes:
-   - `ux_document_jobs_user_request_hash` (partial unique on `(user_id, request_hash)`)
-   - `idx_document_jobs_queue_pull`
-   - `idx_document_jobs_user_created`
-   - `idx_document_assets_job_status`
-   - `idx_document_artifacts_job_created`
-4. Queue/storage methods added to `PostgresStorageService`:
-   - `enqueueDocumentJob(...)`
-   - `claimNextQueuedDocumentJob(...)`
-   - `updateDocumentJobState(...)`
-   - `upsertDocumentAsset(...)`
-   - `upsertDocumentArtifact(...)`
-5. Backward-compatible ALTER coverage added:
-   - `ALTER TABLE ... ADD COLUMN IF NOT EXISTS ...` for key document columns.
+1. New analysis package:
+   - `src/documents/analysis/document-analysis.types.ts`
+   - `src/documents/analysis/document-analysis.service.ts`
+   - `src/documents/analysis/index.ts`
+2. Document analysis capabilities:
+   - Plain-text paragraph extraction into stable paragraph nodes
+   - Deterministic signal extraction per paragraph:
+     - `has_sequence`
+     - `has_data`
+     - `has_entity`
+     - `text_density`
+   - Structural section inference
+   - Static anchor map generation using:
+     - `xml_path_id` (deterministic path id)
+     - `paragraph_hash` (stable content hash)
+   - Deterministic sequence-group tagging (`sequence_group_id`) for contiguous step-like ranges
+3. Deterministic anchor IDs:
+   - `anchor-{index}-{hash_prefix}` derived from paragraph hash and index
+4. Fallback anchor mode:
+   - If low-signal content, fallback anchors at start/mid/end
+5. LLM context-window preparation:
+   - `buildContextWindows(...)`
+   - Bounded windows with configurable radius (default +/- 2048 chars)
+   - Sequence-aware expansion rule: if high sequence signal is detected (for example `Step 1 ... Step N`), the context window expands to include the entire detected sequence range even if it exceeds character bounds.
+6. Export wiring:
+   - `src/documents/index.ts` now exports the analysis package
 
-Primary file changed:
-
-- `src/storage/postgres-storage.service.ts`
-
-## Validation (Phase 2)
+### Validation
 
 Validation script:
 
-- `tools/validate-document-phase2-db.ts`
+- `tools/validate-document-phase4-analysis.ts`
 
 Run command:
 
 ```bash
-npx ts-node --transpile-only tools/validate-document-phase2-db.ts
+npx ts-node --transpile-only tools/validate-document-phase4-analysis.ts
 ```
 
 Expected output:
 
 ```text
-[phase2-db-validation] PASS
+[phase4-analysis-validation] PASS
 ```
 
 Validation checks performed:
 
-1. Document table DDL exists for `document_jobs`, `document_assets`, `document_artifacts`.
-2. Idempotency and queue indexes are present in schema SQL.
-3. Required Phase 2 queue/data methods exist in `PostgresStorageService`.
+1. Paragraph and section extraction return expected structure.
+2. Static anchor map is deterministic for identical input.
+3. Context windows are generated per anchor and stay within bounds.
+4. Fallback anchor mode is triggered for low-signal content.
+5. High-sequence ranges are captured as full-range windows (not truncated to 2048 chars).
+6. `anchor_id` stability is preserved across worker restarts for the same source document and version hash.
+7. Signal metadata (`has_sequence|has_data|has_entity|text_density`) is emitted deterministically.
 
-## Phase 6 Implementation: Document Processing Observability and Logging
+## Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped)
+
+This section records implementation of **Phase 5 only**.
+
+### Implemented
+
+1. New planning package:
+   - `src/documents/planning/visual-manifest.types.ts`
+   - `src/documents/planning/visual-manifest.schema.ts`
+   - `src/documents/planning/visual-manifest-planner.service.ts`
+   - `src/documents/planning/index.ts`
+2. Manifest planner:
+   - Builds visual manifest from analysis anchors
+   - Maps to current `generateFromManifest`-compatible shape:
+     - `course`
+     - `lessons[].visualizations[]`
+3. Guardrails in planner:
+   - Enforces `maxAssets` (`DOC_MAX_ASSETS` fallback)
+   - Dedupes near-duplicate anchor text via normalized fingerprint
+4. Type mapping heuristics:
+   - `data_viz` for chart/metric/trend-like text
+   - `sourced_image` for scene/photo-like text
+   - `flowchart` for procedural/sequence logic
+   - default `infographic`
+5. Flowchart rendering gate (Mermaid Gate):
+   - If `visual_type=flowchart`, run Mermaid syntax validation before rendering.
+   - On syntax failure, perform one self-correction pass by sending the syntax error back to the planner/LLM.
+   - If still invalid after one retry, downgrade to `aesthetic_anchor` (or configured safe fallback), and log the downgrade reason.
+6. Schema validation:
+   - Zod schema for manifest correctness
+   - Validation result returns `valid + errors[]`
+7. Persistence helper in storage:
+   - `upsertDocumentManifestValidation(...)` in `PostgresStorageService`
+   - Stores manifest + validation metadata as `manifest_json` artifact record
+8. Export wiring:
+   - `src/documents/index.ts` exports planning package
+
+### Validation
+
+Validation script:
+
+- `tools/validate-document-phase5-planning.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase5-planning.ts
+```
+
+Expected output:
+
+```text
+[phase5-planning-validation] PASS
+```
+
+Validation checks performed:
+
+1. Planner output passes schema validation.
+2. Max-asset cap is enforced.
+3. Duplicate anchor-derived visuals are deduped.
+4. Output shape is compatible with lesson/visualizations manifest routing.
+5. `data_viz` and `sourced_image` routes generate distinct prompt templates and are validated as non-identical.
+6. Flowchart Mermaid syntax validator executes for flowchart jobs; single self-correction retry is enforced; fallback path is logged on persistent failure.
+
+## Phase 6: Document Processing Observability and Logging
 
 This phase is observability-first and is now part of the numbered execution sequence immediately after Phase 5.
 All later phases are shifted down by one position.
@@ -365,7 +396,7 @@ All later phases are shifted down by one position.
 3. Expose quality signals (anchor stability, insertion integrity, asset relevance) for fast validation.
 4. Make failure recovery actionable with direct links to logs and artifacts.
 
-## Implemented (Phase 6)
+### Implemented
 
 1. Live stats payload extension (non-breaking):
    - `src/observability/observability.gateway.ts`
@@ -389,6 +420,15 @@ All later phases are shifted down by one position.
 4. Intake module dependency wiring:
    - `src/documents/intake/document-intake.module.ts`
    - Imports `ObservabilityModule` to emit document logs.
+5. Phase 6 Step 1 canonical schema wiring:
+   - `src/documents/observability/document-event.schema.ts`
+   - `src/observability/observability.gateway.ts`
+   - `src/worker/document-queue.worker.service.ts`
+   - Shared event schema + parser-backed validation in gateway emitter.
+   - Canonical fields normalized into structured JSON:
+     - `event_id`, `job_id`, `asset_task_id`, `user_id`, `stage`, `event_type`, `severity`
+     - `duration_ms`, `error_code`, `error_message`
+     - `deployment_id`, `service_role`, `worker_id`, `pid`, `timestamp_iso`
 
 ### Implementation details (design intent)
 
@@ -413,6 +453,22 @@ Validation requirements:
 2. Missing required fields fail local schema validation.
 3. Stage transitions in logs match persisted DB state transitions.
 
+Validation script:
+
+- `tools/validate-document-phase6-step1-event-schema.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step1-event-schema.ts
+```
+
+Expected output:
+
+```text
+[phase6-step1-event-schema-validation] PASS
+```
+
 #### Step 2: Stage Timers and Critical Counters
 
 1. Emit timers per stage:
@@ -427,11 +483,16 @@ Validation requirements:
    - `doc_jobs_inflight`
    - `doc_jobs_queued`
    - `doc_assets_inflight`
+4. Emit planning/render gate counters:
+   - `doc_flowchart_mermaid_invalid_total`
+   - `doc_flowchart_mermaid_self_correct_total`
+   - `doc_flowchart_mermaid_fallback_total`
 
 Validation requirements:
 1. Metrics update on every run (happy path + failure path).
 2. Counter deltas match event counts in logs.
 3. Stage timing percentiles available (P50/P95/P99).
+4. Mermaid gate counters reconcile with flowchart task logs and outcomes.
 
 #### Step 3: Artifact Index and Deep Links
 
@@ -507,11 +568,15 @@ Validation requirements:
    - backup created
    - restore attempted
    - restore outcome
+4. Ensure insertion ordering is logged explicitly for insertion phase:
+   - bottom-up order (`last anchor -> first anchor`)
+   - number of anchors inserted vs skipped due to conflict
 
 Validation requirements:
 1. Failure report exists for every failed job.
 2. Root cause code and stage are always present.
 3. Rollback action path is visible in logs.
+4. Insertion logs prove reverse-order placement strategy when insertion stage runs.
 
 #### Step 7: Alerts and SLO Guardrails
 
@@ -556,7 +621,7 @@ Validation requirements:
 3. No rollout unless dashboard live latency and metric freshness are within agreed bounds.
 4. No rollout unless alert tests pass and runbook drilldowns are validated.
 
-## Validation (Phase 6)
+### Validation
 
 Validation script:
 
@@ -610,3 +675,39 @@ Expected output:
    - Run `tools/validate-document-phase5-planning.ts`.
    - Review generated sample manifests for relevance/dedupe/type mapping and approve thresholds.
    - Persist manifest validation results and verify artifact counters include `manifest_json`.
+
+## Tactical Milestone Review (Architect Checks)
+
+1. Phase 1 (Storage) -> Core win: R2/S3-compatible zero-proxy ingestion.
+   - Critical check: verify bucket CORS permits browser `PUT` from your frontend domain.
+2. Phase 2 (DB/Queue) -> Core win: idempotent document intake and stable queue pull semantics.
+   - Critical check: ensure `request_hash` includes `docVersionHash`.
+3. Phase 4 (Analysis) -> Core win: deterministic anchors and context windows.
+   - Critical check: confirm `anchor_id` values remain stable across worker restarts.
+4. Phase 5 (Planning) -> Core win: semantic mapping to visual types.
+   - Critical check: verify `data_viz` prompt path is materially distinct from `sourced_image` prompt path.
+5. Phase 5/7 (Flowcharts) -> Core win: Mermaid gate prevents invalid flowchart render jobs.
+   - Critical check: enforce syntax check + one self-correction retry + deterministic fallback.
+6. Phase 8 (Insertion) -> Core win: drift-safe document mutation.
+   - Critical check: reverse-order insertion (`last anchor -> first anchor`) is enforced and logged.
+
+
+## Next Phases (Pending)
+
+1. Phase 7: Worker Orchestration and Resource Control
+   - Add scheduler/resource semaphore so insertion work gets exclusive memory/CPU window.
+   - Define render gates in worker pipeline (including Mermaid pre-render validation hook).
+   - Validation:
+     - worker pauses new image pulls during insertion window
+     - queue remains healthy under sustained document jobs
+     - Mermaid hook triggers before flowchart renderer
+2. Phase 8: Surgical Insertion + Rollback Artifacts
+   - Execute reverse-order insertion (end-of-doc to start-of-doc) to avoid anchor drift due to pagination shifts.
+   - Require `source_v1_backup.docx` before first mutation.
+   - Validation:
+     - insertion order trace confirms bottom-up strategy
+     - duplicate-sentence anchors still resolve to correct XML path targets
+     - rollback artifact always exists when insertion fails
+3. Phase 9: Packaging + Completion + Download Semantics
+4. Phase 10: Validation Ladder + Edge Case Battery + SLA Readiness
+

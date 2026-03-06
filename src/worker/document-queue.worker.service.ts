@@ -67,12 +67,27 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       return;
     }
 
-    this.observability.emitLog('info', `Document worker claimed job=${jobId}`, 'DocumentWorker', undefined, undefined, {
-      metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'claimed' }
+    this.observability.emitDocumentEvent({
+      level: 'info',
+      message: `Document worker claimed job=${jobId}`,
+      context: 'DocumentWorker',
+      jobId,
+      stage: 'queued',
+      eventType: 'stage_started',
+      userId,
     });
 
     try {
       await this.storage.updateDocumentJobState(jobId, 'analyzing', { started_at: new Date().toISOString() });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage started: analyzing job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'analyzing',
+        eventType: 'stage_started',
+        userId,
+      });
 
       const sourceBytes = await this.downloadObject(sourceKey);
       const extractedText = await this.docxTextExtractor.extractPlainText(sourceBytes);
@@ -94,13 +109,32 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           }
         }
       });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document analysis artifact written job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'analyzing',
+        eventType: 'artifact_written',
+        userId,
+      });
 
       await this.storage.updateDocumentJobState(jobId, 'planning');
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage started: planning job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'planning',
+        eventType: 'stage_started',
+        userId,
+      });
       const planningStartedAt = Date.now();
       const planningModel =
         String(process.env.DOC_PLANNING_USE_LLM || 'true').toLowerCase() === 'true'
           ? String(process.env.DOC_PLANNING_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001')
           : 'deterministic-planner';
+      const llmTraceEvents: Array<Record<string, any>> = [];
       this.observability.emitLog('info', `LLM planning call started job=${jobId}`, 'DocumentLLM', undefined, undefined, {
         metadata: {
           user_id: userId,
@@ -121,6 +155,73 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         anchors: analysisResult.anchors,
         contextWindows: analysisResult.context_windows,
         maxAssets: Number(process.env.DOC_MAX_ASSETS || 20),
+        onTelemetry: (event) => {
+          const stamped = { timestamp: new Date().toISOString(), ...event };
+          llmTraceEvents.push(stamped);
+          if (event.type === 'planner_mode') {
+            this.observability.emitLog('info', `Document planning mode=${event.mode} job=${jobId}`, 'DocumentLLM', undefined, undefined, {
+              metadata: {
+                user_id: userId,
+                doc_job_id: jobId,
+                stage: 'planning',
+                event_type: 'stage_started',
+                provider_status: event.mode === 'llm' ? 'llm_enabled' : 'deterministic_mode',
+                reason: event.reason || null,
+              }
+            });
+            return;
+          }
+          if (event.type === 'llm_request') {
+            this.observability.emitLog('info', `LLM planning request ready job=${jobId}`, 'DocumentLLM', undefined, undefined, {
+              metadata: {
+                user_id: userId,
+                doc_job_id: jobId,
+                stage: 'planning',
+                event_type: 'artifact_written',
+                provider_status: 'llm_prompt_built',
+                model: event.model,
+                candidate_count: event.candidate_count,
+                max_assets: event.max_assets,
+                system_prompt: event.system_prompt,
+                user_prompt: event.user_prompt,
+              }
+            });
+            return;
+          }
+          if (event.type === 'llm_response') {
+            this.observability.emitLog('success', `LLM planning response received job=${jobId}`, 'DocumentLLM', undefined, undefined, {
+              metadata: {
+                user_id: userId,
+                doc_job_id: jobId,
+                stage: 'planning',
+                event_type: 'stage_completed',
+                provider_status: 'llm_response_received',
+                model: event.model,
+                duration_ms: event.duration_ms,
+                prompt_tokens: event.usage.prompt_tokens,
+                completion_tokens: event.usage.completion_tokens,
+                total_tokens: event.usage.total_tokens,
+                parsed_visual_count: event.parsed_visual_count,
+                raw_response: event.raw_response,
+                cleaned_response: event.cleaned_response,
+              }
+            });
+            return;
+          }
+          if (event.type === 'llm_error') {
+            this.observability.emitLog('error', `LLM planning error job=${jobId}: ${event.error_message}`, 'DocumentLLM', undefined, undefined, {
+              metadata: {
+                user_id: userId,
+                doc_job_id: jobId,
+                stage: 'planning',
+                event_type: 'stage_failed',
+                provider_status: 'llm_error',
+                model: event.model,
+                error_message: event.error_message,
+              }
+            });
+          }
+        }
       });
       const visuals = manifest?.lessons?.flatMap((lesson: any) => Array.isArray(lesson?.visualizations) ? lesson.visualizations : []) || [];
       const flowchartCount = visuals.filter((v: any) => String(v?.type || '') === 'flowchart').length;
@@ -153,12 +254,38 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           }
         });
       }
+      if (llmTraceEvents.length) {
+        await this.storage.upsertDocumentArtifact({
+          jobId,
+          userId,
+          artifactType: 'planning_llm_trace_json',
+          objectKey: `inline://documents/${jobId}/analysis/planning-llm-trace.json`,
+          metadata: {
+            job_id: jobId,
+            model: planningModel,
+            event_count: llmTraceEvents.length,
+            events: llmTraceEvents,
+          }
+        });
+      }
       await this.storage.upsertDocumentManifestValidation({
         jobId,
         userId,
         manifest,
         valid: validation.valid,
         errors: validation.errors,
+      });
+      this.observability.emitDocumentEvent({
+        level: validation.valid ? 'info' : 'warn',
+        message: validation.valid
+          ? `Document planning completed job=${jobId}`
+          : `Document planning validation warnings job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'planning',
+        eventType: validation.valid ? 'stage_completed' : 'quality_scored',
+        durationMs: Date.now() - planningStartedAt,
+        userId,
       });
 
       await this.storage.updateDocumentJobState(jobId, 'generating_assets');
@@ -174,19 +301,41 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         objectKey: finalKey,
         byteSize: sourceBytes.byteLength,
       });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document final artifact written job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'packaging',
+        eventType: 'artifact_written',
+        userId,
+      });
 
       await this.storage.updateDocumentJobState(jobId, 'completed', {
         completed_at: new Date().toISOString(),
         note: 'MVP pass-through finalization completed'
       });
-      this.observability.emitLog('success', `Document job completed job=${jobId}`, 'DocumentWorker', undefined, undefined, {
-        metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'completed' }
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document job completed job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'completed',
+        eventType: 'stage_completed',
+        userId,
       });
     } catch (error: any) {
       const message = String(error?.message || error || 'Document job failed');
       await this.storage.updateDocumentJobState(jobId, 'failed', { error: message });
-      this.observability.emitLog('error', `Document job failed job=${jobId}: ${message}`, 'DocumentWorker', undefined, undefined, {
-        metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'failed' }
+      this.observability.emitDocumentEvent({
+        level: 'error',
+        message: `Document job failed job=${jobId}: ${message}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'failed',
+        eventType: 'stage_failed',
+        errorMessage: message,
+        userId,
       });
     }
   }
