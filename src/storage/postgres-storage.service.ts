@@ -118,6 +118,20 @@ export type DocumentObservabilityMetrics = {
     avg_duration_ms: number;
     p95_duration_ms: number;
     flowchart_fallback_total: number;
+    doc_jobs_queued: number;
+    doc_jobs_inflight: number;
+    doc_assets_inflight: number;
+    stage_duration_ms: Record<string, number>;
+    stage_duration_p50_ms: number;
+    stage_duration_p95_ms: number;
+    stage_duration_p99_ms: number;
+    retry_events_total: number;
+    anchor_fallback_total: number;
+    insertion_collision_total: number;
+    version_hash_mismatch_total: number;
+    flowchart_mermaid_invalid_total: number;
+    flowchart_mermaid_self_correct_total: number;
+    flowchart_mermaid_fallback_total: number;
 };
 
 export type DocumentJobObsRow = {
@@ -1192,38 +1206,113 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
     }
 
     async getDocumentObservabilityMetrics(): Promise<DocumentObservabilityMetrics> {
-        if (!this.pool) {
-            return {
-                completed_total: 0,
-                failed_total: 0,
-                retries_total: 0,
-                avg_duration_ms: 0,
-                p95_duration_ms: 0,
-                flowchart_fallback_total: 0,
-            };
-        }
-        const rows = await this.queryRows<DocumentObservabilityMetrics>(
-            `SELECT
-                COUNT(*) FILTER (WHERE queue_status = 'completed')::int AS completed_total,
-                COUNT(*) FILTER (WHERE queue_status = 'failed')::int AS failed_total,
-                COALESCE(SUM(GREATEST(attempts - 1, 0)), 0)::int AS retries_total,
-                COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS avg_duration_ms,
-                COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS p95_duration_ms,
-                (
-                    SELECT COUNT(*)::int
-                    FROM document_artifacts da
-                    WHERE da.artifact_type = 'manifest_json'
-                      AND da.metadata::text LIKE '%mermaid_validation_failed_after_single_retry%'
-                ) AS flowchart_fallback_total
-             FROM document_jobs`
-        );
-        return rows[0] || {
+        const empty: DocumentObservabilityMetrics = {
             completed_total: 0,
             failed_total: 0,
             retries_total: 0,
             avg_duration_ms: 0,
             p95_duration_ms: 0,
             flowchart_fallback_total: 0,
+            doc_jobs_queued: 0,
+            doc_jobs_inflight: 0,
+            doc_assets_inflight: 0,
+            stage_duration_ms: {},
+            stage_duration_p50_ms: 0,
+            stage_duration_p95_ms: 0,
+            stage_duration_p99_ms: 0,
+            retry_events_total: 0,
+            anchor_fallback_total: 0,
+            insertion_collision_total: 0,
+            version_hash_mismatch_total: 0,
+            flowchart_mermaid_invalid_total: 0,
+            flowchart_mermaid_self_correct_total: 0,
+            flowchart_mermaid_fallback_total: 0,
+        };
+        if (!this.pool) {
+            return empty;
+        }
+        const rows = await this.queryRows<any>(
+            `WITH base AS (
+                SELECT
+                  COUNT(*) FILTER (WHERE queue_status = 'completed')::int AS completed_total,
+                  COUNT(*) FILTER (WHERE queue_status = 'failed')::int AS failed_total,
+                  COALESCE(SUM(GREATEST(attempts - 1, 0)), 0)::int AS retries_total,
+                  COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS avg_duration_ms,
+                  COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS p95_duration_ms,
+                  COUNT(*) FILTER (WHERE queue_status = 'queued')::int AS doc_jobs_queued,
+                  COUNT(*) FILTER (WHERE queue_status = 'processing')::int AS doc_jobs_inflight
+                FROM document_jobs
+               ),
+               stage_metrics AS (
+                SELECT
+                  COALESCE(
+                    jsonb_object_agg(stage, avg_ms) FILTER (WHERE stage IS NOT NULL),
+                    '{}'::jsonb
+                  ) AS stage_duration_ms,
+                  COALESCE(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY duration_ms), 0)::int AS stage_duration_p50_ms,
+                  COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY duration_ms), 0)::int AS stage_duration_p95_ms,
+                  COALESCE(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY duration_ms), 0)::int AS stage_duration_p99_ms
+                FROM (
+                  SELECT
+                    metadata->>'stage' AS stage,
+                    AVG((metadata->>'duration_ms')::numeric)::int AS avg_ms,
+                    (metadata->>'duration_ms')::numeric AS duration_ms
+                  FROM system_logs
+                  WHERE metadata->>'doc_job_id' IS NOT NULL
+                    AND metadata->>'event_type' = 'stage_completed'
+                    AND (metadata->>'duration_ms') ~ '^[0-9]+(\\.[0-9]+)?$'
+                  GROUP BY metadata->>'stage', (metadata->>'duration_ms')::numeric
+                ) s
+               ),
+               counters AS (
+                SELECT
+                  COUNT(*) FILTER (WHERE metadata->>'doc_job_id' IS NOT NULL AND metadata->>'event_type' = 'retry_scheduled')::int AS retry_events_total,
+                  COUNT(*) FILTER (WHERE metadata->>'doc_job_id' IS NOT NULL AND metadata->>'error_code' = 'insertion_collision')::int AS insertion_collision_total,
+                  COUNT(*) FILTER (WHERE metadata->>'doc_job_id' IS NOT NULL AND metadata->>'error_code' = 'doc_version_hash_mismatch')::int AS version_hash_mismatch_total
+                FROM system_logs
+               )
+               SELECT
+                  b.completed_total,
+                  b.failed_total,
+                  b.retries_total,
+                  b.avg_duration_ms,
+                  b.p95_duration_ms,
+                  b.doc_jobs_queued,
+                  b.doc_jobs_inflight,
+                  COALESCE((SELECT COUNT(*)::int FROM document_assets WHERE status IN ('queued','running')), 0) AS doc_assets_inflight,
+                  sm.stage_duration_ms,
+                  sm.stage_duration_p50_ms,
+                  sm.stage_duration_p95_ms,
+                  sm.stage_duration_p99_ms,
+                  c.retry_events_total,
+                  COALESCE((SELECT COUNT(*)::int FROM document_artifacts WHERE artifact_type = 'analysis_json' AND metadata::text LIKE '%\"fallback\":true%'), 0) AS anchor_fallback_total,
+                  c.insertion_collision_total,
+                  c.version_hash_mismatch_total,
+                  COALESCE((SELECT COUNT(*)::int FROM document_artifacts WHERE artifact_type = 'planning_llm_trace_json' AND metadata::text LIKE '%mermaid_invalid%'), 0) AS flowchart_mermaid_invalid_total,
+                  COALESCE((SELECT COUNT(*)::int FROM document_artifacts WHERE artifact_type = 'planning_llm_trace_json' AND metadata::text LIKE '%mermaid_self_correct%'), 0) AS flowchart_mermaid_self_correct_total,
+                  (
+                      SELECT COUNT(*)::int
+                      FROM document_artifacts da
+                      WHERE da.artifact_type = 'manifest_json'
+                        AND da.metadata::text LIKE '%mermaid_validation_failed_after_single_retry%'
+                  ) AS flowchart_fallback_total,
+                  (
+                      SELECT COUNT(*)::int
+                      FROM document_artifacts da
+                      WHERE da.artifact_type = 'manifest_json'
+                        AND da.metadata::text LIKE '%mermaid_validation_failed_after_single_retry%'
+                  ) AS flowchart_mermaid_fallback_total
+               FROM base b, stage_metrics sm, counters c`
+        );
+        const row = rows[0];
+        if (!row) return empty;
+        return {
+            ...empty,
+            ...row,
+            stage_duration_ms:
+                row?.stage_duration_ms && typeof row.stage_duration_ms === 'object'
+                    ? row.stage_duration_ms
+                    : {},
         };
     }
 

@@ -494,6 +494,22 @@ Validation requirements:
 3. Stage timing percentiles available (P50/P95/P99).
 4. Mermaid gate counters reconcile with flowchart task logs and outcomes.
 
+Validation script:
+
+- `tools/validate-document-phase6-step2-metrics.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step2-metrics.ts
+```
+
+Expected output:
+
+```text
+[phase6-step2-metrics-validation] PASS
+```
+
 #### Step 3: Artifact Index and Deep Links
 
 1. Persist an artifact index per job in DB + storage (JSON):
@@ -710,4 +726,3 @@ Expected output:
      - rollback artifact always exists when insertion fails
 3. Phase 9: Packaging + Completion + Download Semantics
 4. Phase 10: Validation Ladder + Edge Case Battery + SLA Readiness
-

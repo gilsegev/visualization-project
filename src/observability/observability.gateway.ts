@@ -155,7 +155,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
      * Emit a generic log message to the dashboard
      */
     emitLog(
-        level: 'info' | 'warn' | 'error' | 'success',
+        level: 'debug' | 'info' | 'warn' | 'error' | 'success',
         message: string,
         context?: string,
         taskId?: string,
@@ -391,6 +391,20 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                 avg_duration_ms: number;
                 p95_duration_ms: number;
                 flowchart_fallback_total: number;
+                doc_jobs_queued: number;
+                doc_jobs_inflight: number;
+                doc_assets_inflight: number;
+                stage_duration_ms: Record<string, number>;
+                stage_duration_p50_ms: number;
+                stage_duration_p95_ms: number;
+                stage_duration_p99_ms: number;
+                retry_events_total: number;
+                anchor_fallback_total: number;
+                insertion_collision_total: number;
+                version_hash_mismatch_total: number;
+                flowchart_mermaid_invalid_total: number;
+                flowchart_mermaid_self_correct_total: number;
+                flowchart_mermaid_fallback_total: number;
             };
         };
         recent?: { task_deltas?: any[]; logs?: any[] };

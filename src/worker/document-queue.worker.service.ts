@@ -67,6 +67,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       return;
     }
 
+    const stageStart = new Map<string, number>();
+    const markStageStart = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging') => {
+      stageStart.set(stage, Date.now());
+    };
+    const stageDuration = (stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging'): number | null => {
+      const started = stageStart.get(stage);
+      return Number.isFinite(Number(started)) ? Math.max(0, Date.now() - Number(started)) : null;
+    };
+
     this.observability.emitDocumentEvent({
       level: 'info',
       message: `Document worker claimed job=${jobId}`,
@@ -76,6 +85,18 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       eventType: 'stage_started',
       userId,
     });
+    markStageStart('queued');
+    if (Number(row?.attempts || 0) > 1) {
+      this.observability.emitDocumentEvent({
+        level: 'warn',
+        message: `Document retry scheduled job=${jobId} attempt=${row?.attempts}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'queued',
+        eventType: 'retry_scheduled',
+        userId,
+      });
+    }
 
     try {
       await this.storage.updateDocumentJobState(jobId, 'analyzing', { started_at: new Date().toISOString() });
@@ -88,6 +109,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         eventType: 'stage_started',
         userId,
       });
+      markStageStart('analyzing');
 
       const sourceBytes = await this.downloadObject(sourceKey);
       const extractedText = await this.docxTextExtractor.extractPlainText(sourceBytes);
@@ -118,6 +140,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         eventType: 'artifact_written',
         userId,
       });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage completed: analyzing job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'analyzing',
+        eventType: 'stage_completed',
+        durationMs: stageDuration('analyzing'),
+        userId,
+      });
 
       await this.storage.updateDocumentJobState(jobId, 'planning');
       this.observability.emitDocumentEvent({
@@ -129,6 +161,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         eventType: 'stage_started',
         userId,
       });
+      markStageStart('planning');
       const planningStartedAt = Date.now();
       const planningModel =
         String(process.env.DOC_PLANNING_USE_LLM || 'true').toLowerCase() === 'true'
@@ -289,8 +322,60 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       });
 
       await this.storage.updateDocumentJobState(jobId, 'generating_assets');
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage started: generating_assets job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'generating_assets',
+        eventType: 'stage_started',
+        userId,
+      });
+      markStageStart('generating_assets');
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage completed: generating_assets job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'generating_assets',
+        eventType: 'stage_completed',
+        durationMs: stageDuration('generating_assets'),
+        userId,
+      });
+
       await this.storage.updateDocumentJobState(jobId, 'inserting');
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage started: inserting job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'inserting',
+        eventType: 'stage_started',
+        userId,
+      });
+      markStageStart('inserting');
+
       await this.storage.updateDocumentJobState(jobId, 'packaging');
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage completed: inserting job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'inserting',
+        eventType: 'stage_completed',
+        durationMs: stageDuration('inserting'),
+        userId,
+      });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage started: packaging job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'packaging',
+        eventType: 'stage_started',
+        userId,
+      });
+      markStageStart('packaging');
 
       const finalKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'final.docx' });
       await this.uploadObject(finalKey, sourceBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -308,6 +393,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         jobId,
         stage: 'packaging',
         eventType: 'artifact_written',
+        userId,
+      });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document stage completed: packaging job=${jobId}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'packaging',
+        eventType: 'stage_completed',
+        durationMs: stageDuration('packaging'),
         userId,
       });
 
