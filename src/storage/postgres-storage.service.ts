@@ -111,6 +111,15 @@ export type DocumentQueueHealthStats = {
     failed: number;
 };
 
+export type DocumentObservabilityMetrics = {
+    completed_total: number;
+    failed_total: number;
+    retries_total: number;
+    avg_duration_ms: number;
+    p95_duration_ms: number;
+    flowchart_fallback_total: number;
+};
+
 export type DocumentJobObsRow = {
     job_id: string;
     user_id: number;
@@ -119,6 +128,15 @@ export type DocumentJobObsRow = {
     attempts: number;
     max_attempts: number;
     updated_at: string;
+};
+
+export type DocumentArtifactObsRow = {
+    artifact_type: string;
+    object_key: string;
+    byte_size: number | null;
+    checksum_sha256: string | null;
+    metadata: any;
+    created_at: string;
 };
 
 @Injectable()
@@ -464,6 +482,17 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             [jobId, Number(userId), artifactType]
         );
         return rows[0]?.object_key || null;
+    }
+
+    async listDocumentArtifactsForUser(jobId: string, userId: number): Promise<DocumentArtifactObsRow[]> {
+        if (!this.pool || !jobId || !Number.isFinite(Number(userId))) return [];
+        return this.queryRows<DocumentArtifactObsRow>(
+            `SELECT artifact_type, object_key, byte_size, checksum_sha256, metadata, created_at::text
+             FROM document_artifacts
+             WHERE job_id = $1 AND user_id = $2
+             ORDER BY created_at DESC`,
+            [jobId, Number(userId)]
+        );
     }
 
     async claimNextQueuedTask(workerId: string, leaseSeconds: number): Promise<QueueTaskRow | null> {
@@ -1160,6 +1189,42 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
              LIMIT $1`,
             [cap]
         );
+    }
+
+    async getDocumentObservabilityMetrics(): Promise<DocumentObservabilityMetrics> {
+        if (!this.pool) {
+            return {
+                completed_total: 0,
+                failed_total: 0,
+                retries_total: 0,
+                avg_duration_ms: 0,
+                p95_duration_ms: 0,
+                flowchart_fallback_total: 0,
+            };
+        }
+        const rows = await this.queryRows<DocumentObservabilityMetrics>(
+            `SELECT
+                COUNT(*) FILTER (WHERE queue_status = 'completed')::int AS completed_total,
+                COUNT(*) FILTER (WHERE queue_status = 'failed')::int AS failed_total,
+                COALESCE(SUM(GREATEST(attempts - 1, 0)), 0)::int AS retries_total,
+                COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS avg_duration_ms,
+                COALESCE(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) FILTER (WHERE queue_status = 'completed'), 0)::int AS p95_duration_ms,
+                (
+                    SELECT COUNT(*)::int
+                    FROM document_artifacts da
+                    WHERE da.artifact_type = 'manifest_json'
+                      AND da.metadata::text LIKE '%mermaid_validation_failed_after_single_retry%'
+                ) AS flowchart_fallback_total
+             FROM document_jobs`
+        );
+        return rows[0] || {
+            completed_total: 0,
+            failed_total: 0,
+            retries_total: 0,
+            avg_duration_ms: 0,
+            p95_duration_ms: 0,
+            flowchart_fallback_total: 0,
+        };
     }
 
     async querySystemLogs(filters: { taskId?: string; userId?: number; limit?: number }): Promise<SystemLogRow[]> {

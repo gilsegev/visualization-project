@@ -173,6 +173,12 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             event_id: eventId,
             task_id: taskId || null,
             batch_id: batchId || null,
+            doc_job_id: this.toStringOrNull(metadata?.doc_job_id),
+            stage: this.toStringOrNull(metadata?.stage),
+            event_type: this.toStringOrNull(metadata?.event_type),
+            duration_ms: this.toNumberOrNull(metadata?.duration_ms),
+            error_code: this.toStringOrNull(metadata?.error_code),
+            error_message: this.toStringOrNull(metadata?.error_message),
             user_id: metadata?.user_id ?? null,
             latency_ms: metadata?.latency_ms ?? null,
             provider_status: metadata?.provider_status ?? null,
@@ -222,6 +228,12 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         const base = metadata && typeof metadata === 'object' ? { ...metadata } : {};
         return {
             ...base,
+            doc_job_id: this.toStringOrNull(base.doc_job_id),
+            stage: this.toStringOrNull(base.stage),
+            event_type: this.toStringOrNull(base.event_type),
+            duration_ms: this.toNumberOrNull(base.duration_ms),
+            error_code: this.toStringOrNull(base.error_code),
+            error_message: this.toStringOrNull(base.error_message),
             user_id: this.toNumberOrNull(base.user_id),
             latency_ms: this.toNumberOrNull(base.latency_ms),
             provider_status: this.toStringOrNull(base.provider_status),
@@ -280,6 +292,45 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         void this.emitLiveStatsSnapshot(undefined, true);
     }
 
+    emitDocumentEvent(data: {
+        level: 'info' | 'warn' | 'error' | 'success';
+        message: string;
+        context?: string;
+        jobId: string;
+        stage: 'queued' | 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
+        eventType:
+            | 'stage_started'
+            | 'stage_completed'
+            | 'stage_failed'
+            | 'retry_scheduled'
+            | 'artifact_written'
+            | 'quality_scored';
+        durationMs?: number;
+        errorCode?: string;
+        errorMessage?: string;
+        userId?: number | null;
+        batchId?: string;
+    }) {
+        this.emitLog(
+            data.level,
+            data.message,
+            data.context || 'DocumentPipeline',
+            undefined,
+            data.batchId,
+            {
+                metadata: {
+                    doc_job_id: data.jobId,
+                    stage: data.stage,
+                    event_type: data.eventType,
+                    duration_ms: Number.isFinite(Number(data.durationMs)) ? Number(data.durationMs) : null,
+                    error_code: data.errorCode || null,
+                    error_message: data.errorMessage || null,
+                    user_id: Number.isFinite(Number(data.userId)) ? Number(data.userId) : null,
+                },
+            }
+        );
+    }
+
     emitLiveStats(data: {
         queue: { pending: number; completed: number; failed: number };
         workers: any[];
@@ -288,6 +339,14 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             queue: { queued: number; processing: number; completed: number; failed: number };
             recent_jobs: any[];
             artifact_type_counts: Array<{ artifact_type: string; count: number }>;
+            metrics: {
+                completed_total: number;
+                failed_total: number;
+                retries_total: number;
+                avg_duration_ms: number;
+                p95_duration_ms: number;
+                flowchart_fallback_total: number;
+            };
         };
         recent?: { task_deltas?: any[]; logs?: any[] };
         timestamp: string;
@@ -302,7 +361,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         if (!force && now - this.lastLiveStatsAt < this.liveStatsMinIntervalMs) return;
         this.lastLiveStatsAt = now;
 
-        const [queue, workers, database, taskDeltas, logDeltas, docQueue, docJobs, docArtifacts] = await Promise.all([
+        const [queue, workers, database, taskDeltas, logDeltas, docQueue, docJobs, docArtifacts, docMetrics] = await Promise.all([
             this.storage.getQueueHealthStats(),
             this.storage.getWorkerHealthStats(this.workerTimeoutMs),
             this.storage.getDatabaseHealthStats(),
@@ -315,6 +374,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             this.storage.getDocumentQueueHealthStats(),
             this.storage.getRecentDocumentJobs(50),
             this.storage.getDocumentArtifactTypeCounts(20),
+            this.storage.getDocumentObservabilityMetrics(),
         ]);
 
         const orderedTaskDeltas = target ? [...taskDeltas].reverse() : taskDeltas;
@@ -329,6 +389,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
                 queue: docQueue,
                 recent_jobs: docJobs,
                 artifact_type_counts: docArtifacts,
+                metrics: docMetrics,
             },
             recent: { task_deltas: orderedTaskDeltas, logs: orderedLogDeltas },
             timestamp: new Date().toISOString()

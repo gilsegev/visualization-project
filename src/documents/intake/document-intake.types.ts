@@ -17,3 +17,13 @@ export interface DocumentJobStatusResponse {
   max_attempts: number;
   updated_at: string;
 }
+
+export interface DocumentArtifactResponseItem {
+  artifact_type: string;
+  object_key: string;
+  byte_size: number | null;
+  checksum_sha256: string | null;
+  metadata: any;
+  created_at: string;
+  signed_url?: string | null;
+}

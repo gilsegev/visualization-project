@@ -90,6 +90,7 @@
                     :class="{'bg-neon/10 border-neon': isDragging, 'bg-surface/30': !isDragging}"
                     @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false"
                     @drop.prevent="handleDrop">
+                    <div class="grid grid-cols-2 gap-2">
                     <div class="border border-dashed border-slate-600 rounded-lg px-3 py-2 group cursor-pointer hover:border-neon/50 transition flex items-center justify-center gap-2"
                         @click="$refs.fileInput.click()">
                         <input type="file" ref="fileInput" class="hidden" accept=".json" @change="handleFileSelect">
@@ -102,6 +103,20 @@
                         <p class="text-slate-400 text-xs font-medium">Upload <code
                                 class="text-neon">manifest.json</code>
                         </p>
+                    </div>
+                    <div class="border border-dashed border-slate-600 rounded-lg px-3 py-2 group cursor-pointer hover:border-neon/50 transition flex items-center justify-center gap-2"
+                        @click="$refs.fileInputDocx.click()">
+                        <input type="file" ref="fileInputDocx" class="hidden" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" @change="handleDocxSelect">
+                        <svg class="w-4 h-4 text-slate-500 group-hover:text-neon transition" fill="none"
+                            stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l4.414 4.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+                            </path>
+                        </svg>
+                        <p class="text-slate-400 text-xs font-medium">Upload <code
+                                class="text-neon">.docx</code>
+                        </p>
+                    </div>
                     </div>
 
                     <div class="mt-2 text-center flex gap-2 justify-center">
@@ -131,6 +146,65 @@
                         <div class="rounded border border-slate-700 bg-black/30 p-2">
                             <div class="text-[9px] text-slate-500 font-mono">FAILED</div>
                             <div class="text-lg font-bold text-danger leading-tight">{{ queueHealth.failed }}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Document Queue Health -->
+                <div class="p-4 border-b border-slate-700 bg-surface/30">
+                    <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-2">DOCUMENT QUEUE HEALTH</div>
+                    <div class="grid grid-cols-4 gap-2 mb-2">
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">QUEUED</div>
+                            <div class="text-lg font-bold text-warning leading-tight">{{ documentQueueHealth.queued }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">PROC</div>
+                            <div class="text-lg font-bold text-neon leading-tight">{{ documentQueueHealth.processing }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">DONE</div>
+                            <div class="text-lg font-bold text-success leading-tight">{{ documentQueueHealth.completed }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">FAILED</div>
+                            <div class="text-lg font-bold text-danger leading-tight">{{ documentQueueHealth.failed }}</div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mb-2">
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">AVG DUR (MS)</div>
+                            <div class="text-sm font-bold text-slate-200 leading-tight">{{ documentObsMetrics.avg_duration_ms }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">P95 DUR (MS)</div>
+                            <div class="text-sm font-bold text-slate-200 leading-tight">{{ documentObsMetrics.p95_duration_ms }}</div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">RETRIES</div>
+                            <div class="text-sm font-bold text-warning leading-tight">{{ documentObsMetrics.retries_total }}</div>
+                        </div>
+                    </div>
+                    <div class="rounded border border-slate-700 bg-black/30 p-2 mb-2">
+                        <div class="text-[9px] text-slate-500 font-mono">FLOWCHART FALLBACKS</div>
+                        <div class="text-sm font-bold text-danger leading-tight">{{ documentObsMetrics.flowchart_fallback_total }}</div>
+                    </div>
+                    <div class="rounded border border-slate-700 bg-black/30 p-2 mb-2">
+                        <div class="text-[9px] text-slate-500 font-mono mb-1">ARTIFACT TYPES</div>
+                        <div v-if="!documentArtifactTypeCounts.length" class="text-[10px] text-slate-600 font-mono italic">No document artifacts yet...</div>
+                        <div v-for="item in documentArtifactTypeCounts" :key="`artifact-${item.artifact_type}`" class="flex items-center justify-between text-[10px] font-mono text-slate-200">
+                            <span class="truncate pr-2">{{ item.artifact_type }}</span>
+                            <span class="text-neon">{{ item.count }}</span>
+                        </div>
+                    </div>
+                    <div class="rounded border border-slate-700 bg-black/30 p-2">
+                        <div class="text-[9px] text-slate-500 font-mono mb-1">RECENT DOC JOBS</div>
+                        <div v-if="!recentDocumentJobs.length" class="text-[10px] text-slate-600 font-mono italic">No document jobs yet...</div>
+                        <div v-for="job in recentDocumentJobs" :key="`doc-job-${job.job_id}`" class="border-b border-slate-800/70 last:border-b-0 py-1">
+                            <div class="text-[10px] font-mono text-slate-200 truncate">{{ job.job_id }}</div>
+                            <div class="text-[10px] font-mono text-slate-400">
+                                state={{ job.state }} | queue={{ job.queue_status }} | attempts={{ job.attempts }}/{{ job.max_attempts }}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -224,8 +298,8 @@
                 <div class="flex-1 flex flex-col min-h-0 bg-black">
                     <!-- Tabs -->
                     <div class="flex border-b border-slate-700 bg-surface">
-                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'BATCH DIAG', 'QUERY LAB']" :key="mode"
-                            @click="logMode = mode"
+                        <button v-for="mode in ['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'BATCH DIAG', 'QUERY LAB', 'DOC JOBS']" :key="mode"
+                            @click="setLogMode(mode)"
                             class="flex-1 px-2 py-2 text-[10px] font-mono font-bold transition-colors border-b-2"
                             :class="logMode === mode ? 'border-neon text-neon bg-neon/5' : 'border-transparent text-slate-500 hover:text-slate-300'">
                             {{ mode }}
@@ -370,6 +444,46 @@
                         <div v-if="queryLabError" class="mt-1 text-[10px] text-danger font-mono">{{ queryLabError }}</div>
                     </div>
 
+                    <div v-if="logMode === 'DOC JOBS'" class="p-2 border-b border-slate-700 bg-surface/50">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="text-[10px] text-slate-500 font-mono">DOCUMENT JOBS</div>
+                            <div class="flex items-center gap-1">
+                                <button
+                                    class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors"
+                                    @click="refreshSelectedDocJobStatus"
+                                    :disabled="!selectedDocJobId || docJobStatusLoading">
+                                    {{ docJobStatusLoading ? 'REFRESHING...' : 'REFRESH STATUS' }}
+                                </button>
+                                <button
+                                    class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors"
+                                    @click="refreshSelectedDocArtifacts"
+                                    :disabled="!selectedDocJobId || docJobArtifactsLoading">
+                                    {{ docJobArtifactsLoading ? 'LOADING...' : 'REFRESH ARTIFACTS' }}
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1 mb-1">
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                @click="fetchSelectedDocJobDownloadUrl"
+                                :disabled="!selectedDocJobId || docJobDownloadLoading">
+                                {{ docJobDownloadLoading ? 'LOADING...' : 'GET DOWNLOAD URL' }}
+                            </button>
+                            <button
+                                class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                @click="openSelectedDocJobDownloadUrl"
+                                :disabled="!docJobDownloadUrl">
+                                OPEN URL
+                            </button>
+                        </div>
+                        <div class="text-[10px] font-mono text-slate-400 break-all" v-if="selectedDocJobId">
+                            selected={{ selectedDocJobId }}
+                        </div>
+                        <div class="text-[10px] font-mono text-slate-400 break-all" v-if="docJobDownloadUrl">
+                            url={{ docJobDownloadUrl }}
+                        </div>
+                    </div>
+
                     <!-- Log Stream -->
                     <div class="flex-1 overflow-y-auto p-4 font-mono text-[10px] leading-tight matrix-scroll relative"
                         ref="logContainer">
@@ -398,7 +512,41 @@
                             </div>
                         </div>
 
-                        <div v-if="filteredLogs.length === 0 && !(logMode === 'QUERY LAB' && queryLabHistory.length)" class="text-center text-slate-600 mt-10 italic">
+                        <div v-if="logMode === 'DOC JOBS'" class="space-y-2">
+                            <div v-if="!recentDocumentJobs.length" class="text-center text-slate-600 mt-10 italic">
+                                No document jobs to display...
+                            </div>
+                            <button
+                                v-for="job in recentDocumentJobs"
+                                :key="`doc-tab-${job.job_id}`"
+                                class="w-full text-left rounded border px-2 py-1 transition-colors"
+                                :class="selectedDocJobId === job.job_id ? 'border-neon bg-neon/10' : 'border-slate-700 bg-black/30 hover:border-neon/50'"
+                                @click="selectDocJob(job)">
+                                <div class="text-[10px] font-mono text-slate-200 truncate">{{ job.job_id }}</div>
+                                <div class="text-[10px] font-mono text-slate-400">
+                                    state={{ job.state }} | queue={{ job.queue_status }} | attempts={{ job.attempts }}/{{ job.max_attempts }}
+                                </div>
+                            </button>
+                            <div v-if="selectedDocJobStatus" class="rounded border border-slate-700 bg-black/30 p-2">
+                                <div class="text-[10px] text-slate-500 font-mono mb-1">SELECTED JOB STATUS</div>
+                                <div class="text-[10px] font-mono text-slate-200">job={{ selectedDocJobStatus.job_id }}</div>
+                                <div class="text-[10px] font-mono text-slate-200">state={{ selectedDocJobStatus.state }}</div>
+                                <div class="text-[10px] font-mono text-slate-200">queue={{ selectedDocJobStatus.queue_status }}</div>
+                                <div class="text-[10px] font-mono text-slate-200">attempts={{ selectedDocJobStatus.attempts }}/{{ selectedDocJobStatus.max_attempts }}</div>
+                                <div class="text-[10px] font-mono text-slate-400">updated={{ selectedDocJobStatus.updated_at }}</div>
+                            </div>
+                            <div class="rounded border border-slate-700 bg-black/30 p-2">
+                                <div class="text-[10px] text-slate-500 font-mono mb-1">LIVE DOC LOGS</div>
+                                <div v-if="!visibleDocLogs.length" class="text-[10px] text-slate-600 font-mono italic">No document logs yet...</div>
+                                <div v-for="(log, idx) in visibleDocLogs" :key="`doc-log-${idx}`" class="text-[10px] font-mono py-0.5 border-b border-slate-800/60 last:border-b-0">
+                                    <span class="text-slate-600">[{{ formatTime(log.timestamp) }}]</span>
+                                    <span class="ml-1 text-slate-300">{{ log.context }}:</span>
+                                    <span class="ml-1 text-slate-200">{{ log.message }}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-if="filteredLogs.length === 0 && !(logMode === 'QUERY LAB' && queryLabHistory.length) && logMode !== 'DOC JOBS'" class="text-center text-slate-600 mt-10 italic">
                             No logs to display...
                         </div>
 
@@ -503,6 +651,146 @@
                                 <div v-if="item.clip_error" class="text-warning break-words">clip: {{ item.clip_error }}</div>
                                 <a :href="item.image_url" target="_blank" rel="noopener noreferrer" class="text-neon underline break-all block">{{ item.image_url }}</a>
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else-if="logMode === 'DOC JOBS'" class="max-w-7xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <div>
+                            <div class="text-xs text-neon font-mono uppercase tracking-widest mb-1">Document Jobs</div>
+                            <h2 class="text-2xl font-bold text-white">Pipeline Execution View</h2>
+                        </div>
+                        <div class="text-xs font-mono text-slate-400">
+                            selected: <span class="text-slate-200">{{ selectedDocJobId || '-' }}</span>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                        <div class="xl:col-span-2 bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-3">Pipeline Stages</div>
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                <div v-for="stage in docPipelineStages" :key="`stage-${stage.key}`"
+                                    class="rounded border px-3 py-2"
+                                    :class="{
+                                        'border-success bg-success/10': stage.status === 'done',
+                                        'border-neon bg-neon/10': stage.status === 'active',
+                                        'border-danger bg-danger/10': stage.status === 'failed',
+                                        'border-slate-700 bg-black/20': stage.status === 'pending'
+                                    }">
+                                    <div class="text-[10px] font-mono uppercase"
+                                        :class="{
+                                            'text-success': stage.status === 'done',
+                                            'text-neon': stage.status === 'active',
+                                            'text-danger': stage.status === 'failed',
+                                            'text-slate-500': stage.status === 'pending'
+                                        }">
+                                        {{ stage.label }}
+                                    </div>
+                                    <div class="text-[10px] font-mono text-slate-300 mt-1">{{ stage.detail }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Artifacts</div>
+                            <div v-if="!docJobArtifacts.length" class="text-[10px] text-slate-600 font-mono italic">No artifacts yet...</div>
+                            <div v-for="(item, idx) in docJobArtifacts" :key="`doc-art-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
+                                <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
+                                <div class="text-[10px] font-mono text-slate-500 break-all">{{ item.object_key }}</div>
+                                <a v-if="item.signed_url" :href="item.signed_url" target="_blank" rel="noopener noreferrer"
+                                    class="block text-[10px] text-neon underline break-all mt-1">
+                                    open artifact
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Manifest Quality</div>
+                            <div v-if="!manifestQualitySummary.ready" class="text-[10px] text-slate-600 font-mono italic">Manifest/analysis artifacts not available yet.</div>
+                            <div v-else class="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Valid</div>
+                                    <div :class="manifestQualitySummary.valid ? 'text-success' : 'text-danger'" class="text-lg font-bold">
+                                        {{ manifestQualitySummary.valid ? 'YES' : 'NO' }}
+                                    </div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Errors</div>
+                                    <div class="text-lg font-bold text-warning">{{ manifestQualitySummary.errorCount }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Anchors (analysis)</div>
+                                    <div class="text-lg font-bold text-slate-200">{{ manifestQualitySummary.anchorTotal }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Anchors used</div>
+                                    <div class="text-lg font-bold text-neon">{{ manifestQualitySummary.anchorUsed }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2 col-span-2">
+                                    <div class="text-slate-500">Anchor Coverage</div>
+                                    <div class="text-lg font-bold"
+                                        :class="manifestQualitySummary.coveragePct >= 80 ? 'text-success' : (manifestQualitySummary.coveragePct >= 50 ? 'text-warning' : 'text-danger')">
+                                        {{ manifestQualitySummary.coverageText }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Manifest Artifact</div>
+                            <div v-if="!docManifestArtifact" class="text-[10px] text-slate-600 font-mono italic">No manifest_json artifact found.</div>
+                            <pre v-else class="text-[10px] text-slate-300 font-mono whitespace-pre-wrap break-words max-h-[34vh] overflow-y-auto matrix-scroll">{{ JSON.stringify(docManifestPreview, null, 2) }}</pre>
+                        </div>
+                        <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                            <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Analysis Artifact</div>
+                            <div v-if="!docAnalysisArtifact" class="text-[10px] text-slate-600 font-mono italic">No analysis_json artifact found.</div>
+                            <pre v-else class="text-[10px] text-slate-300 font-mono whitespace-pre-wrap break-words max-h-[34vh] overflow-y-auto matrix-scroll">{{ JSON.stringify(docAnalysisPreview, null, 2) }}</pre>
+                        </div>
+                    </div>
+
+                    <div class="bg-surface border border-slate-700 rounded-lg p-4">
+                        <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Execution Trace</div>
+                        <div v-if="!visibleDocLogs.length" class="text-[10px] text-slate-600 font-mono italic">No trace lines yet...</div>
+                        <div v-for="(log, idx) in visibleDocLogs" :key="`doc-trace-${idx}`"
+                            class="text-[11px] font-mono py-1 border-b border-slate-800/60 last:border-b-0">
+                            <span class="text-slate-600">[{{ formatTime(log.timestamp) }}]</span>
+                            <span class="ml-1 text-neon">{{ log.context }}:</span>
+                            <span class="ml-1 text-slate-200">{{ log.message }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-else-if="logMode === 'BY ASSET'" class="max-w-7xl mx-auto w-full space-y-6">
+                    <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                        <div>
+                            <div class="text-xs text-neon font-mono uppercase tracking-widest mb-1">By Asset</div>
+                            <h2 class="text-2xl font-bold text-white">Live Asset Output</h2>
+                        </div>
+                        <div class="text-xs font-mono text-slate-400">
+                            assets: <span class="text-slate-200">{{ assetGalleryTasks.length }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="!assetGalleryTasks.length" class="text-center py-20 opacity-30">
+                        <h3 class="text-xl font-bold text-slate-400">No Assets Yet</h3>
+                        <p class="text-slate-500">Run a batch to populate generated images and charts.</p>
+                    </div>
+
+                    <div v-else class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <div v-for="task in assetGalleryTasks" :key="`asset-gallery-${task.taskId}`"
+                            class="bg-surface rounded-lg border border-slate-700 overflow-hidden cursor-pointer hover:border-neon/50 transition"
+                            @click="selectAsset(task)">
+                            <div class="px-3 py-2 border-b border-slate-700/50 flex justify-between items-center text-xs font-mono">
+                                <span :class="getStatusTextClass(task)">{{ getStatusLabel(task) }}</span>
+                                <span class="text-slate-500">{{ task.taskId.split('-').pop() }}</span>
+                            </div>
+                            <div class="h-44 bg-black/30 flex items-center justify-center">
+                                <img v-if="task.url" :src="task.url" class="w-full h-full object-cover" @click.stop="openImage(task.url, task)" />
+                                <div v-else class="text-[10px] font-mono text-slate-500">{{ task.stage || task.status || 'pending' }}</div>
+                            </div>
+                            <div class="p-2 text-[10px] font-mono text-slate-300 truncate">{{ task.details?.title || task.taskId }}</div>
                         </div>
                     </div>
                 </div>
@@ -827,6 +1115,7 @@
 
         createApp({
             setup() {
+                const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                 const isConnected = ref(false);
                 const isDragging = ref(false);
                 const apiKey = ref('');
@@ -842,10 +1131,32 @@
                 const queryLabResults = ref([]);
                 const queryLabHistory = ref([]);
                 const copyLogsState = ref('');
+                const selectedDocJobId = ref('');
+                const selectedDocJobStatus = ref(null);
+                const docJobDownloadUrl = ref('');
+                const docJobStatusLoading = ref(false);
+                const docJobDownloadLoading = ref(false);
+                const docJobArtifacts = ref([]);
+                const docJobArtifactsLoading = ref(false);
+                const lastDocArtifactsRefreshAt = ref(0);
+                const suppressLiveStats = ref(false);
                 const liveStats = ref({
                     queue: { pending: 0, completed: 0, failed: 0 },
                     workers: [],
-                    database: {}
+                    database: {},
+                    documents: {
+                        queue: { queued: 0, processing: 0, completed: 0, failed: 0 },
+                        recent_jobs: [],
+                        artifact_type_counts: [],
+                        metrics: {
+                            completed_total: 0,
+                            failed_total: 0,
+                            retries_total: 0,
+                            avg_duration_ms: 0,
+                            p95_duration_ms: 0,
+                            flowchart_fallback_total: 0,
+                        }
+                    }
                 });
 
                 const logs = ref([]);
@@ -1048,6 +1359,192 @@
                     return { pending, completed, failed };
                 });
 
+                const documentQueueHealth = computed(() => {
+                    const q = liveStats.value?.documents?.queue || {};
+                    return {
+                        queued: Number(q.queued || 0),
+                        processing: Number(q.processing || 0),
+                        completed: Number(q.completed || 0),
+                        failed: Number(q.failed || 0),
+                    };
+                });
+
+                const recentDocumentJobs = computed(() => {
+                    const rows = liveStats.value?.documents?.recent_jobs;
+                    return Array.isArray(rows) ? rows.slice(0, 8) : [];
+                });
+
+                const documentArtifactTypeCounts = computed(() => {
+                    const rows = liveStats.value?.documents?.artifact_type_counts;
+                    return Array.isArray(rows) ? rows.slice(0, 8) : [];
+                });
+
+                const documentObsMetrics = computed(() => {
+                    const m = liveStats.value?.documents?.metrics || {};
+                    return {
+                        completed_total: Number(m.completed_total || 0),
+                        failed_total: Number(m.failed_total || 0),
+                        retries_total: Number(m.retries_total || 0),
+                        avg_duration_ms: Number(m.avg_duration_ms || 0),
+                        p95_duration_ms: Number(m.p95_duration_ms || 0),
+                        flowchart_fallback_total: Number(m.flowchart_fallback_total || 0),
+                    };
+                });
+
+                const selectedDocJob = computed(() => {
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return null;
+                    return recentDocumentJobs.value.find((job) => String(job?.job_id || '') === id) || null;
+                });
+
+                const ensureSelectedDocJob = () => {
+                    const rows = recentDocumentJobs.value || [];
+                    if (!rows.length) return;
+                    const selectedId = String(selectedDocJobId.value || '').trim();
+                    if (selectedId && rows.some((j) => String(j?.job_id || '') === selectedId)) return;
+                    selectDocJob(rows[0]);
+                };
+
+                const visibleDocLogs = computed(() => {
+                    const selectedId = String(selectedDocJobId.value || '').trim();
+                    const docLogs = (logs.value || []).filter((log) => {
+                        const ctx = String(log?.context || '').toLowerCase();
+                        const msg = String(log?.message || '');
+                        const docId = String(log?.metadata?.doc_job_id || '').trim();
+                        const looksDoc = ctx.includes('document') || ctx.includes('doc') || msg.toLowerCase().includes('document');
+                        if (!looksDoc && !docId) return false;
+                        if (!selectedId) return true;
+                        return docId === selectedId || msg.includes(selectedId);
+                    });
+                    return docLogs.slice(-80).reverse();
+                });
+
+                const docPipelineStages = computed(() => {
+                    const stages = [
+                        { key: 'queued', label: 'Queued' },
+                        { key: 'analyzing', label: 'Analyzing' },
+                        { key: 'planning', label: 'Planning' },
+                        { key: 'generating_assets', label: 'Generating Assets' },
+                        { key: 'inserting', label: 'Inserting' },
+                        { key: 'packaging', label: 'Packaging' },
+                        { key: 'completed', label: 'Completed' },
+                    ];
+                    const state = String(selectedDocJobStatus.value?.state || selectedDocJob.value?.state || '').toLowerCase();
+                    const isFailed = state === 'failed';
+                    const order = new Map(stages.map((s, idx) => [s.key, idx]));
+                    const activeIndex = order.has(state) ? order.get(state) : -1;
+                    return stages.map((stage, idx) => {
+                        let status = 'pending';
+                        if (isFailed && idx === activeIndex) status = 'failed';
+                        else if (idx === activeIndex && !isFailed) status = 'active';
+                        else if (activeIndex > idx || (state === 'completed' && idx <= order.get('completed'))) status = 'done';
+                        const detail = stage.key === state
+                            ? `state=${state}`
+                            : (status === 'done' ? 'complete' : (status === 'active' ? 'running' : 'waiting'));
+                        return { ...stage, status, detail };
+                    });
+                });
+
+                const docArtifactUrls = computed(() => {
+                    const urls = [];
+                    for (const log of visibleDocLogs.value) {
+                        for (const url of extractUrls(log?.message || '')) {
+                            if (!urls.includes(url)) urls.push(url);
+                        }
+                    }
+                    const selectedUrl = String(docJobDownloadUrl.value || '').trim();
+                    if (selectedUrl && !urls.includes(selectedUrl)) urls.unshift(selectedUrl);
+                    return urls.slice(0, 20);
+                });
+
+                const docManifestArtifact = computed(() => {
+                    return (docJobArtifacts.value || []).find((a) => String(a?.artifact_type || '') === 'manifest_json') || null;
+                });
+
+                const docAnalysisArtifact = computed(() => {
+                    return (docJobArtifacts.value || []).find((a) => String(a?.artifact_type || '') === 'analysis_json') || null;
+                });
+
+                const docManifestPreview = computed(() => {
+                    const metadata = docManifestArtifact.value?.metadata || {};
+                    return {
+                        valid: metadata?.valid,
+                        errors: metadata?.errors || [],
+                        manifest_version: metadata?.manifest_version,
+                        manifest: metadata?.manifest || null
+                    };
+                });
+
+                const docAnalysisPreview = computed(() => {
+                    const metadata = docAnalysisArtifact.value?.metadata || {};
+                    const anchors = Array.isArray(metadata?.anchors) ? metadata.anchors : [];
+                    const sections = Array.isArray(metadata?.sections) ? metadata.sections : [];
+                    const paragraphs = Array.isArray(metadata?.paragraphs) ? metadata.paragraphs : [];
+                    return {
+                        summary: metadata?.summary || null,
+                        anchors_count: anchors.length,
+                        sections_count: sections.length,
+                        paragraphs_count: paragraphs.length,
+                        sample_anchors: anchors.slice(0, 10),
+                        sample_sections: sections.slice(0, 10),
+                    };
+                });
+
+                const manifestQualitySummary = computed(() => {
+                    const manifestMeta = docManifestArtifact.value?.metadata || {};
+                    const analysisMeta = docAnalysisArtifact.value?.metadata || {};
+                    const anchors = Array.isArray(analysisMeta?.anchors) ? analysisMeta.anchors : [];
+                    const anchorIds = new Set(
+                        anchors
+                            .map((a) => String(a?.anchor_id || a?.id || '').trim())
+                            .filter(Boolean)
+                    );
+
+                    const usedAnchorIds = new Set();
+                    const walk = (node) => {
+                        if (!node || typeof node !== 'object') return;
+                        if (Array.isArray(node)) {
+                            for (const child of node) walk(child);
+                            return;
+                        }
+                        const a1 = String(node.anchor_id || '').trim();
+                        const a2 = String(node.anchorId || '').trim();
+                        if (a1) usedAnchorIds.add(a1);
+                        if (a2) usedAnchorIds.add(a2);
+                        for (const value of Object.values(node)) walk(value);
+                    };
+                    walk(manifestMeta?.manifest || null);
+
+                    const usedKnown = Array.from(usedAnchorIds).filter((id) => anchorIds.has(id)).length;
+                    const total = anchorIds.size;
+                    const coveragePct = total > 0 ? Math.round((usedKnown * 100) / total) : 0;
+                    const valid = Boolean(manifestMeta?.valid);
+                    const errors = Array.isArray(manifestMeta?.errors) ? manifestMeta.errors : [];
+
+                    return {
+                        ready: Boolean(docManifestArtifact.value || docAnalysisArtifact.value),
+                        valid,
+                        errorCount: errors.length,
+                        anchorTotal: total,
+                        anchorUsed: usedKnown,
+                        coveragePct,
+                        coverageText: total > 0 ? `${coveragePct}% (${usedKnown}/${total})` : 'n/a'
+                    };
+                });
+
+                const assetGalleryTasks = computed(() => {
+                    const rows = Object.values(tasks.value || {}).map(normalizeTask);
+                    return rows
+                        .sort((a, b) => {
+                            const aDone = a?.status === 'completed' ? 1 : 0;
+                            const bDone = b?.status === 'completed' ? 1 : 0;
+                            if (aDone !== bDone) return bDone - aDone;
+                            const aTs = Date.parse(a?.details?.updated_at || a?.metadata?.updated_at || '') || 0;
+                            const bTs = Date.parse(b?.details?.updated_at || b?.metadata?.updated_at || '') || 0;
+                            return bTs - aTs;
+                        });
+                });
+
                 // Helpers
                 const decodeSlug = (slug) => slug.replace(/-/g, ' ');
 
@@ -1243,6 +1740,24 @@
                     return key ? { 'x-api-key': key } : {};
                 };
 
+                const fetchWithAuth = async (url, init = {}, retryOn401 = true) => {
+                    const merged = {
+                        ...init,
+                        headers: { ...(init?.headers || {}), ...authHeaders() },
+                    };
+                    let res = await fetch(url, merged);
+                    if (res.status === 401 && retryOn401) {
+                        const key = promptForApiKey();
+                        if (key) {
+                            res = await fetch(url, {
+                                ...init,
+                                headers: { ...(init?.headers || {}), 'x-api-key': key },
+                            });
+                        }
+                    }
+                    return res;
+                };
+
                 const selectedTask = ref(null);
 
                 const isActiveBatchEvent = (payload) => {
@@ -1316,7 +1831,32 @@
                     seenEventIds.clear();
                     selectedTask.value = null;
                     selectedAssetFilter.value = '';
-                    logMode.value = 'HIGH LEVEL';
+                    selectedDocJobId.value = '';
+                    selectedDocJobStatus.value = null;
+                    docJobDownloadUrl.value = '';
+                    docJobArtifacts.value = [];
+                    queryLabResults.value = [];
+                    queryLabHistory.value = [];
+                    queryLabError.value = '';
+                    liveStats.value = {
+                        queue: { pending: 0, completed: 0, failed: 0 },
+                        workers: [],
+                        database: {},
+                        documents: {
+                            queue: { queued: 0, processing: 0, completed: 0, failed: 0 },
+                            recent_jobs: [],
+                            artifact_type_counts: [],
+                            metrics: {
+                                completed_total: 0,
+                                failed_total: 0,
+                                retries_total: 0,
+                                avg_duration_ms: 0,
+                                p95_duration_ms: 0,
+                                flowchart_fallback_total: 0,
+                            }
+                        }
+                    };
+                    suppressLiveStats.value = true;
                     addLog('info', 'System Data Cleared', 'Frontend');
                 };
 
@@ -1329,7 +1869,7 @@
                 const stopBatch = async () => {
                     try {
                         addLog('warn', 'Sending Stop Signal...', 'Frontend');
-                        await fetch('/generate/stop', { method: 'POST', headers: authHeaders() });
+                        await fetchWithAuth('/generate/stop', { method: 'POST' });
                         addLog('warn', 'Stop Signal Sent', 'Frontend');
                     } catch (e) {
                         addLog('error', 'Failed to stop batch', e.message);
@@ -1337,6 +1877,7 @@
                 };
 
                 const runQueryLab = async () => {
+                    suppressLiveStats.value = false;
                     const q = String(queryLabInput.value || '').trim();
                     if (!q) {
                         queryLabError.value = 'Query is required.';
@@ -1347,9 +1888,9 @@
                     queryLabResults.value = [];
                     addLog('info', `Query Lab: testing "${q}"`, 'Frontend');
                     try {
-                        const res = await fetch('/generate/source-debug', {
+                        const res = await fetchWithAuth('/generate/source-debug', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ query: q, clip_brief: q, per_page: 10, orientation: 'horizontal' }),
                         });
                         const data = await res.json();
@@ -1425,6 +1966,13 @@
                     selectedAssetFilter.value = taskId;
                 };
 
+                const setLogMode = (mode) => {
+                    logMode.value = mode;
+                    if (mode === 'DOC JOBS') {
+                        ensureSelectedDocJob();
+                    }
+                };
+
                 const taskLabel = (task) => {
                     const title = task?.details?.title || task?.metadata?.title || task?.metadata?.lesson_title || task?.taskId;
                     const id = String(task?.taskId || '');
@@ -1485,6 +2033,7 @@
 
                 // Handlers
                 const processManifest = async (file) => {
+                    suppressLiveStats.value = false;
                     const reader = new FileReader();
                     reader.onload = async (e) => {
                         try {
@@ -1495,9 +2044,9 @@
                             tasks.value = {};
                             batch.value = { total: 0, completed: 0 };
                             currentBatchId.value = null;
-                            const res = await fetch('/generate/manifest', {
+                            const res = await fetchWithAuth('/generate/manifest', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', ...authHeaders() },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify(json)
                             });
                             const data = await res.json();
@@ -1514,6 +2063,202 @@
                         }
                     };
                     reader.readAsText(file);
+                };
+
+                const processDocumentUpload = async (file) => {
+                    suppressLiveStats.value = false;
+                    try {
+                        const name = String(file?.name || '').trim();
+                        const size = Number(file?.size || 0);
+                        if (!name.toLowerCase().endsWith('.docx')) {
+                            addLog('error', 'Document upload failed: file must end with .docx', 'DocumentIntake');
+                            return;
+                        }
+                        if (!Number.isFinite(size) || size <= 0) {
+                            addLog('error', 'Document upload failed: file is empty', 'DocumentIntake');
+                            return;
+                        }
+                        addLog('info', `Document upload start: ${name} (${size} bytes)`, 'DocumentIntake');
+
+                        const createRes = await fetchWithAuth('/documents/jobs', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                file_name: name,
+                                file_size_bytes: size,
+                                file_mime_type: DOCX_MIME,
+                            })
+                        });
+                        const createBody = await createRes.json();
+                        if (!createRes.ok || !createBody?.job_id || !createBody?.upload?.upload_url) {
+                            const reason = createBody?.error
+                                || (Array.isArray(createBody?.message) ? createBody.message.join('; ') : createBody?.message)
+                                || `HTTP ${createRes.status}`;
+                            addLog('error', `Document draft creation failed: ${reason}`, 'DocumentIntake');
+                            return;
+                        }
+
+                        const jobId = String(createBody.job_id);
+                        const uploadUrl = String(createBody.upload.upload_url);
+                        const docVersionHash = String(createBody.doc_version_hash || '');
+                        addLog('info', `Document draft created: ${jobId}`, 'DocumentIntake');
+
+                        const uploadRes = await fetch(uploadUrl, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': DOCX_MIME },
+                            body: file
+                        });
+                        if (!uploadRes.ok) {
+                            addLog('error', `Document binary upload failed: HTTP ${uploadRes.status}`, 'DocumentIntake', null, null, {
+                                metadata: { doc_job_id: jobId, provider_status: `upload_http_${uploadRes.status}` }
+                            });
+                            return;
+                        }
+                        addLog('success', `Document uploaded to object storage: ${jobId}`, 'DocumentIntake');
+
+                        const finalizeRes = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(jobId)}/finalize`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                file_name: name,
+                                file_size_bytes: size,
+                                file_mime_type: DOCX_MIME,
+                                doc_version_hash: docVersionHash
+                            })
+                        });
+                        const finalizeBody = await finalizeRes.json();
+                        if (!finalizeRes.ok) {
+                            const reason = finalizeBody?.error
+                                || (Array.isArray(finalizeBody?.message) ? finalizeBody.message.join('; ') : finalizeBody?.message)
+                                || `HTTP ${finalizeRes.status}`;
+                            addLog('error', `Document finalize failed: ${reason}`, 'DocumentIntake', null, null, {
+                                metadata: { doc_job_id: jobId }
+                            });
+                            return;
+                        }
+                        addLog('success', `Document job queued: ${jobId}`, 'DocumentIntake', null, null, {
+                            metadata: { doc_job_id: jobId, provider_status: 'queued' }
+                        });
+
+                        const maxPolls = 30;
+                        for (let i = 0; i < maxPolls; i++) {
+                            await new Promise((resolve) => setTimeout(resolve, 2000));
+                            const statusRes = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(jobId)}/status`, { method: 'GET' });
+                            const statusBody = await statusRes.json();
+                            if (!statusRes.ok) continue;
+                            const state = String(statusBody?.state || '');
+                            const queueStatus = String(statusBody?.queue_status || '');
+                            addLog('info', `Document status job=${jobId} state=${state} queue=${queueStatus}`, 'DocumentIntake', null, null, {
+                                metadata: { doc_job_id: jobId, provider_status: queueStatus }
+                            });
+                            if (state === 'completed' || queueStatus === 'completed') {
+                                addLog('success', `Document job completed: ${jobId}`, 'DocumentIntake');
+                                return;
+                            }
+                            if (state === 'failed' || queueStatus === 'failed') {
+                                addLog('error', `Document job failed: ${jobId}`, 'DocumentIntake');
+                                return;
+                            }
+                        }
+                        addLog('warn', `Document job still running: ${jobId}`, 'DocumentIntake');
+                    } catch (err) {
+                        addLog('error', `Document upload failed: ${err?.message || String(err)}`, 'DocumentIntake');
+                    }
+                };
+
+                const selectDocJob = (job) => {
+                    const id = String(job?.job_id || '').trim();
+                    if (!id) return;
+                    selectedDocJobId.value = id;
+                    selectedDocJobStatus.value = {
+                        job_id: id,
+                        state: job?.state || '',
+                        queue_status: job?.queue_status || '',
+                        attempts: Number(job?.attempts || 0),
+                        max_attempts: Number(job?.max_attempts || 0),
+                        updated_at: job?.updated_at || ''
+                    };
+                    docJobDownloadUrl.value = '';
+                    void refreshSelectedDocArtifacts();
+                };
+
+                const refreshSelectedDocJobStatus = async () => {
+                    suppressLiveStats.value = false;
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return;
+                    docJobStatusLoading.value = true;
+                    try {
+                        const res = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(id)}/status`, { method: 'GET' });
+                        const body = await res.json();
+                        if (!res.ok) {
+                            const reason = body?.error
+                                || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
+                                || `HTTP ${res.status}`;
+                            addLog('error', `Doc job status refresh failed (${id}): ${reason}`, 'DocumentIntake');
+                            return;
+                        }
+                        selectedDocJobStatus.value = body;
+                        addLog('info', `Doc job status refreshed (${id}) state=${body?.state} queue=${body?.queue_status}`, 'DocumentIntake');
+                    } catch (err) {
+                        addLog('error', `Doc job status refresh failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                    } finally {
+                        docJobStatusLoading.value = false;
+                    }
+                };
+
+                const fetchSelectedDocJobDownloadUrl = async () => {
+                    suppressLiveStats.value = false;
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return;
+                    docJobDownloadLoading.value = true;
+                    try {
+                        const res = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(id)}/download-url`, { method: 'GET' });
+                        const body = await res.json();
+                        if (!res.ok || !body?.download_url) {
+                            const reason = body?.error
+                                || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
+                                || `HTTP ${res.status}`;
+                            addLog('warn', `Doc job download URL unavailable (${id}): ${reason}`, 'DocumentIntake');
+                            return;
+                        }
+                        docJobDownloadUrl.value = String(body.download_url);
+                        addLog('success', `Doc job download URL ready (${id})`, 'DocumentIntake');
+                    } catch (err) {
+                        addLog('error', `Doc job download URL failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                    } finally {
+                        docJobDownloadLoading.value = false;
+                    }
+                };
+
+                const refreshSelectedDocArtifacts = async () => {
+                    suppressLiveStats.value = false;
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return;
+                    docJobArtifactsLoading.value = true;
+                    try {
+                        const res = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(id)}/artifacts`, { method: 'GET' });
+                        const body = await res.json();
+                        if (!res.ok) {
+                            const reason = body?.error
+                                || (Array.isArray(body?.message) ? body.message.join('; ') : body?.message)
+                                || `HTTP ${res.status}`;
+                            addLog('error', `Doc job artifacts failed (${id}): ${reason}`, 'DocumentIntake');
+                            return;
+                        }
+                        docJobArtifacts.value = Array.isArray(body?.artifacts) ? body.artifacts : [];
+                        lastDocArtifactsRefreshAt.value = Date.now();
+                        addLog('info', `Doc job artifacts loaded (${id}) count=${docJobArtifacts.value.length}`, 'DocumentIntake');
+                    } catch (err) {
+                        addLog('error', `Doc job artifacts failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                    } finally {
+                        docJobArtifactsLoading.value = false;
+                    }
+                };
+
+                const openSelectedDocJobDownloadUrl = () => {
+                    const url = String(docJobDownloadUrl.value || '').trim();
+                    if (!url) return;
+                    window.open(url, '_blank', 'noopener,noreferrer');
                 };
 
                 // Lifecycle
@@ -1621,39 +2366,78 @@
                     });
 
                     socket.on('live_stats', (data) => {
+                        if (suppressLiveStats.value) return;
                         liveStats.value = {
                             queue: data?.queue || { pending: 0, completed: 0, failed: 0 },
                             workers: Array.isArray(data?.workers) ? data.workers : [],
                             database: data?.database || {},
+                            documents: data?.documents || {
+                                queue: { queued: 0, processing: 0, completed: 0, failed: 0 },
+                                recent_jobs: [],
+                                artifact_type_counts: [],
+                                metrics: {
+                                    completed_total: 0,
+                                    failed_total: 0,
+                                    retries_total: 0,
+                                    avg_duration_ms: 0,
+                                    p95_duration_ms: 0,
+                                    flowchart_fallback_total: 0,
+                                }
+                            },
                             timestamp: data?.timestamp || null
                         };
                         const taskDeltas = Array.isArray(data?.recent?.task_deltas) ? data.recent.task_deltas : [];
                         const logDeltas = Array.isArray(data?.recent?.logs) ? data.recent.logs : [];
 
-                        // On refresh, avoid replaying stale historical batches unless there is active queued work.
+                        // Batch deltas are optional for doc-only flows; avoid early-returning doc observability updates.
+                        let canProcessBatchDeltas = true;
                         if (!currentBatchId.value) {
                             const hasPending = Number(data?.queue?.pending || 0) > 0;
-                            if (!hasPending) return;
-
-                            const inferredBatchId = inferBatchIdFromDeltas(taskDeltas, logDeltas);
-                            if (inferredBatchId) {
-                                currentBatchId.value = inferredBatchId;
-                                tasks.value = {};
-                                logs.value = [];
-                                seenLogIds.clear();
-                                seenEventIds.clear();
-                                addLog('info', `Hydrating active batch ${inferredBatchId}`, 'System', null, inferredBatchId);
+                            if (!hasPending) {
+                                canProcessBatchDeltas = false;
                             } else {
-                                return;
+                                const inferredBatchId = inferBatchIdFromDeltas(taskDeltas, logDeltas);
+                                if (inferredBatchId) {
+                                    currentBatchId.value = inferredBatchId;
+                                    tasks.value = {};
+                                    logs.value = [];
+                                    seenLogIds.clear();
+                                    seenEventIds.clear();
+                                    addLog('info', `Hydrating active batch ${inferredBatchId}`, 'System', null, inferredBatchId);
+                                } else {
+                                    canProcessBatchDeltas = false;
+                                }
                             }
                         }
 
-                        for (const delta of taskDeltas) applyTaskDelta(delta);
-                        for (const delta of logDeltas) applyLogDelta(delta);
-                        if (logContainer.value) {
-                            const el = logContainer.value;
-                            const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
-                            if (scrollPos < 10) el.scrollTop = el.scrollHeight;
+                        if (canProcessBatchDeltas) {
+                            for (const delta of taskDeltas) applyTaskDelta(delta);
+                            for (const delta of logDeltas) applyLogDelta(delta);
+                            if (logContainer.value) {
+                                const el = logContainer.value;
+                                const scrollPos = el.scrollHeight - el.scrollTop - el.clientHeight;
+                                if (scrollPos < 10) el.scrollTop = el.scrollHeight;
+                            }
+                        }
+                        const selectedId = String(selectedDocJobId.value || '').trim();
+                        if (selectedId) {
+                            const latest = (data?.documents?.recent_jobs || []).find((j) => String(j?.job_id || '') === selectedId);
+                            if (latest) {
+                                selectedDocJobStatus.value = {
+                                    job_id: selectedId,
+                                    state: latest?.state || '',
+                                    queue_status: latest?.queue_status || '',
+                                    attempts: Number(latest?.attempts || 0),
+                                    max_attempts: Number(latest?.max_attempts || 0),
+                                    updated_at: latest?.updated_at || ''
+                                };
+                                const now = Date.now();
+                                if (!docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
+                                    void refreshSelectedDocArtifacts();
+                                }
+                            }
+                        } else if (logMode.value === 'DOC JOBS') {
+                            ensureSelectedDocJob();
                         }
                     });
 
@@ -1668,16 +2452,50 @@
                     apiKey, authReady,
                     narrativeMetrics,
                     queueHealth,
+                    documentQueueHealth,
+                    recentDocumentJobs,
+                    documentArtifactTypeCounts,
+                    documentObsMetrics,
                     liveStats,
                     strategyTelemetryRows,
                     selectedAssetTask, batchStylingGuidance,
                     showAssetInspector,
                     logMode, selectedAssetFilter, filteredLogs,
+                    setLogMode,
                     queryLabInput, queryLabLoading, queryLabError, queryLabResults, runQueryLab,
                     queryLabHistory,
                     copyLogsState, copyVisibleLogs,
-                    handleDrop: (e) => { isDragging.value = false; if (e.dataTransfer.files[0]) processManifest(e.dataTransfer.files[0]) },
+                    selectedDocJobId,
+                    selectedDocJob,
+                    selectedDocJobStatus,
+                    docJobDownloadUrl,
+                    visibleDocLogs,
+                    docPipelineStages,
+                    docArtifactUrls,
+                    assetGalleryTasks,
+                    docJobArtifacts,
+                    docJobArtifactsLoading,
+                    docManifestArtifact,
+                    docAnalysisArtifact,
+                    docManifestPreview,
+                    docAnalysisPreview,
+                    manifestQualitySummary,
+                    docJobStatusLoading,
+                    docJobDownloadLoading,
+                    selectDocJob,
+                    refreshSelectedDocJobStatus,
+                    refreshSelectedDocArtifacts,
+                    fetchSelectedDocJobDownloadUrl,
+                    openSelectedDocJobDownloadUrl,
+                    handleDrop: (e) => {
+                        isDragging.value = false;
+                        const f = e.dataTransfer.files[0];
+                        if (!f) return;
+                        if (String(f.name || '').toLowerCase().endsWith('.docx')) processDocumentUpload(f);
+                        else processManifest(f);
+                    },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
+                    handleDocxSelect: (e) => { if (e.target.files[0]) processDocumentUpload(e.target.files[0]) },
                     formatTime, formatSeconds, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
                     getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, formatQueryScore,

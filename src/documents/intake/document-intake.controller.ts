@@ -40,4 +40,9 @@ export class DocumentIntakeController {
   async download(@Param('jobId') jobId: string, @Req() req: any) {
     return this.intake.getDownloadUrl(Number(req?.authUser?.id), jobId);
   }
+
+  @Get(':jobId/artifacts')
+  async artifacts(@Param('jobId') jobId: string, @Req() req: any) {
+    return this.intake.getArtifacts(Number(req?.authUser?.id), jobId);
+  }
 }
