@@ -1,9 +1,12 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import * as fs from 'fs/promises';
 import { hostname } from 'os';
+import * as path from 'path';
 import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
+import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { DocumentObjectKeyLayout, R2ObjectStorageService } from '../storage/object-storage';
@@ -25,6 +28,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     private readonly docxTextExtractor: DocxTextExtractorService,
     private readonly inserter: DocxSurgicalInserterService,
     private readonly planner: VisualManifestPlannerService,
+    private readonly strategyFactory: ImageStrategyFactory,
     private readonly observability: ObservabilityGateway,
     private readonly semaphore: WorkerResourceSemaphoreService,
   ) {}
@@ -33,6 +37,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     if (!this.enabled || !this.storage.isEnabled()) {
       this.logger.log('Document queue worker disabled (DOC_PIPELINE_ENABLED or POSTGRES_ENABLED false).');
       return;
+    }
+    try {
+      const recovered = await this.storage.requeueOrphanedProcessingDocumentJobs(
+        Math.max(2, Number(process.env.DOC_QUEUE_STALE_RECOVERY_MINUTES || 10)),
+      );
+      if (recovered > 0) {
+        this.logger.warn(`Recovered stale document jobs: ${recovered}`);
+      }
+    } catch (error: any) {
+      this.logger.warn(`Document stale-recovery failed: ${error?.message || error}`);
     }
     this.running = true;
     this.logger.log(`Starting document queue worker ${this.workerId}`);
@@ -387,6 +401,23 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         userId,
       });
       markStageStart('generating_assets');
+      const assetSummary = await this.generateAssetsFromManifest({
+        jobId,
+        userId,
+        manifest,
+        writeArtifact,
+      });
+      this.observability.emitLog('info', `Document assets generated job=${jobId} success=${assetSummary.success} failed=${assetSummary.failed}`, 'DocumentWorker', undefined, undefined, {
+        metadata: {
+          user_id: userId,
+          doc_job_id: jobId,
+          stage: 'generating_assets',
+          event_type: 'stage_completed',
+          provider_status: 'assets_generated',
+          generated_assets_total: assetSummary.success,
+          generated_assets_failed: assetSummary.failed,
+        }
+      });
       this.observability.emitDocumentEvent({
         level: 'info',
         message: `Document stage completed: generating_assets job=${jobId}`,
@@ -813,6 +844,231 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       body: new Uint8Array(data),
     });
     if (!res.ok) throw new Error(`Object upload failed (${res.status})`);
+  }
+
+  private async generateAssetsFromManifest(input: {
+    jobId: string;
+    userId: number;
+    manifest: any;
+    writeArtifact: (payload: {
+      artifactType: string;
+      objectKey: string;
+      byteSize?: number | null;
+      metadata?: any;
+      stage: 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
+    }) => Promise<void>;
+  }): Promise<{ success: number; failed: number }> {
+    const visuals = (input.manifest?.lessons || [])
+      .flatMap((lesson: any) => Array.isArray(lesson?.visualizations) ? lesson.visualizations : []);
+    const maxAssets = Math.max(1, Number(process.env.DOC_ASSET_GEN_MAX || 8));
+    const assetTimeoutMs = Math.max(15000, Number(process.env.DOC_ASSET_GEN_TIMEOUT_MS || 120000));
+    const selected = visuals.slice(0, maxAssets);
+    let success = 0;
+    let failed = 0;
+    for (let i = 0; i < selected.length; i += 1) {
+      const viz = selected[i];
+      const visualType = String(viz?.type || 'visual').trim().toLowerCase() || 'visual';
+      const contextText = String(viz?.context || '');
+      const anchorMatch = contextText.match(/Anchor\s+([a-z0-9-]+)/i);
+      const anchorId = anchorMatch?.[1] || null;
+      const taskId = `docasset-${input.jobId}-${String(i + 1).padStart(2, '0')}-${Date.now().toString(36)}`;
+      const prompt = String(viz?.prompt_template || '').trim()
+        || `Create a ${visualType} about: ${String(viz?.description || viz?.title || 'document concept').trim()}`;
+
+      await this.storage.upsertDocumentAsset({
+        assetTaskId: taskId,
+        jobId: input.jobId,
+        userId: input.userId,
+        anchorId,
+        prompt,
+        status: 'running',
+        metadata: {
+          visual_type: visualType,
+          title: String(viz?.title || '').trim() || null,
+          context: contextText || null,
+          purpose: String(viz?.purpose || '').trim() || null,
+        }
+      });
+
+      this.observability.emitLog('info', `Document asset generation started job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentAsset', undefined, undefined, {
+        metadata: {
+          user_id: input.userId,
+          doc_job_id: input.jobId,
+          asset_task_id: taskId,
+          stage: 'generating_assets',
+          event_type: 'stage_started',
+          provider_status: 'asset_generation_started',
+          visual_type: visualType,
+          anchor_id: anchorId,
+        }
+      });
+
+      try {
+        const task = this.buildImageTask(viz, taskId, prompt, visualType);
+        const strategy = this.strategyFactory.getStrategy(task);
+        const generated = await Promise.race([
+          strategy.generate(task, i + 1),
+          this.sleep(assetTimeoutMs).then(() => {
+            throw new Error(`Asset generation timeout after ${assetTimeoutMs}ms`);
+          }),
+        ]);
+        const localUrl = String(generated?.posterUrl || generated?.url || '').trim();
+        const loaded = await this.loadGeneratedAsset(localUrl);
+        if (!loaded?.buffer) {
+          throw new Error(`Generated asset output missing for ${taskId}`);
+        }
+        const ext = loaded.ext || '.png';
+        const objectKey = DocumentObjectKeyLayout.asset({ jobId: input.jobId }, `${taskId}${ext}`);
+        const contentType = this.contentTypeForExtension(ext);
+        await this.uploadObject(objectKey, loaded.buffer, contentType);
+
+        await this.storage.upsertDocumentAsset({
+          assetTaskId: taskId,
+          jobId: input.jobId,
+          userId: input.userId,
+          anchorId,
+          prompt,
+          status: 'completed',
+          objectKey,
+          metadata: {
+            visual_type: visualType,
+            generated_url: localUrl || null,
+            provider_payload: generated?.payload || null,
+          }
+        });
+        await input.writeArtifact({
+          artifactType: `${visualType}_asset`,
+          objectKey,
+          byteSize: loaded.buffer.byteLength,
+          stage: 'generating_assets',
+          metadata: {
+            asset_task_id: taskId,
+            anchor_id: anchorId,
+            visual_type: visualType,
+            source_local_url: localUrl || null,
+          }
+        });
+        success += 1;
+        this.observability.emitLog('success', `Document asset generated job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentAsset', undefined, undefined, {
+          metadata: {
+            user_id: input.userId,
+            doc_job_id: input.jobId,
+            asset_task_id: taskId,
+            stage: 'generating_assets',
+            event_type: 'artifact_written',
+            provider_status: 'asset_generated',
+            visual_type: visualType,
+            object_key: objectKey,
+          }
+        });
+      } catch (error: any) {
+        failed += 1;
+        await this.storage.upsertDocumentAsset({
+          assetTaskId: taskId,
+          jobId: input.jobId,
+          userId: input.userId,
+          anchorId,
+          prompt,
+          status: 'failed',
+          metadata: {
+            visual_type: visualType,
+            error_message: String(error?.message || error || 'Asset generation failed'),
+          }
+        });
+        this.observability.emitLog('error', `Document asset generation failed job=${input.jobId} asset=${taskId}: ${error?.message || error}`, 'DocumentAsset', undefined, undefined, {
+          metadata: {
+            user_id: input.userId,
+            doc_job_id: input.jobId,
+            asset_task_id: taskId,
+            stage: 'generating_assets',
+            event_type: 'stage_failed',
+            provider_status: 'asset_generation_failed',
+            visual_type: visualType,
+            error_message: String(error?.message || error || 'Asset generation failed'),
+          }
+        });
+      }
+    }
+    return { success, failed };
+  }
+
+  private async loadGeneratedAsset(urlOrPath: string): Promise<{ buffer: Buffer; ext: string } | null> {
+    const value = String(urlOrPath || '').trim();
+    if (!value) return null;
+    if (/^https?:\/\//i.test(value)) {
+      const res = await fetch(value, { method: 'GET' });
+      if (!res.ok) return null;
+      const arr = await res.arrayBuffer();
+      const ext = path.extname(new URL(value).pathname || '').toLowerCase() || '.png';
+      return { buffer: Buffer.from(arr), ext };
+    }
+    if (value.startsWith('/generated-images/')) {
+      const relative = value.replace(/^\/+/, '');
+      const absolute = path.join(process.cwd(), 'public', relative);
+      const bytes = await fs.readFile(absolute);
+      const ext = path.extname(absolute).toLowerCase() || '.png';
+      return { buffer: bytes, ext };
+    }
+    return null;
+  }
+
+  private contentTypeForExtension(ext: string): string {
+    const key = String(ext || '').toLowerCase();
+    if (key === '.jpg' || key === '.jpeg') return 'image/jpeg';
+    if (key === '.webp') return 'image/webp';
+    if (key === '.svg') return 'image/svg+xml';
+    return 'image/png';
+  }
+
+  private buildImageTask(viz: any, taskId: string, prompt: string, visualType: string): any {
+    const normalized = String(visualType || '').trim().toLowerCase();
+    if (normalized === 'data_viz') {
+      return {
+        type: 'data_viz',
+        id: taskId,
+        refined_prompt: prompt,
+        payload: {},
+      };
+    }
+    if (normalized === 'sourced_image') {
+      return {
+        type: 'sourced_image',
+        id: taskId,
+        refined_prompt: prompt,
+        payload: {},
+      };
+    }
+    if (normalized === 'infographic' || normalized === 'flowchart') {
+      const payload: Record<string, any> = normalized === 'flowchart'
+        ? {
+            type: 'flowchart',
+            mermaid_code: String(viz?.mermaid_code || '').trim() || undefined,
+          }
+        : {};
+      return {
+        type: 'infographic',
+        id: taskId,
+        refined_prompt: prompt,
+        payload,
+        metadata: {
+          template_type: normalized === 'flowchart' ? 'flowchart' : 'steps',
+        },
+      };
+    }
+    if (normalized === 'aesthetic_anchor') {
+      return {
+        type: 'story_image',
+        id: taskId,
+        refined_prompt: prompt,
+        payload: {},
+      };
+    }
+    return {
+      type: 'visual_concept',
+      id: taskId,
+      refined_prompt: prompt,
+      payload: {},
+    };
   }
 
   private async sleep(ms: number): Promise<void> {

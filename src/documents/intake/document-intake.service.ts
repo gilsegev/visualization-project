@@ -133,12 +133,13 @@ export class DocumentIntakeService {
     const artifacts: DocumentArtifactResponseItem[] = items.map((item) => {
       const key = String(item.object_key || '');
       const isInline = key.startsWith('inline://');
+      const metadata = this.normalizeArtifactMetadata(item.metadata);
       return {
         artifact_type: item.artifact_type,
         object_key: key,
         byte_size: item.byte_size,
         checksum_sha256: item.checksum_sha256,
-        metadata: item.metadata || null,
+        metadata,
         created_at: item.created_at,
         signed_url: isInline ? null : this.objectStorage.getSignedDownloadUrl(key, { expiresSeconds: 900 }),
       };
@@ -147,6 +148,32 @@ export class DocumentIntakeService {
       metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'artifacts' }
     });
     return { artifacts };
+  }
+
+  async getLogs(userId: number, jobId: string): Promise<{ logs: any[] }> {
+    const row = await this.storage.getDocumentJobStatusForUser(jobId, userId);
+    if (!row) throw new NotFoundException('Document job not found');
+    const logs = await this.storage.querySystemLogs({ userId, limit: 400 });
+    const filtered = (logs || []).filter((log: any) => {
+      const docId = String(log?.metadata?.doc_job_id || '').trim();
+      const msg = String(log?.message || '');
+      return docId === jobId || msg.includes(jobId);
+    });
+    return { logs: filtered };
+  }
+
+  private normalizeArtifactMetadata(raw: any): any {
+    if (raw === null || raw === undefined) return null;
+    if (typeof raw === 'string') {
+      const text = raw.trim();
+      if (!text) return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { raw_text: text };
+      }
+    }
+    return raw;
   }
 
   async getArtifactIndex(userId: number, jobId: string): Promise<DocumentArtifactIndexResponse> {
@@ -173,6 +200,11 @@ export class DocumentIntakeService {
       final_output_url: toLink(index?.final_output_key || null),
       manifest_url: toLink(index?.manifest_key || null),
       analysis_url: toLink(index?.analysis_key || null),
+      asset_urls: Array.isArray(index?.asset_keys)
+        ? index.asset_keys
+            .map((key: any) => toLink(String(key || '').trim()))
+            .filter((url: string | null): url is string => Boolean(url))
+        : [],
     };
     this.observability.emitLog('info', `Document artifact index read job=${jobId}`, 'DocumentIntake', undefined, undefined, {
       metadata: { user_id: userId, doc_job_id: jobId, provider_status: 'artifact_index' }

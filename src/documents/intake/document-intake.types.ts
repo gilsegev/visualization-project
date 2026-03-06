@@ -37,5 +37,6 @@ export interface DocumentArtifactIndexResponse {
     final_output_url: string | null;
     manifest_url: string | null;
     analysis_url: string | null;
+    asset_urls: string[];
   };
 }

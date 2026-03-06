@@ -751,6 +751,16 @@
                                     open artifact
                                 </a>
                             </div>
+                            <div class="mt-3 pt-2 border-t border-slate-800/60">
+                                <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Generated Asset Files</div>
+                                <div v-if="!docAssetArtifacts.length" class="text-[10px] text-slate-600 font-mono italic">No asset artifacts yet...</div>
+                                <div v-for="(item, idx) in docAssetArtifacts" :key="`doc-asset-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
+                                    <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
+                                    <a v-if="item.signed_url" :href="item.signed_url" target="_blank" rel="noopener noreferrer" class="block text-[10px] text-neon underline break-all mt-1">
+                                        open generated asset
+                                    </a>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -872,6 +882,9 @@
                             <a v-if="docArtifactIndexLinks.final_output_url" :href="docArtifactIndexLinks.final_output_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">final output</a>
                             <a v-if="docArtifactIndexLinks.manifest_url" :href="docArtifactIndexLinks.manifest_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">manifest</a>
                             <a v-if="docArtifactIndexLinks.analysis_url" :href="docArtifactIndexLinks.analysis_url" target="_blank" rel="noopener noreferrer" class="text-neon underline">analysis</a>
+                            <a v-for="(assetUrl, idx) in (docArtifactIndexLinks.asset_urls || [])" :key="`asset-link-${idx}`" :href="assetUrl" target="_blank" rel="noopener noreferrer" class="text-neon underline">
+                                asset {{ idx + 1 }}
+                            </a>
                         </div>
                         <div class="mt-2 text-[10px] text-slate-500 font-mono" v-if="docArtifactIndex?.generated_at">
                             index generated_at={{ docArtifactIndex.generated_at }}
@@ -1306,8 +1319,11 @@
                     final_output_url: null,
                     manifest_url: null,
                     analysis_url: null,
+                    asset_urls: [],
                 });
                 const docArtifactIndexLoading = ref(false);
+                const docJobLogsLoading = ref(false);
+                const docJobHistoricalLogs = ref([]);
                 const lastDocArtifactsRefreshAt = ref(0);
                 const suppressLiveStats = ref(false);
                 const liveStats = ref({
@@ -1726,7 +1742,18 @@
                         });
 
                     const workingSet = scoped.length ? scoped : baseDocLogs;
-                    return workingSet.slice(-200).reverse();
+                    const historical = Array.isArray(docJobHistoricalLogs.value) ? docJobHistoricalLogs.value : [];
+                    const merged = [...historical, ...workingSet];
+                    const dedup = [];
+                    const seen = new Set();
+                    for (const row of merged) {
+                        const key = String(row?.eventId || '') || `${row?.timestamp || ''}|${row?.context || ''}|${row?.message || ''}`;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        dedup.push(row);
+                    }
+                    dedup.sort((a, b) => Number(b?.timestamp || 0) - Number(a?.timestamp || 0));
+                    return dedup.slice(0, 300);
                 });
 
                 const docPipelineStages = computed(() => {
@@ -1849,6 +1876,13 @@
                     }) || null;
                 });
 
+                const docAssetArtifacts = computed(() => {
+                    return (docJobArtifacts.value || []).filter((a) => {
+                        const t = String(a?.artifact_type || '').trim().toLowerCase();
+                        return t.endsWith('_asset') || t.includes('image_asset');
+                    });
+                });
+
                 const normalizeArtifactMetadata = (raw) => {
                     if (raw === null || raw === undefined) return {};
                     if (typeof raw === 'string') {
@@ -1948,7 +1982,24 @@
 
                 const assetGalleryTasks = computed(() => {
                     const rows = Object.values(tasks.value || {}).map(normalizeTask);
-                    return rows
+                    const docAssetRows = (docAssetArtifacts.value || []).map((item, idx) => ({
+                        taskId: `doc-asset-${selectedDocJobId.value || 'none'}-${idx + 1}`,
+                        batchId: `doc-${selectedDocJobId.value || 'none'}`,
+                        status: 'completed',
+                        stage: 'Document Asset',
+                        url: String(item?.signed_url || '').trim() || null,
+                        details: {
+                            title: String(item?.artifact_type || 'document_asset'),
+                            refined_prompt: String(item?.metadata?.prompt || item?.metadata?.source_local_url || '').trim() || null,
+                            source: 'document_pipeline',
+                            artifact_type: String(item?.artifact_type || '').trim(),
+                        },
+                        metadata: {
+                            source: 'document_pipeline',
+                            doc_job_id: String(selectedDocJobId.value || '').trim() || null,
+                        },
+                    })).filter((t) => !!t.url);
+                    return [...rows, ...docAssetRows]
                         .sort((a, b) => {
                             const aDone = a?.status === 'completed' ? 1 : 0;
                             const bDone = b?.status === 'completed' ? 1 : 0;
@@ -2339,6 +2390,7 @@
                         final_output_url: null,
                         manifest_url: null,
                         analysis_url: null,
+                        asset_urls: [],
                     };
                     queryLabResults.value = [];
                     queryLabHistory.value = [];
@@ -2658,6 +2710,9 @@
                         addLog('success', `Document job queued: ${jobId}`, 'DocumentIntake', null, null, {
                             metadata: { doc_job_id: jobId, provider_status: 'queued' }
                         });
+                        selectedDocJobId.value = jobId;
+                        docJobHistoricalLogs.value = [];
+                        void refreshSelectedDocLogs({ silent: true });
 
                         const maxPolls = 30;
                         for (let i = 0; i < maxPolls; i++) {
@@ -2672,10 +2727,14 @@
                             });
                             if (state === 'completed' || queueStatus === 'completed') {
                                 addLog('success', `Document job completed: ${jobId}`, 'DocumentIntake');
+                                void refreshSelectedDocArtifacts({ silent: true });
+                                void refreshSelectedDocLogs({ silent: true });
                                 return;
                             }
                             if (state === 'failed' || queueStatus === 'failed') {
                                 addLog('error', `Document job failed: ${jobId}`, 'DocumentIntake');
+                                void refreshSelectedDocArtifacts({ silent: true });
+                                void refreshSelectedDocLogs({ silent: true });
                                 return;
                             }
                         }
@@ -2698,8 +2757,41 @@
                         updated_at: job?.updated_at || ''
                     };
                     docJobDownloadUrl.value = '';
+                    docJobHistoricalLogs.value = [];
                     void refreshSelectedDocArtifacts();
+                    void refreshSelectedDocLogs({ silent: true });
                     void refreshSelectedDocArtifactIndex({ silent: true });
+                };
+
+                const refreshSelectedDocLogs = async (opts = {}) => {
+                    const silent = Boolean(opts?.silent);
+                    const id = String(selectedDocJobId.value || '').trim();
+                    if (!id) return;
+                    docJobLogsLoading.value = true;
+                    try {
+                        const res = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(id)}/logs`, { method: 'GET' });
+                        const body = await res.json();
+                        if (!res.ok) {
+                            if (!silent) addLog('error', `Doc logs failed (${id})`, 'DocumentIntake');
+                            return;
+                        }
+                        const rows = Array.isArray(body?.logs) ? body.logs : [];
+                        docJobHistoricalLogs.value = rows.map((row) => {
+                            const created = Date.parse(String(row?.created_at || ''));
+                            return {
+                                timestamp: Number.isFinite(created) ? created : Date.now(),
+                                level: String(row?.level || 'info'),
+                                message: String(row?.message || ''),
+                                context: String(row?.context || 'Document'),
+                                eventId: row?.event_id || null,
+                                metadata: row?.metadata || null,
+                            };
+                        });
+                    } catch (err) {
+                        if (!silent) addLog('error', `Doc logs failed (${id}): ${err?.message || String(err)}`, 'DocumentIntake');
+                    } finally {
+                        docJobLogsLoading.value = false;
+                    }
                 };
 
                 const refreshSelectedDocJobStatus = async (opts = {}) => {
@@ -2809,6 +2901,7 @@
                             final_output_url: null,
                             manifest_url: null,
                             analysis_url: null,
+                            asset_urls: [],
                         };
                         if (!silent) addLog('info', `Doc artifact index loaded (${id})`, 'DocumentIntake');
                     } catch (err) {
@@ -3081,6 +3174,7 @@
                     docArtifactIndexLoading,
                     docManifestArtifact,
                     docAnalysisArtifact,
+                    docAssetArtifacts,
                     docManifestPreview,
                     docAnalysisPreview,
                     manifestQualitySummary,

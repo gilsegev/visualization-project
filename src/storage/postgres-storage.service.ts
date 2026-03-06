@@ -393,6 +393,27 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         }
     }
 
+    async requeueOrphanedProcessingDocumentJobs(staleMinutes = 10): Promise<number> {
+        if (!this.pool) return 0;
+        const rows = await this.queryRows<{ job_id: string }>(
+            `UPDATE document_jobs
+             SET queue_status = 'queued',
+                 state = 'queued',
+                 lease_owner = NULL,
+                 lease_expires_at = NULL,
+                 last_heartbeat_at = NULL,
+                 available_at = NOW(),
+                 error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] recovered stale document processing lease', 20000),
+                 updated_at = NOW()
+             WHERE queue_status = 'processing'
+               AND state NOT IN ('completed', 'failed')
+               AND (lease_expires_at IS NULL OR lease_expires_at < NOW() - (($1::text || ' minutes')::interval))
+             RETURNING job_id`,
+            [Math.max(1, staleMinutes || 10)]
+        );
+        return rows.length;
+    }
+
     async upsertDocumentAsset(input: {
         assetTaskId: string;
         jobId: string;
