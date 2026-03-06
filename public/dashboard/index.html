@@ -482,6 +482,15 @@
                         <div class="text-[10px] font-mono text-slate-400 break-all" v-if="docJobDownloadUrl">
                             url={{ docJobDownloadUrl }}
                         </div>
+                        <div class="mt-1 flex items-center gap-1">
+                            <label class="text-[10px] text-slate-500 font-mono">quality filter</label>
+                            <select v-model="docQualityFilter"
+                                class="bg-black border border-slate-700 text-[10px] text-slate-200 px-1 py-0.5 rounded font-mono focus:border-neon outline-none">
+                                <option value="all">all</option>
+                                <option value="needs_review">needs_review</option>
+                                <option value="fail">fail</option>
+                            </select>
+                        </div>
                     </div>
 
                     <!-- Log Stream -->
@@ -525,6 +534,9 @@
                                 <div class="text-[10px] font-mono text-slate-200 truncate">{{ job.job_id }}</div>
                                 <div class="text-[10px] font-mono text-slate-400">
                                     state={{ job.state }} | queue={{ job.queue_status }} | attempts={{ job.attempts }}/{{ job.max_attempts }}
+                                </div>
+                                <div class="text-[10px] font-mono text-slate-500">
+                                    verdict={{ job.quality_verdict || '-' }} | score={{ Number(job.quality_score || 0).toFixed(3) }}
                                 </div>
                             </button>
                             <div v-if="selectedDocJobStatus" class="rounded border border-slate-700 bg-black/30 p-2">
@@ -1281,6 +1293,7 @@
                 const selectedDocJobId = ref('');
                 const selectedDocJobStatus = ref(null);
                 const docJobDownloadUrl = ref('');
+                const docQualityFilter = ref('all');
                 const docJobStatusLoading = ref(false);
                 const docJobDownloadLoading = ref(false);
                 const docJobArtifacts = ref([]);
@@ -1542,7 +1555,12 @@
 
                 const recentDocumentJobs = computed(() => {
                     const rows = liveStats.value?.documents?.recent_jobs;
-                    return Array.isArray(rows) ? rows.slice(0, 8) : [];
+                    const all = Array.isArray(rows) ? rows : [];
+                    const filter = String(docQualityFilter.value || 'all').toLowerCase();
+                    const filtered = filter === 'all'
+                        ? all
+                        : all.filter((row) => String(row?.quality_verdict || '').toLowerCase() === filter);
+                    return filtered.slice(0, 20);
                 });
 
                 const documentArtifactTypeCounts = computed(() => {
@@ -1887,8 +1905,8 @@
                 });
 
                 const manifestQualitySummary = computed(() => {
-                    const manifestMeta = docManifestArtifact.value?.metadata || {};
-                    const analysisMeta = docAnalysisArtifact.value?.metadata || {};
+                    const manifestMeta = normalizeArtifactMetadata(docManifestArtifact.value?.metadata);
+                    const analysisMeta = normalizeArtifactMetadata(docAnalysisArtifact.value?.metadata);
                     const anchors = Array.isArray(analysisMeta?.anchors) ? analysisMeta.anchors : [];
                     const anchorIds = new Set(
                         anchors
@@ -2311,6 +2329,7 @@
                     selectedDocJobId.value = '';
                     selectedDocJobStatus.value = null;
                     docJobDownloadUrl.value = '';
+                    docQualityFilter.value = 'all';
                     docJobArtifacts.value = [];
                     docArtifactIndex.value = null;
                     docArtifactIndexLinks.value = {
@@ -3000,7 +3019,12 @@
                                 const state = String(latest?.state || '').toLowerCase();
                                 const queue = String(latest?.queue_status || '').toLowerCase();
                                 const isTerminal = state === 'completed' || state === 'failed' || queue === 'completed' || queue === 'failed';
+                                const manifestMissing = !docManifestArtifact.value;
                                 if (!isTerminal && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
+                                    void refreshSelectedDocArtifacts({ silent: true });
+                                    void refreshSelectedDocArtifactIndex({ silent: true });
+                                } else if (isTerminal && manifestMissing && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 1500) {
+                                    // Catch-up refresh for terminal jobs to avoid stale pre-manifest artifact snapshots.
                                     void refreshSelectedDocArtifacts({ silent: true });
                                     void refreshSelectedDocArtifactIndex({ silent: true });
                                 }
@@ -3040,6 +3064,7 @@
                     queryLabHistory,
                     copyLogsState, copyVisibleLogs,
                     copyDocExecutionTrace, copyDocManifest,
+                    docQualityFilter,
                     selectedDocJobId,
                     selectedDocJob,
                     selectedDocJobStatus,

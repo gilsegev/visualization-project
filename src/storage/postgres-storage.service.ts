@@ -142,6 +142,8 @@ export type DocumentJobObsRow = {
     attempts: number;
     max_attempts: number;
     updated_at: string;
+    quality_verdict?: string | null;
+    quality_score?: number | null;
 };
 
 export type DocumentArtifactObsRow = {
@@ -1272,11 +1274,35 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
         if (!this.pool) return [];
         const cap = Math.max(1, Math.min(200, Number(limit || 50)));
         return this.queryRows<DocumentJobObsRow>(
-            `SELECT job_id, user_id, state, queue_status, attempts, max_attempts, updated_at::text
+            `SELECT
+                job_id,
+                user_id,
+                state,
+                queue_status,
+                attempts,
+                max_attempts,
+                updated_at::text,
+                metadata->'quality_summary'->>'verdict' AS quality_verdict,
+                CASE
+                    WHEN (metadata->'quality_summary'->>'quality_score') ~ '^[0-9]+(\\.[0-9]+)?$'
+                    THEN (metadata->'quality_summary'->>'quality_score')::double precision
+                    ELSE NULL
+                END AS quality_score
              FROM document_jobs
              ORDER BY updated_at DESC
              LIMIT $1`,
             [cap]
+        );
+    }
+
+    async updateDocumentJobQualitySummary(jobId: string, qualitySummary: any): Promise<void> {
+        if (!this.pool || !jobId || !qualitySummary || typeof qualitySummary !== 'object') return;
+        await this.query(
+            `UPDATE document_jobs
+             SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('quality_summary', $2::jsonb),
+                 updated_at = NOW()
+             WHERE job_id = $1`,
+            [jobId, JSON.stringify(qualitySummary)]
         );
     }
 

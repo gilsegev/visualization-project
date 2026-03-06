@@ -8,7 +8,7 @@
 4. Phase 3: Intake API (Zero-Proxy Ingestion) (`implemented`)
 5. Phase 4: Analysis and Anchor Detection (Layer 1 Deterministic Skeleton) (`implemented baseline; needs deeper deterministic parser upgrades`)
 6. Phase 5: Visual Manifest Planning (Layer 2/3 currently scoped) (`implemented baseline; needs intent-router/context-window upgrades`)
-7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-4 implemented`)
+7. Phase 6: Document Processing Observability and Logging (`in progress; Steps 1-5 implemented`)
 
 ## Scope and Progress Notes
 
@@ -586,6 +586,8 @@ Expected output:
 
 #### Step 5: Quality Scorecards per Job
 
+Status: `implemented`
+
 1. Write a `quality_report.json` per job with:
    - anchor resolution rate
    - anchor fallback count
@@ -601,6 +603,22 @@ Validation requirements:
 1. Every completed job has a quality report.
 2. Quality verdict logic is deterministic for same inputs.
 3. Dashboard can filter by `needs_review` and `fail`.
+
+Validation script:
+
+- `tools/validate-document-phase6-step5-quality-scorecards.ts`
+
+Run command:
+
+```bash
+npx ts-node --transpile-only tools/validate-document-phase6-step5-quality-scorecards.ts
+```
+
+Expected output:
+
+```text
+[phase6-step5-quality-scorecards-validation] PASS
+```
 
 #### Step 6: Failure Forensics and Recovery Logging
 

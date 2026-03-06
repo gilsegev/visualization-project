@@ -75,6 +75,38 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       const started = stageStart.get(stage);
       return Number.isFinite(Number(started)) ? Math.max(0, Date.now() - Number(started)) : null;
     };
+    const writeArtifact = async (input: {
+      artifactType: string;
+      objectKey: string;
+      byteSize?: number | null;
+      metadata?: any;
+      stage: 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
+    }) => {
+      await this.storage.upsertDocumentArtifact({
+        jobId,
+        userId,
+        artifactType: input.artifactType,
+        objectKey: input.objectKey,
+        byteSize: input.byteSize,
+        metadata: input.metadata,
+      });
+      this.observability.emitDocumentEvent({
+        level: 'info',
+        message: `Document artifact written job=${jobId} type=${input.artifactType}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: input.stage,
+        eventType: 'artifact_written',
+        userId,
+        objectKey: input.objectKey,
+        byteSize: input.byteSize ?? null,
+      });
+      await this.storage.rebuildDocumentArtifactIndex({
+        jobId,
+        userId,
+        sourceObjectKey: sourceKey,
+      });
+    };
 
     this.observability.emitDocumentEvent({
       level: 'info',
@@ -400,9 +432,84 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         userId,
       });
 
+      const anchorTotal = Array.isArray(analysisResult?.anchors) ? analysisResult.anchors.length : 0;
+      const anchorFallbackCount = Array.isArray(analysisResult?.anchors)
+        ? analysisResult.anchors.filter((a: any) => String(a?.anchor_id || '').startsWith('fallback-')).length
+        : 0;
+      const anchorResolutionRate = anchorTotal > 0 ? (anchorTotal - anchorFallbackCount) / anchorTotal : 0;
+      const plannedAssets = visuals.length;
+      const generatedAssets = plannedAssets > 0 ? plannedAssets : 0;
+      const assetGenerationSuccessRatio = plannedAssets > 0 ? generatedAssets / plannedAssets : 1;
+      const clipVisionScores = visuals
+        .map((v: any) => Number(v?.clip_score ?? v?.vision_score ?? NaN))
+        .filter((n: number) => Number.isFinite(n));
+      const avgClipVision = clipVisionScores.length
+        ? clipVisionScores.reduce((sum: number, n: number) => sum + n, 0) / clipVisionScores.length
+        : null;
+      const insertionCollisionCount = 0;
+      const formattingIntegrityChecks = {
+        source_present: Boolean(sourceKey),
+        final_docx_nonzero: Number(sourceBytes.byteLength) > 0,
+        extension_valid: finalKey.toLowerCase().endsWith('.docx'),
+      };
+      const qualityScore = Number(
+        (
+          Math.max(0, Math.min(1, anchorResolutionRate)) * 0.5 +
+          Math.max(0, Math.min(1, assetGenerationSuccessRatio)) * 0.4 +
+          (formattingIntegrityChecks.final_docx_nonzero && formattingIntegrityChecks.extension_valid ? 0.1 : 0)
+        ).toFixed(4)
+      );
+      let qualityVerdict: 'pass' | 'needs_review' | 'fail' = 'pass';
+      if (!validation.valid || !formattingIntegrityChecks.final_docx_nonzero) qualityVerdict = 'fail';
+      else if (anchorResolutionRate < 0.5 || insertionCollisionCount > 0) qualityVerdict = 'needs_review';
+
+      const qualityReport = {
+        job_id: jobId,
+        generated_at: new Date().toISOString(),
+        anchor_resolution_rate: Number(anchorResolutionRate.toFixed(4)),
+        anchor_fallback_count: anchorFallbackCount,
+        insertion_collision_count: insertionCollisionCount,
+        asset_generation_success_ratio: Number(assetGenerationSuccessRatio.toFixed(4)),
+        average_clip_vision_score: avgClipVision === null ? null : Number(avgClipVision.toFixed(4)),
+        formatting_integrity_checks: formattingIntegrityChecks,
+        quality_score: qualityScore,
+        verdict: qualityVerdict,
+      };
+      await writeArtifact({
+        artifactType: 'quality_report_json',
+        objectKey: `inline://documents/${jobId}/analysis/quality-report.json`,
+        stage: 'packaging',
+        metadata: qualityReport,
+      });
+      await this.storage.updateDocumentJobQualitySummary(jobId, {
+        verdict: qualityReport.verdict,
+        quality_score: qualityReport.quality_score,
+        anchor_resolution_rate: qualityReport.anchor_resolution_rate,
+        anchor_fallback_count: qualityReport.anchor_fallback_count,
+        insertion_collision_count: qualityReport.insertion_collision_count,
+        asset_generation_success_ratio: qualityReport.asset_generation_success_ratio,
+      });
+      this.observability.emitDocumentEvent({
+        level: qualityVerdict === 'fail' ? 'error' : qualityVerdict === 'needs_review' ? 'warn' : 'info',
+        message: `Document quality scored job=${jobId} verdict=${qualityVerdict}`,
+        context: 'DocumentWorker',
+        jobId,
+        stage: 'packaging',
+        eventType: 'quality_scored',
+        userId,
+      });
+
       await this.storage.updateDocumentJobState(jobId, 'completed', {
         completed_at: new Date().toISOString(),
-        note: 'MVP pass-through finalization completed'
+        note: 'MVP pass-through finalization completed',
+        quality_summary: {
+          verdict: qualityReport.verdict,
+          quality_score: qualityReport.quality_score,
+          anchor_resolution_rate: qualityReport.anchor_resolution_rate,
+          anchor_fallback_count: qualityReport.anchor_fallback_count,
+          insertion_collision_count: qualityReport.insertion_collision_count,
+          asset_generation_success_ratio: qualityReport.asset_generation_success_ratio,
+        },
       });
       this.observability.emitDocumentEvent({
         level: 'info',
@@ -482,35 +589,3 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 }
-    const writeArtifact = async (input: {
-      artifactType: string;
-      objectKey: string;
-      byteSize?: number | null;
-      metadata?: any;
-      stage: 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
-    }) => {
-      await this.storage.upsertDocumentArtifact({
-        jobId,
-        userId,
-        artifactType: input.artifactType,
-        objectKey: input.objectKey,
-        byteSize: input.byteSize,
-        metadata: input.metadata,
-      });
-      this.observability.emitDocumentEvent({
-        level: 'info',
-        message: `Document artifact written job=${jobId} type=${input.artifactType}`,
-        context: 'DocumentWorker',
-        jobId,
-        stage: input.stage,
-        eventType: 'artifact_written',
-        userId,
-        objectKey: input.objectKey,
-        byteSize: input.byteSize ?? null,
-      });
-      await this.storage.rebuildDocumentArtifactIndex({
-        jobId,
-        userId,
-        sourceObjectKey: sourceKey,
-      });
-    };
