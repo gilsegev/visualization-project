@@ -978,6 +978,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             anchor_id: anchorId,
             visual_type: visualType,
             source_local_url: localUrl || null,
+            prompt,
+            clip_score: Number(generated?.payload?.metrics?.clip_score ?? generated?.payload?.clip_score ?? NaN),
+            vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
           }
         });
         success += 1;

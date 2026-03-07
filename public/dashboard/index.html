@@ -309,7 +309,7 @@
                     <!-- Filter Controls (for BY ASSET) -->
                     <div v-if="logMode === 'BY ASSET'" class="p-2 border-b border-slate-700 bg-surface/50">
                         <div class="mb-1 flex items-center justify-between gap-2">
-                            <div class="text-[10px] text-slate-500">Tasks Available: {{ Object.keys(tasks || {}).length }}</div>
+                            <div class="text-[10px] text-slate-500">Tasks Available: {{ assetFilterTasks.length }}</div>
                             <button
                                 class="text-[10px] font-mono px-2 py-0.5 rounded border border-slate-700 text-slate-300 hover:text-neon hover:border-neon transition-colors"
                                 @click="showAssetInspector = !showAssetInspector">
@@ -320,7 +320,7 @@
                             class="w-full bg-black border border-slate-700 text-xs text-slate-300 p-1 rounded font-mono focus:border-neon outline-none">
                             <option value="">Select an Asset...</option>
                             <option v-if="batchStylingGuidance" value="__styling__">Styling (Batch Guidance)</option>
-                            <option v-for="task in (tasks || {})" :key="task?.taskId" :value="task?.taskId">
+                            <option v-for="task in assetFilterTasks" :key="task?.taskId" :value="task?.taskId">
                                 {{ taskLabel(task) }} ({{ getStatusLabel(task) }})
                             </option>
                         </select>
@@ -742,8 +742,19 @@
 
                         <div class="bg-surface border border-slate-700 rounded-lg p-4">
                             <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Artifacts</div>
-                            <div v-if="!docJobArtifacts.length" class="text-[10px] text-slate-600 font-mono italic">No artifacts yet...</div>
-                            <div v-for="(item, idx) in docJobArtifacts" :key="`doc-art-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
+                            <div v-if="docOutputArtifacts.length" class="mb-3 pb-2 border-b border-slate-800/60">
+                                <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Output Documents</div>
+                                <div v-for="(item, idx) in docOutputArtifacts" :key="`doc-output-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
+                                    <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
+                                    <div class="text-[10px] font-mono text-slate-500 break-all">{{ item.object_key }}</div>
+                                    <a v-if="item.signed_url" :href="item.signed_url" target="_blank" rel="noopener noreferrer"
+                                        class="block text-[10px] text-neon underline break-all mt-1">
+                                        open artifact
+                                    </a>
+                                </div>
+                            </div>
+                            <div v-if="!docJobArtifactsOrdered.length" class="text-[10px] text-slate-600 font-mono italic">No artifacts yet...</div>
+                            <div v-for="(item, idx) in docJobArtifactsOrdered" :key="`doc-art-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
                                 <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
                                 <div class="text-[10px] font-mono text-slate-500 break-all">{{ item.object_key }}</div>
                                 <a v-if="item.signed_url" :href="item.signed_url" target="_blank" rel="noopener noreferrer"
@@ -1307,6 +1318,7 @@
                 const selectedDocJobStatus = ref(null);
                 const docJobDownloadUrl = ref('');
                 const docQualityFilter = ref('all');
+                const docJobsClearCutoffMs = ref(0);
                 const docJobStatusLoading = ref(false);
                 const docJobDownloadLoading = ref(false);
                 const docJobArtifacts = ref([]);
@@ -1378,7 +1390,11 @@
 
                     if (logMode.value === 'BY ASSET') {
                         if (!selectedAssetFilter.value) return [];
-                        return logs.value.filter(log => log.taskId === selectedAssetFilter.value);
+                        return logs.value.filter((log) => {
+                            const taskId = String(log?.taskId || '').trim();
+                            const assetTaskId = String(log?.metadata?.asset_task_id || '').trim();
+                            return taskId === selectedAssetFilter.value || assetTaskId === selectedAssetFilter.value;
+                        });
                     }
                     if (logMode.value === 'BATCH DIAG') {
                         if (!currentBatchId.value) return [];
@@ -1415,6 +1431,8 @@
                             metrics: {}
                         };
                     }
+                    const docAsset = (assetGalleryTasks.value || []).find((t) => String(t?.taskId || '') === selectedAssetFilter.value);
+                    if (docAsset) return docAsset;
                     return tasks.value?.[selectedAssetFilter.value] || null;
                 });
 
@@ -1572,10 +1590,17 @@
                 const recentDocumentJobs = computed(() => {
                     const rows = liveStats.value?.documents?.recent_jobs;
                     const all = Array.isArray(rows) ? rows : [];
+                    const cutoffMs = Number(docJobsClearCutoffMs.value || 0);
+                    const filteredByClear = cutoffMs > 0
+                        ? all.filter((row) => {
+                            const updatedMs = Date.parse(String(row?.updated_at || ''));
+                            return Number.isFinite(updatedMs) && updatedMs >= cutoffMs;
+                        })
+                        : all;
                     const filter = String(docQualityFilter.value || 'all').toLowerCase();
                     const filtered = filter === 'all'
-                        ? all
-                        : all.filter((row) => String(row?.quality_verdict || '').toLowerCase() === filter);
+                        ? filteredByClear
+                        : filteredByClear.filter((row) => String(row?.quality_verdict || '').toLowerCase() === filter);
                     return filtered.slice(0, 20);
                 });
 
@@ -1883,6 +1908,28 @@
                     });
                 });
 
+                const docOutputArtifacts = computed(() => {
+                    const all = Array.isArray(docJobArtifacts.value) ? docJobArtifacts.value : [];
+                    return all.filter((a) => {
+                        const t = String(a?.artifact_type || '').trim().toLowerCase();
+                        return t === 'final_docx' || t === 'backup_docx';
+                    });
+                });
+
+                const docJobArtifactsOrdered = computed(() => {
+                    const all = Array.isArray(docJobArtifacts.value) ? docJobArtifacts.value.slice() : [];
+                    const rank = (typeRaw) => {
+                        const t = String(typeRaw || '').trim().toLowerCase();
+                        if (t === 'final_docx') return 0;
+                        if (t === 'backup_docx') return 1;
+                        if (t === 'failure_report_json') return 2;
+                        if (t === 'surgical_log_json') return 3;
+                        if (t === 'quality_report_json') return 4;
+                        return 10;
+                    };
+                    return all.sort((a, b) => rank(a?.artifact_type) - rank(b?.artifact_type));
+                });
+
                 const normalizeArtifactMetadata = (raw) => {
                     if (raw === null || raw === undefined) return {};
                     if (typeof raw === 'string') {
@@ -1983,7 +2030,7 @@
                 const assetGalleryTasks = computed(() => {
                     const rows = Object.values(tasks.value || {}).map(normalizeTask);
                     const docAssetRows = (docAssetArtifacts.value || []).map((item, idx) => ({
-                        taskId: `doc-asset-${selectedDocJobId.value || 'none'}-${idx + 1}`,
+                        taskId: String(item?.metadata?.asset_task_id || item?.artifact_id || item?.id || `doc-asset-${selectedDocJobId.value || 'none'}-${idx + 1}`),
                         batchId: `doc-${selectedDocJobId.value || 'none'}`,
                         status: 'completed',
                         stage: 'Document Asset',
@@ -1993,10 +2040,19 @@
                             refined_prompt: String(item?.metadata?.prompt || item?.metadata?.source_local_url || '').trim() || null,
                             source: 'document_pipeline',
                             artifact_type: String(item?.artifact_type || '').trim(),
+                            clip_score: Number.isFinite(Number(item?.metadata?.clip_score)) ? Number(item?.metadata?.clip_score) : null,
+                            vision_score: Number.isFinite(Number(item?.metadata?.vision_score)) ? Number(item?.metadata?.vision_score) : null,
+                            source_query: String(item?.metadata?.source_query || '').trim() || null,
+                        },
+                        metrics: {
+                            clip_score: Number.isFinite(Number(item?.metadata?.clip_score)) ? Number(item?.metadata?.clip_score) : null,
+                            vision_score: Number.isFinite(Number(item?.metadata?.vision_score)) ? Number(item?.metadata?.vision_score) : null,
                         },
                         metadata: {
                             source: 'document_pipeline',
                             doc_job_id: String(selectedDocJobId.value || '').trim() || null,
+                            asset_task_id: String(item?.metadata?.asset_task_id || '').trim() || null,
+                            prompt: String(item?.metadata?.prompt || '').trim() || null,
                         },
                     })).filter((t) => !!t.url);
                     return [...rows, ...docAssetRows]
@@ -2008,6 +2064,18 @@
                             const bTs = Date.parse(b?.details?.updated_at || b?.metadata?.updated_at || '') || 0;
                             return bTs - aTs;
                         });
+                });
+
+                const assetFilterTasks = computed(() => {
+                    const ordered = [];
+                    const seen = new Set();
+                    for (const task of assetGalleryTasks.value || []) {
+                        const id = String(task?.taskId || '').trim();
+                        if (!id || seen.has(id)) continue;
+                        seen.add(id);
+                        ordered.push(task);
+                    }
+                    return ordered;
                 });
 
                 // Helpers
@@ -2217,7 +2285,7 @@
                         level: row?.level || 'info',
                         message: row?.message || '',
                         context: row?.context || 'System',
-                        taskId: row?.task_id || null,
+                        taskId: row?.task_id || row?.metadata?.asset_task_id || null,
                         batchId: row?.batch_id || null,
                         timestamp: row?.created_at || new Date().toISOString(),
                         eventId: eventId || null,
@@ -2369,6 +2437,7 @@
                 const closeModal = () => selectedTask.value = null;
 
                 const clearAll = () => {
+                    const now = Date.now();
                     logs.value = [];
                     tasks.value = {};
                     batch.value = { total: 0, completed: 0 };
@@ -2381,7 +2450,9 @@
                     selectedDocJobStatus.value = null;
                     docJobDownloadUrl.value = '';
                     docQualityFilter.value = 'all';
+                    docJobsClearCutoffMs.value = now;
                     docJobArtifacts.value = [];
+                    docJobHistoricalLogs.value = [];
                     docArtifactIndex.value = null;
                     docArtifactIndexLinks.value = {
                         source_doc_url: null,
@@ -2395,6 +2466,7 @@
                     queryLabResults.value = [];
                     queryLabHistory.value = [];
                     queryLabError.value = '';
+                    selectedTask.value = null;
                     liveStats.value = {
                         queue: { pending: 0, completed: 0, failed: 0 },
                         workers: [],
@@ -2427,7 +2499,8 @@
                             }
                         }
                     };
-                    suppressLiveStats.value = true;
+                    // Keep live telemetry enabled so worker/database cards repopulate immediately after clear.
+                    suppressLiveStats.value = false;
                     addLog('info', 'System Data Cleared', 'Frontend');
                 };
 
@@ -2539,9 +2612,6 @@
 
                 const setLogMode = (mode) => {
                     logMode.value = mode;
-                    if (mode === 'DOC JOBS') {
-                        ensureSelectedDocJob();
-                    }
                 };
 
                 const taskLabel = (task) => {
@@ -2940,6 +3010,7 @@
                     });
 
                     socket.on('task_progress', (data) => {
+                        if (suppressLiveStats.value) return;
                         if (!isActiveBatchEvent(data)) return;
                         const existing = tasks.value[data.taskId] || {};
                         tasks.value[data.taskId] = normalizeTask({
@@ -2953,6 +3024,7 @@
                     });
 
                     socket.on('batch_initialized', (initialTasks) => {
+                        if (suppressLiveStats.value) return;
                         console.log('[Frontend] batch_initialized received:', initialTasks);
                         // Force reactivity by creating a new object
                         const normalized = {};
@@ -2975,6 +3047,7 @@
                     });
 
                     socket.on('system_log', (data) => {
+                        if (suppressLiveStats.value) return;
                         if (!isActiveBatchEvent(data)) return;
                         addLog(
                             data.level,
@@ -2987,11 +3060,13 @@
                     });
 
                     socket.on('batch_progress', (data) => {
+                        if (suppressLiveStats.value) return;
                         if (!isActiveBatchEvent(data)) return;
                         batch.value = { total: data.total, completed: data.completed };
                     });
 
                     socket.on('batch_finalized', (data) => {
+                        if (suppressLiveStats.value) return;
                         if (!isActiveBatchEvent(data)) return;
                         batch.value = { total: data.total, completed: data.completed };
                         addLog(
@@ -3112,8 +3187,10 @@
                                 const state = String(latest?.state || '').toLowerCase();
                                 const queue = String(latest?.queue_status || '').toLowerCase();
                                 const isTerminal = state === 'completed' || state === 'failed' || queue === 'completed' || queue === 'failed';
+                                const updatedMs = Date.parse(String(latest?.updated_at || ''));
+                                const hasFreshUpdate = Number.isFinite(updatedMs) ? (now - updatedMs) <= 30000 : false;
                                 const manifestMissing = !docManifestArtifact.value;
-                                if (!isTerminal && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
+                                if (!isTerminal && hasFreshUpdate && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
                                     void refreshSelectedDocArtifacts({ silent: true });
                                     void refreshSelectedDocArtifactIndex({ silent: true });
                                 } else if (isTerminal && manifestMissing && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 1500) {
@@ -3122,8 +3199,6 @@
                                     void refreshSelectedDocArtifactIndex({ silent: true });
                                 }
                             }
-                        } else if (logMode.value === 'DOC JOBS') {
-                            ensureSelectedDocJob();
                         }
                     });
 
@@ -3167,6 +3242,7 @@
                     docTimingSummary,
                     docArtifactUrls,
                     assetGalleryTasks,
+                    assetFilterTasks,
                     docJobArtifacts,
                     docJobArtifactsLoading,
                     docArtifactIndex,
@@ -3175,6 +3251,8 @@
                     docManifestArtifact,
                     docAnalysisArtifact,
                     docAssetArtifacts,
+                    docOutputArtifacts,
+                    docJobArtifactsOrdered,
                     docManifestPreview,
                     docAnalysisPreview,
                     manifestQualitySummary,
