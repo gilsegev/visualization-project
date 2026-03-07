@@ -1,16 +1,23 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
+import { ObservabilityGateway } from '../../observability/observability.gateway';
 
 @Injectable()
-export class LocalClipService {
+export class LocalClipService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(LocalClipService.name);
     private classifierPromise: Promise<any> | null = null;
     private readonly scorerUrl: string;
     private readonly useLocalFallback: boolean;
     private readonly timeoutMs: number;
+    private readonly heartbeatMs: number;
+    private heartbeatTimer: NodeJS.Timeout | null = null;
+    private heartbeatPrevHealthy: boolean | null = null;
 
-    constructor(private readonly configService: ConfigService) {
+    constructor(
+        private readonly configService: ConfigService,
+        private readonly observability: ObservabilityGateway,
+    ) {
         this.scorerUrl = String(
             this.configService.get<string>('IQC_URL')
             || this.configService.get<string>('CLIP_SCORER_URL')
@@ -19,6 +26,22 @@ export class LocalClipService {
         this.useLocalFallback = String(this.configService.get<string>('CLIP_SCORER_USE_LOCAL_FALLBACK') || 'false').toLowerCase() === 'true';
         const configuredTimeout = Number(this.configService.get<string>('QUALITY_CONTROL_TIMEOUT_MS') || 12000);
         this.timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 12000;
+        const configuredHeartbeat = Number(this.configService.get<string>('IQC_HEARTBEAT_MS') || 10000);
+        this.heartbeatMs = Number.isFinite(configuredHeartbeat) && configuredHeartbeat > 0 ? Math.max(2000, configuredHeartbeat) : 10000;
+    }
+
+    async onModuleInit(): Promise<void> {
+        const enabled = String(this.configService.get<string>('IQC_HEARTBEAT_ENABLED') || 'true').toLowerCase() === 'true';
+        if (!enabled) return;
+        this.heartbeatTimer = setInterval(() => {
+            void this.checkIqcHealth();
+        }, this.heartbeatMs);
+        await this.checkIqcHealth();
+    }
+
+    onModuleDestroy(): void {
+        if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+        this.heartbeatTimer = null;
     }
 
     private async getClassifier(): Promise<any> {
@@ -33,10 +56,10 @@ export class LocalClipService {
 
     async scoreImageAgainstBrief(imageUrl: string, brief: string): Promise<number> {
         try {
-            const res = await axios.post(
+            const res = await this.postWithRetry(
                 `${this.scorerUrl}/score/clip`,
                 { imageUrl, brief },
-                { timeout: this.timeoutMs, headers: { 'Content-Type': 'application/json' } }
+                { timeout: this.timeoutMs, headers: { 'Content-Type': 'application/json' } },
             );
             const score = Number(res?.data?.score || 0);
             if (!Number.isFinite(score)) throw new Error('image-quality-control returned non-numeric clip score');
@@ -67,7 +90,7 @@ export class LocalClipService {
         fallback: { score: number; reason: string } = { score: 75, reason: 'Vision gate unavailable; accepted with neutral score.' },
     ): Promise<{ score: number; reason: string }> {
         try {
-            const res = await axios.post(
+            const res = await this.postWithRetry(
                 `${this.scorerUrl}/score/vision`,
                 { imageUrl, brief, domain, style },
                 { timeout: Math.max(this.timeoutMs, 30000), headers: { 'Content-Type': 'application/json' } },
@@ -104,7 +127,7 @@ export class LocalClipService {
         accepted: boolean;
     }> {
         const payload = { imageUrl, brief, ...(options || {}) };
-        const res = await axios.post(
+        const res = await this.postWithRetry(
             `${this.scorerUrl}/score/composite`,
             payload,
             { timeout: Math.max(this.timeoutMs, 30000), headers: { 'Content-Type': 'application/json' } },
@@ -119,5 +142,43 @@ export class LocalClipService {
             vision_threshold: Number(res?.data?.vision_threshold || 0),
             accepted: Boolean(res?.data?.accepted),
         };
+    }
+
+    private async postWithRetry(url: string, payload: any, config: any): Promise<any> {
+        const attempts = Math.max(1, Number(this.configService.get<string>('IQC_REQUEST_ATTEMPTS') || 2));
+        let lastError: any = null;
+        for (let i = 0; i < attempts; i++) {
+            try {
+                return await axios.post(url, payload, config);
+            } catch (error: any) {
+                lastError = error;
+                const msg = String(error?.message || '').toLowerCase();
+                const retryable = msg.includes('econnrefused') || msg.includes('etimedout') || msg.includes('socket hang up');
+                if (!retryable || i >= attempts - 1) break;
+                await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+        }
+        throw lastError;
+    }
+
+    private async checkIqcHealth(): Promise<void> {
+        const started = Date.now();
+        try {
+            const res = await axios.get(`${this.scorerUrl}/health`, { timeout: Math.min(this.timeoutMs, 5000) });
+            const ok = Number(res?.status || 0) >= 200 && Number(res?.status || 0) < 300;
+            if (this.heartbeatPrevHealthy !== true && ok) {
+                this.observability.emitLog('success', `IQC heartbeat healthy (${Date.now() - started}ms)`, 'IQCHeartbeat', undefined, undefined, {
+                    metadata: { provider_status: 'up', event_kind: 'iqc_heartbeat', latency_ms: Date.now() - started, iqc_url: this.scorerUrl },
+                });
+            }
+            this.heartbeatPrevHealthy = ok;
+        } catch (error: any) {
+            if (this.heartbeatPrevHealthy !== false) {
+                this.observability.emitLog('warn', `IQC heartbeat failed: ${String(error?.message || error)}`, 'IQCHeartbeat', undefined, undefined, {
+                    metadata: { provider_status: 'down', event_kind: 'iqc_heartbeat', iqc_url: this.scorerUrl },
+                });
+            }
+            this.heartbeatPrevHealthy = false;
+        }
     }
 }

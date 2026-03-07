@@ -11,6 +11,7 @@ import { Logger, OnModuleDestroy } from '@nestjs/common';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { isAllowedOrigin, parseAllowedOrigins } from '../security/origin-allowlist';
 import { buildDocumentEvent } from '../documents/observability/document-event.schema';
+import axios from 'axios';
 
 type ObservabilitySource = {
     role: 'app' | 'worker' | 'unknown';
@@ -39,6 +40,26 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
     private lastSystemLogId: number | null = null;
     private eventCounter = 0;
     private readonly source: ObservabilitySource = this.resolveSource();
+    private readonly iqcUrl = String(process.env.IQC_URL || process.env.CLIP_SCORER_URL || '').trim().replace(/\/+$/, '');
+    private readonly iqcHealthPollMs = Math.max(2000, Number(process.env.IQC_HEALTH_POLL_MS || 10000));
+    private readonly iqcHealthTimeoutMs = Math.max(500, Number(process.env.IQC_HEALTH_TIMEOUT_MS || 3000));
+    private lastIqcCheckAt = 0;
+    private iqcState: {
+        healthy: boolean;
+        status: 'green' | 'yellow' | 'red';
+        last_checked_at: string | null;
+        last_ok_at: string | null;
+        latency_ms: number | null;
+        error: string | null;
+    } = {
+        healthy: false,
+        status: this.iqcUrl ? 'yellow' : 'red',
+        last_checked_at: null,
+        last_ok_at: null,
+        latency_ms: null,
+        error: this.iqcUrl ? null : 'IQC_URL not configured',
+    };
+    private iqcPrevHealthy: boolean | null = null;
 
     constructor(private readonly storage: PostgresStorageService) { }
 
@@ -412,6 +433,19 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             };
         };
         recent?: { task_deltas?: any[]; logs?: any[] };
+        processes?: {
+            app: { status: 'green' | 'yellow' | 'red'; healthy: boolean; pid: number; role: string; last_seen_at: string };
+            workers: { status: 'green' | 'yellow' | 'red'; healthy: boolean; total: number; healthy_count: number; unhealthy_count: number };
+            iqc: {
+                status: 'green' | 'yellow' | 'red';
+                healthy: boolean;
+                url: string | null;
+                last_checked_at: string | null;
+                last_ok_at: string | null;
+                latency_ms: number | null;
+                error: string | null;
+            };
+        };
         timestamp: string;
     }) {
         if (this.server) this.server.emit('live_stats', data);
@@ -423,6 +457,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         const now = Date.now();
         if (!force && now - this.lastLiveStatsAt < this.liveStatsMinIntervalMs) return;
         this.lastLiveStatsAt = now;
+        await this.refreshIqcHealth();
 
         const [queue, workers, database, taskDeltas, logDeltas, docQueue, docJobs, docArtifacts, docMetrics] = await Promise.all([
             this.storage.getQueueHealthStats(),
@@ -448,6 +483,7 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
             queue,
             workers,
             database,
+            processes: this.buildProcessHealth(workers),
             documents: {
                 queue: docQueue,
                 recent_jobs: docJobs,
@@ -459,6 +495,85 @@ export class ObservabilityGateway implements OnGatewayInit, OnGatewayConnection,
         };
         if (target) target.emit('live_stats', payload);
         else this.emitLiveStats(payload);
+    }
+
+    private buildProcessHealth(workers: any[]) {
+        const totalWorkers = Array.isArray(workers) ? workers.length : 0;
+        const healthyWorkers = Array.isArray(workers) ? workers.filter((w) => !!w?.healthy).length : 0;
+        const unhealthyWorkers = Math.max(0, totalWorkers - healthyWorkers);
+        const workerStatus: 'green' | 'yellow' | 'red' =
+            totalWorkers === 0 ? 'red' : (healthyWorkers === totalWorkers ? 'green' : (healthyWorkers > 0 ? 'yellow' : 'red'));
+        const appNow = new Date().toISOString();
+        return {
+            app: {
+                status: 'green' as const,
+                healthy: true,
+                pid: this.source?.pid || process.pid,
+                role: this.source?.role || 'app',
+                last_seen_at: appNow,
+            },
+            workers: {
+                status: workerStatus,
+                healthy: healthyWorkers > 0,
+                total: totalWorkers,
+                healthy_count: healthyWorkers,
+                unhealthy_count: unhealthyWorkers,
+            },
+            iqc: {
+                status: this.iqcState.status,
+                healthy: this.iqcState.healthy,
+                url: this.iqcUrl || null,
+                last_checked_at: this.iqcState.last_checked_at,
+                last_ok_at: this.iqcState.last_ok_at,
+                latency_ms: this.iqcState.latency_ms,
+                error: this.iqcState.error,
+            },
+        };
+    }
+
+    private async refreshIqcHealth(): Promise<void> {
+        if (!this.iqcUrl) return;
+        const now = Date.now();
+        if ((now - this.lastIqcCheckAt) < this.iqcHealthPollMs) return;
+        this.lastIqcCheckAt = now;
+        const started = Date.now();
+        try {
+            const res = await axios.get(`${this.iqcUrl}/health`, { timeout: this.iqcHealthTimeoutMs });
+            const ok = Number(res?.status || 0) >= 200 && Number(res?.status || 0) < 300;
+            const latency = Date.now() - started;
+            const nowIso = new Date().toISOString();
+            this.iqcState = {
+                healthy: ok,
+                status: ok ? 'green' : 'red',
+                last_checked_at: nowIso,
+                last_ok_at: ok ? nowIso : this.iqcState.last_ok_at,
+                latency_ms: latency,
+                error: ok ? null : `health_http_${res?.status || 'unknown'}`,
+            };
+            if (this.iqcPrevHealthy !== true && ok) {
+                this.emitLog('success', `IQC healthy at ${this.iqcUrl} (${latency}ms)`, 'IQCHealth', undefined, undefined, {
+                    metadata: { provider_status: 'up', event_kind: 'iqc_heartbeat', latency_ms: latency, iqc_url: this.iqcUrl },
+                });
+            }
+            this.iqcPrevHealthy = ok;
+        } catch (error: any) {
+            const nowIso = new Date().toISOString();
+            const message = String(error?.message || error);
+            this.iqcState = {
+                healthy: false,
+                status: 'red',
+                last_checked_at: nowIso,
+                last_ok_at: this.iqcState.last_ok_at,
+                latency_ms: null,
+                error: message,
+            };
+            if (this.iqcPrevHealthy !== false) {
+                this.emitLog('warn', `IQC healthcheck failed at ${this.iqcUrl}: ${message}`, 'IQCHealth', undefined, undefined, {
+                    metadata: { provider_status: 'down', event_kind: 'iqc_heartbeat', iqc_url: this.iqcUrl },
+                });
+            }
+            this.iqcPrevHealthy = false;
+        }
     }
 
     private hasConnectedClients(): boolean {

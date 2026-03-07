@@ -131,6 +131,43 @@
                     </div>
                 </div>
 
+                <!-- Process Health -->
+                <div class="p-4 border-b border-slate-700 bg-surface/30">
+                    <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-2">PROCESS HEALTH</div>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">APP</div>
+                            <div class="mt-1 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 rounded-full" :class="healthDotClass(processHealth.app.status)"></div>
+                                    <div class="text-[10px] font-mono text-slate-200">{{ processHealth.app.label }}</div>
+                                </div>
+                                <div class="text-[9px] font-mono text-slate-500">pid={{ processHealth.app.pid }}</div>
+                            </div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">WORKERS</div>
+                            <div class="mt-1 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 rounded-full" :class="healthDotClass(processHealth.workers.status)"></div>
+                                    <div class="text-[10px] font-mono text-slate-200">{{ processHealth.workers.label }}</div>
+                                </div>
+                                <div class="text-[9px] font-mono text-slate-500">{{ processHealth.workers.count }}</div>
+                            </div>
+                        </div>
+                        <div class="rounded border border-slate-700 bg-black/30 p-2">
+                            <div class="text-[9px] text-slate-500 font-mono">IQC / CLIP</div>
+                            <div class="mt-1 flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-2 h-2 rounded-full" :class="healthDotClass(processHealth.iqc.status)"></div>
+                                    <div class="text-[10px] font-mono text-slate-200">{{ processHealth.iqc.label }}</div>
+                                </div>
+                                <div class="text-[9px] font-mono text-slate-500">{{ processHealth.iqc.meta }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Live Queue Health -->
                 <div class="p-4 border-b border-slate-700 bg-surface/30">
                     <div class="text-[10px] text-slate-500 font-mono tracking-wide mb-2">LIVE QUEUE HEALTH</div>
@@ -360,6 +397,10 @@
                                     <span class="text-slate-500">Selected Query:</span>
                                     <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.source_query }}</span>
                                 </div>
+                                <div v-if="selectedAssetTask?.details?.caption_text" class="mt-0.5">
+                                    <span class="text-slate-500">Caption:</span>
+                                    <span class="ml-1 text-slate-200">{{ selectedAssetTask.details.caption_text }}</span>
+                                </div>
                                 <div v-if="selectedAssetTask?.details?.chart_type" class="mt-0.5">
                                     <span class="text-slate-500">Chart Type:</span>
                                     <span class="ml-1 text-slate-200 uppercase">{{ selectedAssetTask.details.chart_type }}</span>
@@ -577,25 +618,41 @@
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.taskId.split('-').pop() }}
                             </span>
-                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.eventId"
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG' || logMode === 'BY ASSET') && log.eventId"
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.eventId }}
                             </span>
-                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.source && (log.source.role || log.source.pid)"
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG' || logMode === 'BY ASSET') && log.source && (log.source.role || log.source.pid)"
                                 class="text-[9px] bg-slate-800 text-slate-400 px-1 rounded ml-1">
                                 {{ log.source.role }}#{{ log.source.pid }}
                             </span>
-                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.user_id !== null && log.metadata.user_id !== undefined"
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG' || logMode === 'BY ASSET') && log.metadata && log.metadata.user_id !== null && log.metadata.user_id !== undefined"
                                 class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
                                 user={{ log.metadata.user_id }}
                             </span>
-                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.latency_ms !== null && log.metadata.latency_ms !== undefined"
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG' || logMode === 'BY ASSET') && log.metadata && log.metadata.latency_ms !== null && log.metadata.latency_ms !== undefined"
                                 class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
                                 latency={{ Number(log.metadata.latency_ms).toFixed(0) }}ms
                             </span>
-                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG') && log.metadata && log.metadata.provider_status"
+                            <span v-if="(logMode === 'VERBOSE' || logMode === 'BATCH DIAG' || logMode === 'BY ASSET') && log.metadata && log.metadata.provider_status"
                                 class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
                                 provider={{ log.metadata.provider_status }}
+                            </span>
+                            <span v-if="logMode === 'BY ASSET' && log.metadata && log.metadata.visual_type"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                type={{ log.metadata.visual_type }}
+                            </span>
+                            <span v-if="logMode === 'BY ASSET' && log.metadata && Number.isFinite(Number(log.metadata.clip_score))"
+                                class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
+                                clip={{ Number(log.metadata.clip_score).toFixed(3) }}
+                            </span>
+                            <span v-if="logMode === 'BY ASSET' && log.metadata && Number.isFinite(Number(log.metadata.vision_score))"
+                                class="text-[9px] bg-neon/20 text-neon px-1 rounded ml-1 border border-neon/30">
+                                vision={{ Number(log.metadata.vision_score).toFixed(3) }}
+                            </span>
+                            <span v-if="logMode === 'BY ASSET' && log.metadata && log.metadata.source_provider"
+                                class="text-[9px] bg-slate-800 text-slate-300 px-1 rounded ml-1">
+                                source={{ log.metadata.source_provider }}
                             </span>
 
                             <span v-if="String(log.message || '').toLowerCase().includes('clip=')"
@@ -728,7 +785,7 @@
                                     <div class="text-[10px] font-mono text-slate-300 mt-1">{{ stage.detail }}</div>
                                 </div>
                             </div>
-                            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] font-mono">
+                            <div class="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2 text-[10px] font-mono">
                                 <div class="rounded border border-slate-700 bg-black/20 p-2">
                                     <div class="text-slate-500">Queue Wait (ms)</div>
                                     <div class="text-slate-200 text-base font-bold">{{ docTimingSummary.queueWaitText }}</div>
@@ -736,6 +793,42 @@
                                 <div class="rounded border border-slate-700 bg-black/20 p-2">
                                     <div class="text-slate-500">Planning Duration (ms)</div>
                                     <div class="text-slate-200 text-base font-bold">{{ docTimingSummary.planningDurationText }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Placement Resolved</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ placementSummary.resolved }}/{{ placementSummary.planned }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Placement Inserted</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ placementSummary.inserted }}/{{ placementSummary.planned }}</div>
+                                </div>
+                            </div>
+                            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Placement Conflicts</div>
+                                    <div class="text-warning text-base font-bold">{{ placementSummary.conflicts }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">List Adjustments</div>
+                                    <div class="text-neon text-base font-bold">{{ placementSummary.listAdjustments }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Heading Adjustments</div>
+                                    <div class="text-neon text-base font-bold">{{ placementSummary.headingAdjustments }}</div>
+                                </div>
+                            </div>
+                            <div class="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2 text-[10px] font-mono">
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Captions Planned</div>
+                                    <div class="text-slate-200 text-base font-bold">{{ placementSummary.captionsPlanned }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Captions Inserted</div>
+                                    <div class="text-success text-base font-bold">{{ placementSummary.captionsInserted }}</div>
+                                </div>
+                                <div class="rounded border border-slate-700 bg-black/20 p-2">
+                                    <div class="text-slate-500">Caption Coverage</div>
+                                    <div class="text-neon text-base font-bold">{{ placementSummary.captionCoverageText }}</div>
                                 </div>
                             </div>
                         </div>
@@ -751,9 +844,16 @@
                                         class="block text-[10px] text-neon underline break-all mt-1">
                                         open artifact
                                     </a>
+                                    <button v-else-if="isInlineArtifact(item)" @click="openInlineArtifact(item)"
+                                        class="block text-[10px] text-neon underline break-all mt-1 text-left">
+                                        open inline artifact
+                                    </button>
                                 </div>
                             </div>
                             <div v-if="!docJobArtifactsOrdered.length" class="text-[10px] text-slate-600 font-mono italic">No artifacts yet...</div>
+                            <div v-else-if="!hasDownloadableDocArtifacts" class="text-[10px] text-slate-600 font-mono italic mb-2">
+                                No signed artifact links yet. Inline artifacts can still be opened below.
+                            </div>
                             <div v-for="(item, idx) in docJobArtifactsOrdered" :key="`doc-art-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
                                 <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
                                 <div class="text-[10px] font-mono text-slate-500 break-all">{{ item.object_key }}</div>
@@ -761,12 +861,19 @@
                                     class="block text-[10px] text-neon underline break-all mt-1">
                                     open artifact
                                 </a>
+                                <button v-else-if="isInlineArtifact(item)" @click="openInlineArtifact(item)"
+                                    class="block text-[10px] text-neon underline break-all mt-1 text-left">
+                                    open inline artifact
+                                </button>
                             </div>
                             <div class="mt-3 pt-2 border-t border-slate-800/60">
                                 <div class="text-[10px] text-slate-500 font-mono uppercase mb-2">Generated Asset Files</div>
                                 <div v-if="!docAssetArtifacts.length" class="text-[10px] text-slate-600 font-mono italic">No asset artifacts yet...</div>
                                 <div v-for="(item, idx) in docAssetArtifacts" :key="`doc-asset-item-${idx}`" class="mb-2 border-b border-slate-800/60 pb-2 last:border-b-0">
                                     <div class="text-[10px] font-mono text-slate-200">{{ item.artifact_type }}</div>
+                                    <div v-if="normalizeArtifactMetadata(item?.metadata)?.caption_text" class="text-[10px] text-slate-400 mt-1">
+                                        {{ normalizeArtifactMetadata(item?.metadata)?.caption_text }}
+                                    </div>
                                     <a v-if="item.signed_url" :href="item.signed_url" target="_blank" rel="noopener noreferrer" class="block text-[10px] text-neon underline break-all mt-1">
                                         open generated asset
                                     </a>
@@ -1342,6 +1449,11 @@
                     queue: { pending: 0, completed: 0, failed: 0 },
                     workers: [],
                     database: {},
+                    processes: {
+                        app: { status: 'yellow', healthy: false, pid: null, role: 'app', last_seen_at: null },
+                        workers: { status: 'yellow', healthy: false, total: 0, healthy_count: 0, unhealthy_count: 0 },
+                        iqc: { status: 'yellow', healthy: false, url: null, last_checked_at: null, last_ok_at: null, latency_ms: null, error: null },
+                    },
                     documents: {
                         queue: { queued: 0, processing: 0, completed: 0, failed: 0 },
                         recent_jobs: [],
@@ -1587,6 +1699,32 @@
                     };
                 });
 
+                const processHealth = computed(() => {
+                    const p = liveStats.value?.processes || {};
+                    const app = p.app || {};
+                    const workers = p.workers || {};
+                    const iqc = p.iqc || {};
+                    const workersHealthy = Number(workers.healthy_count || 0);
+                    const workersTotal = Number(workers.total || 0);
+                    return {
+                        app: {
+                            status: String(app.status || 'yellow'),
+                            pid: Number(app.pid || 0) || 'n/a',
+                            label: app.healthy === false ? 'DOWN' : 'LIVE',
+                        },
+                        workers: {
+                            status: String(workers.status || 'yellow'),
+                            label: workersTotal === 0 ? 'DOWN' : (workersHealthy === workersTotal ? 'LIVE' : 'DEGRADED'),
+                            count: `${workersHealthy}/${workersTotal}`,
+                        },
+                        iqc: {
+                            status: String(iqc.status || 'yellow'),
+                            label: iqc.healthy ? 'LIVE' : (iqc.last_checked_at ? 'DOWN' : 'UNKNOWN'),
+                            meta: Number.isFinite(Number(iqc.latency_ms)) ? `${Number(iqc.latency_ms).toFixed(0)}ms` : 'n/a',
+                        },
+                    };
+                });
+
                 const recentDocumentJobs = computed(() => {
                     const rows = liveStats.value?.documents?.recent_jobs;
                     const all = Array.isArray(rows) ? rows : [];
@@ -1632,6 +1770,9 @@
                         flowchart_mermaid_invalid_total: Number(m.flowchart_mermaid_invalid_total || 0),
                         flowchart_mermaid_self_correct_total: Number(m.flowchart_mermaid_self_correct_total || 0),
                         flowchart_mermaid_fallback_total: Number(m.flowchart_mermaid_fallback_total || 0),
+                        captions_planned_total: Number(m.captions_planned_total || 0),
+                        captions_inserted_total: Number(m.captions_inserted_total || 0),
+                        captions_skipped_total: Number(m.captions_skipped_total || 0),
                     };
                 });
 
@@ -1901,6 +2042,14 @@
                     }) || null;
                 });
 
+                const docSurgicalArtifact = computed(() => {
+                    return (docJobArtifacts.value || []).find((a) => {
+                        const t = String(a?.artifact_type || a?.artifactType || '').trim().toLowerCase();
+                        const k = String(a?.object_key || a?.objectKey || '').trim().toLowerCase();
+                        return t === 'surgical_log_json' || k.includes('surgical-log.json');
+                    }) || null;
+                });
+
                 const docAssetArtifacts = computed(() => {
                     return (docJobArtifacts.value || []).filter((a) => {
                         const t = String(a?.artifact_type || '').trim().toLowerCase();
@@ -1929,6 +2078,9 @@
                     };
                     return all.sort((a, b) => rank(a?.artifact_type) - rank(b?.artifact_type));
                 });
+                const hasDownloadableDocArtifacts = computed(() => {
+                    return (docJobArtifacts.value || []).some((a) => String(a?.signed_url || '').trim().length > 0);
+                });
 
                 const normalizeArtifactMetadata = (raw) => {
                     if (raw === null || raw === undefined) return {};
@@ -1943,6 +2095,26 @@
                         }
                     }
                     return typeof raw === 'object' ? raw : {};
+                };
+
+                const isInlineArtifact = (item) => {
+                    const key = String(item?.object_key || item?.objectKey || '').trim().toLowerCase();
+                    return key.startsWith('inline://');
+                };
+
+                const openInlineArtifact = (item) => {
+                    try {
+                        const metadata = normalizeArtifactMetadata(item?.metadata);
+                        const payload = (metadata && Object.keys(metadata).length > 0)
+                            ? metadata
+                            : { object_key: item?.object_key || null, artifact_type: item?.artifact_type || null };
+                        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+                        const objectUrl = URL.createObjectURL(blob);
+                        window.open(objectUrl, '_blank', 'noopener,noreferrer');
+                        setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+                    } catch (err) {
+                        addLog('error', `Failed to open inline artifact: ${err?.message || String(err)}`, 'DocumentIntake');
+                    }
                 };
 
                 const docManifestPreview = computed(() => {
@@ -2027,8 +2199,74 @@
                     };
                 });
 
+                const placementSummary = computed(() => {
+                    const metadata = normalizeArtifactMetadata(docSurgicalArtifact.value?.metadata);
+                    const captionsPlanned = Number(metadata?.captions_planned || 0);
+                    const captionsInserted = Number(metadata?.captions_inserted || 0);
+                    const captionsSkipped = Number(metadata?.captions_skipped || 0);
+                    const captionCoveragePct = captionsPlanned > 0
+                        ? Math.round((captionsInserted * 100) / captionsPlanned)
+                        : 0;
+                    return {
+                        planned: Number(metadata?.planned || 0),
+                        resolved: Number(metadata?.resolved || metadata?.planned || 0),
+                        inserted: Number(metadata?.inserted || 0),
+                        skipped: Number(metadata?.skipped || 0),
+                        conflicts: Number(metadata?.placement_conflicts ?? metadata?.collisions ?? 0),
+                        listAdjustments: Number(metadata?.list_block_adjustments || 0),
+                        headingAdjustments: Number(metadata?.heading_avoidance_adjustments || 0),
+                        captionsPlanned,
+                        captionsInserted,
+                        captionsSkipped,
+                        captionCoveragePct,
+                        captionCoverageText: captionsPlanned > 0 ? `${captionCoveragePct}% (${captionsInserted}/${captionsPlanned})` : 'n/a',
+                    };
+                });
+
+                const isRenderableAssetUrl = (value) => {
+                    const url = String(value || '').trim();
+                    if (!url) return false;
+                    if (/^https?:\/\//i.test(url)) return true;
+                    if (/^(blob:|data:)/i.test(url)) return true;
+                    if (url.startsWith('/')) return true;
+                    return false;
+                };
+
+                const isStorageObjectKey = (value) => {
+                    const url = String(value || '').trim();
+                    if (!url) return false;
+                    if (/^inline:\/\//i.test(url)) return true;
+                    if (/^\/documents\//i.test(url)) return true;
+                    if (/^documents\//i.test(url)) return true;
+                    return false;
+                };
+
                 const assetGalleryTasks = computed(() => {
-                    const rows = Object.values(tasks.value || {}).map(normalizeTask);
+                    const signedDocAssetUrlByTaskId = new Map(
+                        (docAssetArtifacts.value || [])
+                            .map((item) => {
+                                const id = String(item?.metadata?.asset_task_id || '').trim();
+                                const url = String(item?.signed_url || '').trim();
+                                return [id, url];
+                            })
+                            .filter(([id, url]) => !!id && isRenderableAssetUrl(url))
+                    );
+
+                    const rows = Object.values(tasks.value || {}).map(normalizeTask).map((row) => {
+                        const taskId = String(row?.taskId || '').trim();
+                        const candidateSigned = signedDocAssetUrlByTaskId.get(taskId) || null;
+                        const fallbackUrl = String(row?.url || '').trim();
+                        const resolvedUrl = candidateSigned
+                            || (isStorageObjectKey(fallbackUrl) ? null : fallbackUrl);
+                        return {
+                            ...row,
+                            url: isRenderableAssetUrl(resolvedUrl) ? resolvedUrl : null,
+                        };
+                    });
+
+                    const rowTaskIds = new Set(
+                        rows.map((t) => String(t?.taskId || '').trim()).filter(Boolean)
+                    );
                     const docAssetRows = (docAssetArtifacts.value || []).map((item, idx) => ({
                         taskId: String(item?.metadata?.asset_task_id || item?.artifact_id || item?.id || `doc-asset-${selectedDocJobId.value || 'none'}-${idx + 1}`),
                         batchId: `doc-${selectedDocJobId.value || 'none'}`,
@@ -2042,7 +2280,13 @@
                             artifact_type: String(item?.artifact_type || '').trim(),
                             clip_score: Number.isFinite(Number(item?.metadata?.clip_score)) ? Number(item?.metadata?.clip_score) : null,
                             vision_score: Number.isFinite(Number(item?.metadata?.vision_score)) ? Number(item?.metadata?.vision_score) : null,
+                            source_provider: String(item?.metadata?.source_provider || '').trim() || null,
                             source_query: String(item?.metadata?.source_query || '').trim() || null,
+                            sourced_queries: Array.isArray(item?.metadata?.sourced_queries) ? item.metadata.sourced_queries : [],
+                            sourced_candidates: Array.isArray(item?.metadata?.sourced_candidates) ? item.metadata.sourced_candidates : [],
+                            sourced_query_signals: item?.metadata?.sourced_query_signals || null,
+                            sourced_query_config: item?.metadata?.sourced_query_config || null,
+                            caption_text: String(item?.metadata?.caption_text || '').trim() || null,
                         },
                         metrics: {
                             clip_score: Number.isFinite(Number(item?.metadata?.clip_score)) ? Number(item?.metadata?.clip_score) : null,
@@ -2053,8 +2297,15 @@
                             doc_job_id: String(selectedDocJobId.value || '').trim() || null,
                             asset_task_id: String(item?.metadata?.asset_task_id || '').trim() || null,
                             prompt: String(item?.metadata?.prompt || '').trim() || null,
+                            source_provider: String(item?.metadata?.source_provider || '').trim() || null,
+                            source_query: String(item?.metadata?.source_query || '').trim() || null,
+                            sourced_queries: Array.isArray(item?.metadata?.sourced_queries) ? item.metadata.sourced_queries : [],
+                            sourced_candidates: Array.isArray(item?.metadata?.sourced_candidates) ? item.metadata.sourced_candidates : [],
+                            sourced_query_signals: item?.metadata?.sourced_query_signals || null,
+                            sourced_query_config: item?.metadata?.sourced_query_config || null,
+                            caption_text: String(item?.metadata?.caption_text || '').trim() || null,
                         },
-                    })).filter((t) => !!t.url);
+                    })).filter((t) => !!t.url && !rowTaskIds.has(String(t?.taskId || '').trim()));
                     return [...rows, ...docAssetRows]
                         .sort((a, b) => {
                             const aDone = a?.status === 'completed' ? 1 : 0;
@@ -2134,10 +2385,27 @@
                     const userId = log?.metadata?.user_id;
                     const latencyMs = log?.metadata?.latency_ms;
                     const providerStatus = log?.metadata?.provider_status;
+                    const visualType = log?.metadata?.visual_type;
+                    const sourceProvider = log?.metadata?.source_provider;
+                    const sourceQuery = log?.metadata?.source_query;
+                    const clipScore = Number(log?.metadata?.clip_score);
+                    const visionScore = Number(log?.metadata?.vision_score);
                     if (userId !== null && userId !== undefined) suffix.push(`user=${userId}`);
                     if (latencyMs !== null && latencyMs !== undefined) suffix.push(`latency_ms=${Number(latencyMs).toFixed(0)}`);
                     if (providerStatus) suffix.push(`provider_status=${providerStatus}`);
+                    if (visualType) suffix.push(`type=${visualType}`);
+                    if (Number.isFinite(clipScore)) suffix.push(`clip=${clipScore.toFixed(3)}`);
+                    if (Number.isFinite(visionScore)) suffix.push(`vision=${visionScore.toFixed(3)}`);
+                    if (sourceProvider) suffix.push(`source=${sourceProvider}`);
+                    if (sourceQuery) suffix.push(`query=${sourceQuery}`);
                     return `[${ts}]${ctx}: ${message}${suffix.length ? ` | ${suffix.join(' ')}` : ''}`;
+                };
+
+                const healthDotClass = (status) => {
+                    const s = String(status || '').toLowerCase();
+                    if (s === 'green') return 'bg-success';
+                    if (s === 'red') return 'bg-danger';
+                    return 'bg-warning';
                 };
 
                 const copyVisibleLogs = async () => {
@@ -2281,11 +2549,23 @@
                     const eventId = String(row?.event_id || '').trim();
                     if (eventId && seenEventIds.has(eventId)) return;
                     if (eventId) seenEventIds.add(eventId);
+                    let parsedMetadata = row?.metadata || null;
+                    if (typeof parsedMetadata === 'string') {
+                        const text = parsedMetadata.trim();
+                        if (!text) parsedMetadata = null;
+                        else {
+                            try {
+                                parsedMetadata = JSON.parse(text);
+                            } catch {
+                                parsedMetadata = { raw_text: text };
+                            }
+                        }
+                    }
                     const mapped = {
                         level: row?.level || 'info',
                         message: row?.message || '',
                         context: row?.context || 'System',
-                        taskId: row?.task_id || row?.metadata?.asset_task_id || null,
+                        taskId: row?.task_id || parsedMetadata?.asset_task_id || null,
                         batchId: row?.batch_id || null,
                         timestamp: row?.created_at || new Date().toISOString(),
                         eventId: eventId || null,
@@ -2294,7 +2574,7 @@
                             pid: row?.source_pid || null,
                             workerId: row?.source_worker_id || null,
                         },
-                        metadata: row?.metadata || null,
+                        metadata: parsedMetadata,
                     };
                     if (!isActiveBatchEvent(mapped)) return;
                     logs.value.push({
@@ -2467,11 +2747,16 @@
                     queryLabHistory.value = [];
                     queryLabError.value = '';
                     selectedTask.value = null;
-                    liveStats.value = {
-                        queue: { pending: 0, completed: 0, failed: 0 },
-                        workers: [],
-                        database: {},
-                        documents: {
+                        liveStats.value = {
+                            queue: { pending: 0, completed: 0, failed: 0 },
+                            workers: [],
+                            database: {},
+                            processes: {
+                                app: { status: 'yellow', healthy: false, pid: null, role: 'app', last_seen_at: null },
+                                workers: { status: 'yellow', healthy: false, total: 0, healthy_count: 0, unhealthy_count: 0 },
+                                iqc: { status: 'yellow', healthy: false, url: null, last_checked_at: null, last_ok_at: null, latency_ms: null, error: null },
+                            },
+                            documents: {
                             queue: { queued: 0, processing: 0, completed: 0, failed: 0 },
                             recent_jobs: [],
                             artifact_type_counts: [],
@@ -2610,8 +2895,36 @@
                     selectedAssetFilter.value = taskId;
                 };
 
+                const safeUiCall = (label, fn) => {
+                    try {
+                        const out = typeof fn === 'function' ? fn() : null;
+                        if (out && typeof out.catch === 'function') {
+                            out.catch((err) => {
+                                addLog('error', `${label} failed: ${err?.message || String(err)}`, 'Frontend');
+                            });
+                        }
+                    } catch (err) {
+                        addLog('error', `${label} failed: ${err?.message || String(err)}`, 'Frontend');
+                    }
+                };
+
                 const setLogMode = (mode) => {
-                    logMode.value = mode;
+                    const allowed = new Set(['HIGH LEVEL', 'VERBOSE', 'BY ASSET', 'BATCH DIAG', 'QUERY LAB', 'DOC JOBS']);
+                    const nextMode = allowed.has(String(mode || '')) ? String(mode) : 'HIGH LEVEL';
+                    logMode.value = nextMode;
+                    if (nextMode === 'DOC JOBS') {
+                        queueMicrotask(() => {
+                            if (!selectedDocJobId.value && Array.isArray(recentDocumentJobs.value) && recentDocumentJobs.value.length) {
+                                const first = recentDocumentJobs.value[0];
+                                if (first?.job_id) safeUiCall('doc job auto-select', () => selectDocJob(first));
+                            }
+                            // Keep this side-effect tolerant so tab navigation never gets blocked.
+                            safeUiCall('doc status refresh', () => refreshSelectedDocJobStatus({ silent: true }));
+                            safeUiCall('doc artifacts refresh', () => refreshSelectedDocArtifacts({ silent: true }));
+                            safeUiCall('doc artifact index refresh', () => refreshSelectedDocArtifactIndex({ silent: true }));
+                            safeUiCall('doc logs refresh', () => refreshSelectedDocLogs({ silent: true }));
+                        });
+                    }
                 };
 
                 const taskLabel = (task) => {
@@ -2740,17 +3053,21 @@
                         }
 
                         const jobId = String(createBody.job_id);
-                        const uploadUrl = String(createBody.upload.upload_url);
                         const docVersionHash = String(createBody.doc_version_hash || '');
                         addLog('info', `Document draft created: ${jobId}`, 'DocumentIntake');
 
-                        const uploadRes = await fetch(uploadUrl, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': DOCX_MIME },
-                            body: file
+                        const uploadForm = new FormData();
+                        uploadForm.append('file', file, name);
+                        const uploadRes = await fetchWithAuth(`/documents/jobs/${encodeURIComponent(jobId)}/upload`, {
+                            method: 'POST',
+                            body: uploadForm
                         });
                         if (!uploadRes.ok) {
-                            addLog('error', `Document binary upload failed: HTTP ${uploadRes.status}`, 'DocumentIntake', null, null, {
+                            const uploadBody = await uploadRes.json().catch(() => ({}));
+                            const reason = uploadBody?.error
+                                || (Array.isArray(uploadBody?.message) ? uploadBody.message.join('; ') : uploadBody?.message)
+                                || `HTTP ${uploadRes.status}`;
+                            addLog('error', `Document binary upload failed: ${reason}`, 'DocumentIntake', null, null, {
                                 metadata: { doc_job_id: jobId, provider_status: `upload_http_${uploadRes.status}` }
                             });
                             return;
@@ -2792,6 +3109,18 @@
                             if (!statusRes.ok) continue;
                             const state = String(statusBody?.state || '');
                             const queueStatus = String(statusBody?.queue_status || '');
+                            const activeState = !(
+                                state === 'completed'
+                                || queueStatus === 'completed'
+                                || state === 'failed'
+                                || queueStatus === 'failed'
+                            );
+                            if (activeState) {
+                                // Keep artifact/index panes live while generation is still running.
+                                void refreshSelectedDocArtifacts({ silent: true });
+                                void refreshSelectedDocArtifactIndex({ silent: true });
+                                if (i % 2 === 0) void refreshSelectedDocLogs({ silent: true });
+                            }
                             addLog('info', `Document status job=${jobId} state=${state} queue=${queueStatus}`, 'DocumentIntake', null, null, {
                                 metadata: { doc_job_id: jobId, provider_status: queueStatus }
                             });
@@ -3129,6 +3458,11 @@
                                     flowchart_mermaid_fallback_total: 0,
                                 }
                             },
+                            processes: data?.processes || {
+                                app: { status: 'yellow', healthy: false, pid: null, role: 'app', last_seen_at: null },
+                                workers: { status: 'yellow', healthy: false, total: 0, healthy_count: 0, unhealthy_count: 0 },
+                                iqc: { status: 'yellow', healthy: false, url: null, last_checked_at: null, last_ok_at: null, latency_ms: null, error: null },
+                            },
                             timestamp: data?.timestamp || null
                         };
                         const taskDeltas = Array.isArray(data?.recent?.task_deltas) ? data.recent.task_deltas : [];
@@ -3187,14 +3521,24 @@
                                 const state = String(latest?.state || '').toLowerCase();
                                 const queue = String(latest?.queue_status || '').toLowerCase();
                                 const isTerminal = state === 'completed' || state === 'failed' || queue === 'completed' || queue === 'failed';
+                                const isCompleted = state === 'completed' || queue === 'completed';
                                 const updatedMs = Date.parse(String(latest?.updated_at || ''));
                                 const hasFreshUpdate = Number.isFinite(updatedMs) ? (now - updatedMs) <= 30000 : false;
                                 const manifestMissing = !docManifestArtifact.value;
+                                const finalMissing = !(docOutputArtifacts.value || []).some((artifact) => {
+                                    const type = String(artifact?.artifact_type || '').trim().toLowerCase();
+                                    return type === 'final_docx';
+                                });
                                 if (!isTerminal && hasFreshUpdate && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 5000) {
                                     void refreshSelectedDocArtifacts({ silent: true });
                                     void refreshSelectedDocArtifactIndex({ silent: true });
-                                } else if (isTerminal && manifestMissing && !docJobArtifactsLoading.value && now - Number(lastDocArtifactsRefreshAt.value || 0) > 1500) {
-                                    // Catch-up refresh for terminal jobs to avoid stale pre-manifest artifact snapshots.
+                                } else if (
+                                    isTerminal
+                                    && (manifestMissing || (isCompleted && finalMissing))
+                                    && !docJobArtifactsLoading.value
+                                    && now - Number(lastDocArtifactsRefreshAt.value || 0) > 1500
+                                ) {
+                                    // Catch-up refresh for terminal jobs to avoid stale snapshots that miss late final_docx writes.
                                     void refreshSelectedDocArtifacts({ silent: true });
                                     void refreshSelectedDocArtifactIndex({ silent: true });
                                 }
@@ -3204,6 +3548,17 @@
 
                     window.addEventListener('keydown', (e) => {
                         if (e.key === 'Escape') closeModal();
+                    });
+                    window.addEventListener('error', (event) => {
+                        const message = String(event?.message || 'Unknown UI error');
+                        addLog('error', `UI runtime error: ${message}`, 'Frontend');
+                    });
+                    window.addEventListener('unhandledrejection', (event) => {
+                        const reason = event?.reason;
+                        const message = typeof reason === 'string'
+                            ? reason
+                            : String(reason?.message || reason || 'Unknown promise rejection');
+                        addLog('error', `UI promise rejection: ${message}`, 'Frontend');
                     });
                 });
 
@@ -3223,6 +3578,7 @@
                     throughputSummary,
                     qualitySummary,
                     liveStats,
+                    processHealth,
                     strategyTelemetryRows,
                     selectedAssetTask, batchStylingGuidance,
                     showAssetInspector,
@@ -3250,12 +3606,15 @@
                     docArtifactIndexLoading,
                     docManifestArtifact,
                     docAnalysisArtifact,
+                    docSurgicalArtifact,
                     docAssetArtifacts,
                     docOutputArtifacts,
                     docJobArtifactsOrdered,
+                    hasDownloadableDocArtifacts,
                     docManifestPreview,
                     docAnalysisPreview,
                     manifestQualitySummary,
+                    placementSummary,
                     docJobStatusLoading,
                     docJobDownloadLoading,
                     selectDocJob,
@@ -3264,6 +3623,9 @@
                     refreshSelectedDocArtifactIndex,
                     fetchSelectedDocJobDownloadUrl,
                     openSelectedDocJobDownloadUrl,
+                    normalizeArtifactMetadata,
+                    isInlineArtifact,
+                    openInlineArtifact,
                     handleDrop: (e) => {
                         isDragging.value = false;
                         const f = e.dataTransfer.files[0];
@@ -3273,7 +3635,7 @@
                     },
                     handleFileSelect: (e) => { if (e.target.files[0]) processManifest(e.target.files[0]) },
                     handleDocxSelect: (e) => { if (e.target.files[0]) processDocumentUpload(e.target.files[0]) },
-                    formatTime, formatSeconds, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
+                    formatTime, formatSeconds, healthDotClass, openImage, decodeSlug, closeModal, openFolder, clearAll, stopBatch,
                     getStatusClass, getStatusTextClass, getStatusLabel, getTaskOutputDir,
                     getClipScore, hasClipScore, getVisionScore, hasVisionScore, formatClipScore, formatQueryScore,
                     getValidationBrief,
