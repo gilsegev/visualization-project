@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
-import JSZip from 'jszip';
+import JSZip = require('jszip');
 import { AnchorCandidate } from '../analysis/document-analysis.types';
 import { DocumentVisualManifest, PlannedVisualization } from '../planning/visual-manifest.types';
 
