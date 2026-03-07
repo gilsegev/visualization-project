@@ -502,6 +502,10 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           sourceBytes,
           manifest,
           anchors: analysisResult.anchors || [],
+          assets: await this.loadInsertionAssetsForJob({
+            jobId,
+            generated: assetSummary.generatedAssets,
+          }),
         });
         outputDocxBytes = insertionResult.outputBytes;
         await writeArtifact({
@@ -857,7 +861,18 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       metadata?: any;
       stage: 'analyzing' | 'planning' | 'generating_assets' | 'inserting' | 'packaging' | 'completed' | 'failed';
     }) => Promise<void>;
-  }): Promise<{ success: number; failed: number }> {
+  }): Promise<{
+    success: number;
+    failed: number;
+    generatedAssets: Array<{
+      anchorId: string | null;
+      visualType: string;
+      objectKey: string;
+      taskId: string;
+      prompt: string;
+      index: number;
+    }>;
+  }> {
     const visuals = (input.manifest?.lessons || [])
       .flatMap((lesson: any) => Array.isArray(lesson?.visualizations) ? lesson.visualizations : []);
     const maxAssets = Math.max(1, Number(process.env.DOC_ASSET_GEN_MAX || 8));
@@ -865,6 +880,14 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     const selected = visuals.slice(0, maxAssets);
     let success = 0;
     let failed = 0;
+    const generatedAssets: Array<{
+      anchorId: string | null;
+      visualType: string;
+      objectKey: string;
+      taskId: string;
+      prompt: string;
+      index: number;
+    }> = [];
     for (let i = 0; i < selected.length; i += 1) {
       const viz = selected[i];
       const visualType = String(viz?.type || 'visual').trim().toLowerCase() || 'visual';
@@ -902,6 +925,20 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           anchor_id: anchorId,
         }
       });
+      this.observability.emitProgress({
+        taskId,
+        batchId: `doc-${input.jobId}`,
+        status: 'processing',
+        stage: 'Document Asset Generation',
+        details: {
+          refined_prompt: prompt,
+          visual_type: visualType,
+          anchor_id: anchorId,
+          doc_job_id: input.jobId,
+          source: 'document_pipeline',
+        },
+        metrics: {},
+      } as any);
 
       try {
         const task = this.buildImageTask(viz, taskId, prompt, visualType);
@@ -983,6 +1020,14 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
           }
         });
+        generatedAssets.push({
+          anchorId,
+          visualType,
+          objectKey,
+          taskId,
+          prompt,
+          index: i,
+        });
         success += 1;
         this.observability.emitLog('success', `Document asset generated job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentAsset', undefined, undefined, {
           metadata: {
@@ -994,8 +1039,43 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             provider_status: 'asset_generated',
             visual_type: visualType,
             object_key: objectKey,
+            prompt,
+            clip_score: Number(generated?.payload?.metrics?.clip_score ?? generated?.payload?.clip_score ?? NaN),
+            vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
+            source_provider: generated?.payload?.source_provider || null,
+            source_query: generated?.payload?.source_query || null,
           }
         });
+        this.observability.emitProgress({
+          taskId,
+          batchId: `doc-${input.jobId}`,
+          status: 'completed',
+          url: objectKey,
+          details: {
+            refined_prompt: prompt,
+            visual_type: visualType,
+            anchor_id: anchorId,
+            doc_job_id: input.jobId,
+            source_provider: generated?.payload?.source_provider || null,
+            source_query: generated?.payload?.source_query || null,
+            source_local_url: localUrl || null,
+            chart_type: generated?.payload?.chart_type,
+            chart_data_points: generated?.payload?.chart_data_points,
+            chart_labels_preview: generated?.payload?.chart_labels_preview,
+            sourced_queries: generated?.payload?.sourced_queries,
+            sourced_candidates: generated?.payload?.sourced_candidates,
+            sourced_query_signals: generated?.payload?.sourced_query_signals,
+            sourced_query_config: generated?.payload?.sourced_query_config,
+            clip_score: Number(generated?.payload?.metrics?.clip_score ?? generated?.payload?.clip_score ?? NaN),
+            vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
+            source: 'document_pipeline',
+          },
+          metrics: {
+            clip_score: Number(generated?.payload?.metrics?.clip_score ?? generated?.payload?.clip_score ?? NaN),
+            vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
+            total_ms: Number(generated?.payload?.metrics?.total_ms ?? NaN),
+          },
+        } as any);
       } catch (error: any) {
         failed += 1;
         await this.storage.upsertDocumentAsset({
@@ -1022,9 +1102,68 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             error_message: String(error?.message || error || 'Asset generation failed'),
           }
         });
+        this.observability.emitProgress({
+          taskId,
+          batchId: `doc-${input.jobId}`,
+          status: 'failed',
+          stage: 'Document Asset Generation Failed',
+          details: {
+            refined_prompt: prompt,
+            visual_type: visualType,
+            anchor_id: anchorId,
+            doc_job_id: input.jobId,
+            error: String(error?.message || error || 'Asset generation failed'),
+            source: 'document_pipeline',
+          },
+          metrics: {},
+        } as any);
       }
     }
-    return { success, failed };
+    return { success, failed, generatedAssets };
+  }
+
+  private async loadInsertionAssetsForJob(input: {
+    jobId: string;
+    generated: Array<{
+      anchorId: string | null;
+      visualType: string;
+      objectKey: string;
+      taskId: string;
+      prompt: string;
+      index: number;
+    }>;
+  }): Promise<Array<{
+    anchor_id: string | null;
+    visual_type: string;
+    object_key: string;
+    bytes: Buffer;
+    extension: string;
+  }>> {
+    const results: Array<{
+      anchor_id: string | null;
+      visual_type: string;
+      object_key: string;
+      bytes: Buffer;
+      extension: string;
+    }> = [];
+    for (const asset of input.generated || []) {
+      const key = String(asset?.objectKey || '').trim();
+      if (!key) continue;
+      try {
+        const bytes = await this.downloadObject(key);
+        const extension = String(path.extname(key || '') || '.png').toLowerCase();
+        results.push({
+          anchor_id: asset.anchorId || null,
+          visual_type: String(asset.visualType || '').trim().toLowerCase(),
+          object_key: key,
+          bytes,
+          extension,
+        });
+      } catch (error: any) {
+        this.logger.warn(`Insertion asset download failed for ${key}: ${error?.message || error}`);
+      }
+    }
+    return results;
   }
 
   private async loadGeneratedAsset(urlOrPath: string): Promise<{ buffer: Buffer; ext: string } | null> {
