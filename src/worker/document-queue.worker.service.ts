@@ -80,7 +80,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     const meta = row?.metadata || {};
     const fileName = String(meta?.file_name || 'source.docx').trim() || 'source.docx';
     const sourceKey = String(row?.source_object_key || '').trim();
-    const backupKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'source_v1_backup.docx' });
+    const backupKey = DocumentObjectKeyLayout.outputFinal({ jobId }, 'source_v1_backup.docx');
     if (!sourceKey) {
       await this.storage.updateDocumentJobState(jobId, 'failed', { error: 'Missing source object key' });
       return;
@@ -905,13 +905,45 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
       try {
         const task = this.buildImageTask(viz, taskId, prompt, visualType);
-        const strategy = this.strategyFactory.getStrategy(task);
-        const generated = await Promise.race([
-          strategy.generate(task, i + 1),
-          this.sleep(assetTimeoutMs).then(() => {
-            throw new Error(`Asset generation timeout after ${assetTimeoutMs}ms`);
-          }),
-        ]);
+        let generated: any;
+        try {
+          const strategy = this.strategyFactory.getStrategy(task);
+          generated = await Promise.race([
+            strategy.generate(task, i + 1),
+            this.sleep(assetTimeoutMs).then(() => {
+              throw new Error(`Asset generation timeout after ${assetTimeoutMs}ms`);
+            }),
+          ]);
+        } catch (primaryError: any) {
+          const message = String(primaryError?.message || primaryError || '');
+          const retryWithVisualConcept =
+            visualType === 'infographic'
+            || visualType === 'aesthetic_anchor'
+            || visualType === 'sourced_image'
+            || /quality score|missing mandatory imagespecs|narrative type/i.test(message);
+          if (!retryWithVisualConcept) {
+            throw primaryError;
+          }
+          this.observability.emitLog('warn', `Document asset fallback to visual_concept job=${input.jobId} asset=${taskId} reason=${message.slice(0, 200)}`, 'DocumentAsset', undefined, undefined, {
+            metadata: {
+              user_id: input.userId,
+              doc_job_id: input.jobId,
+              asset_task_id: taskId,
+              stage: 'generating_assets',
+              event_type: 'stage_started',
+              provider_status: 'asset_generation_fallback',
+              visual_type: visualType,
+            }
+          });
+          const fallbackTask = this.buildImageTask(viz, taskId, prompt, 'visual_concept');
+          const fallbackStrategy = this.strategyFactory.getStrategy(fallbackTask);
+          generated = await Promise.race([
+            fallbackStrategy.generate(fallbackTask, i + 1),
+            this.sleep(assetTimeoutMs).then(() => {
+              throw new Error(`Asset generation timeout after ${assetTimeoutMs}ms (fallback)`);
+            }),
+          ]);
+        }
         const localUrl = String(generated?.posterUrl || generated?.url || '').trim();
         const loaded = await this.loadGeneratedAsset(localUrl);
         if (!loaded?.buffer) {
@@ -1035,7 +1067,17 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         type: 'sourced_image',
         id: taskId,
         refined_prompt: prompt,
-        payload: {},
+        payload: {
+          imageSpecs: {
+            brief: prompt,
+            source: {},
+            constraints: {},
+            rendering: {
+              generation: { source: 'sourced' },
+              export: { scale: 1 },
+            },
+          },
+        },
       };
     }
     if (normalized === 'infographic' || normalized === 'flowchart') {
@@ -1060,7 +1102,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         type: 'story_image',
         id: taskId,
         refined_prompt: prompt,
-        payload: {},
+        payload: {
+          imageSpecs: {
+            brief: prompt,
+            constraints: {},
+            rendering: {
+              generation: { source: 'generated' },
+              export: { scale: 1 },
+            },
+          },
+        },
       };
     }
     return {

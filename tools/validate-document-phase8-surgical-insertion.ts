@@ -18,6 +18,7 @@ function run(): void {
 
   assert(includes('src/worker/worker.module.ts', 'DocxSurgicalInserterService'), 'Inserter not wired in WorkerModule');
   assert(includes('src/worker/document-queue.worker.service.ts', "source_v1_backup.docx"), 'Backup key not configured');
+  assert(includes('src/worker/document-queue.worker.service.ts', "outputFinal({ jobId }, 'source_v1_backup.docx')"), 'Backup key must use dedicated source_v1_backup.docx object path');
   assert(includes('src/worker/document-queue.worker.service.ts', "artifactType: 'backup_docx'"), 'Backup artifact write missing');
   assert(includes('src/worker/document-queue.worker.service.ts', 'this.inserter.insertVisuals('), 'Worker insertion call missing');
   assert(includes('src/worker/document-queue.worker.service.ts', "artifactType: 'surgical_log_json'"), 'Surgical log artifact missing');
