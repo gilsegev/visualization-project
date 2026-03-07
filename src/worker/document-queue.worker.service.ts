@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/commo
 import * as fs from 'fs/promises';
 import { hostname } from 'os';
 import * as path from 'path';
+import sharp = require('sharp');
 import { DocumentAnalysisService } from '../documents/analysis/document-analysis.service';
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
@@ -19,7 +20,10 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
   private readonly workerId = String(process.env.WORKER_ID || `${hostname()}-doc`).trim();
   private readonly pollMs = Math.max(500, Number(process.env.DOC_QUEUE_POLL_MS || process.env.DURABLE_QUEUE_POLL_MS || 1000));
   private readonly leaseSeconds = Math.max(30, Number(process.env.DOC_QUEUE_LEASE_SECONDS || process.env.DURABLE_QUEUE_LEASE_SECONDS || 120));
+  private readonly staleRecoveryMinutes = Math.max(2, Number(process.env.DOC_QUEUE_STALE_RECOVERY_MINUTES || 10));
+  private readonly staleRecoveryEveryMs = Math.max(10000, Number(process.env.DOC_QUEUE_STALE_RECOVERY_EVERY_MS || 30000));
   private running = false;
+  private lastStaleRecoveryAt = 0;
 
   constructor(
     private readonly storage: PostgresStorageService,
@@ -60,6 +64,14 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
   private async loop(): Promise<void> {
     while (this.running) {
       try {
+        const now = Date.now();
+        if (now - this.lastStaleRecoveryAt > this.staleRecoveryEveryMs) {
+          this.lastStaleRecoveryAt = now;
+          const recovered = await this.storage.requeueOrphanedProcessingDocumentJobs(this.staleRecoveryMinutes);
+          if (recovered > 0) {
+            this.logger.warn(`Recovered stale document jobs during loop: ${recovered}`);
+          }
+        }
         const row = await this.storage.claimNextQueuedDocumentJob(this.workerId, this.leaseSeconds);
         if (!row) {
           await this.sleep(this.pollMs);
@@ -174,12 +186,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       markStageStart('analyzing');
 
       const sourceBytes = await this.downloadObject(sourceKey);
-      const extractedText = await this.docxTextExtractor.extractPlainText(sourceBytes);
-      const analysisInput = String(extractedText || '').trim();
-      if (!analysisInput) {
+      const extractedParagraphs = await this.docxTextExtractor.extractParagraphNodes(sourceBytes);
+      if (!Array.isArray(extractedParagraphs) || extractedParagraphs.length === 0) {
         throw new Error('DOCX text extraction returned empty content');
       }
-      const analysisResult = this.analysis.analyzeFromPlainText(analysisInput);
+      const analysisResult = this.analysis.analyzeFromDocxParagraphs(extractedParagraphs);
       await writeArtifact({
         artifactType: 'analysis_json',
         objectKey: `inline://documents/${jobId}/analysis/analysis.json`,
@@ -188,7 +199,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           ...analysisResult,
           extraction: {
             source: 'word/document.xml',
-            extracted_char_count: analysisInput.length
+            extracted_char_count: extractedParagraphs.reduce((sum, p) => sum + String(p?.text || '').length, 0),
+            extracted_paragraph_count: extractedParagraphs.length,
           }
         },
       });
@@ -326,7 +338,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           flowchart_fallback_count: flowchartFallbackCount,
         }
       });
-      const validation = this.planner.validateManifest(manifest);
+      const validation = this.planner.validateManifest(manifest, { anchors: analysisResult.anchors || [] });
       if (!validation.valid) {
         this.observability.emitLog('warn', `LLM planning manifest validation failed job=${jobId}`, 'DocumentLLM', undefined, undefined, {
           metadata: {
@@ -462,6 +474,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         }
       });
       let outputDocxBytes = sourceBytes;
+      let insertionSummary: {
+        captions_planned: number;
+        captions_inserted: number;
+        captions_skipped: number;
+      } = {
+        captions_planned: 0,
+        captions_inserted: 0,
+        captions_skipped: 0,
+      };
       try {
         if (!backupCreated) {
           await this.uploadObject(backupKey, sourceBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
@@ -504,9 +525,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           anchors: analysisResult.anchors || [],
           assets: await this.loadInsertionAssetsForJob({
             jobId,
+            userId,
             generated: assetSummary.generatedAssets,
           }),
         });
+        insertionSummary = {
+          captions_planned: Number((insertionResult as any)?.surgicalLog?.captions_planned || 0),
+          captions_inserted: Number((insertionResult as any)?.surgicalLog?.captions_inserted || 0),
+          captions_skipped: Number((insertionResult as any)?.surgicalLog?.captions_skipped || 0),
+        };
         outputDocxBytes = insertionResult.outputBytes;
         await writeArtifact({
           artifactType: 'surgical_log_json',
@@ -524,8 +551,26 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             inserted_count: insertionResult.surgicalLog.inserted,
             skipped_count: insertionResult.surgicalLog.skipped,
             collision_count: insertionResult.surgicalLog.collisions,
+            captions_planned: Number((insertionResult as any)?.surgicalLog?.captions_planned || 0),
+            captions_inserted: Number((insertionResult as any)?.surgicalLog?.captions_inserted || 0),
+            captions_skipped: Number((insertionResult as any)?.surgicalLog?.captions_skipped || 0),
           }
         });
+        if (assetSummary.success > 0 && Number(insertionResult?.surgicalLog?.inserted || 0) === 0) {
+          this.observability.emitLog('warn', `Insertion resolved zero visuals despite generated assets job=${jobId}`, 'DocumentInsertion', undefined, undefined, {
+            metadata: {
+              user_id: userId,
+              doc_job_id: jobId,
+              stage: 'inserting',
+              event_type: 'stage_failed',
+              provider_status: 'placement_resolution_empty',
+              generated_assets_total: assetSummary.success,
+              insertion_planned_count: Number(insertionResult?.surgicalLog?.planned || 0),
+              insertion_resolved_count: Number((insertionResult as any)?.surgicalLog?.resolved || 0),
+              insertion_inserted_count: Number(insertionResult?.surgicalLog?.inserted || 0),
+            }
+          });
+        }
 
         await this.storage.updateDocumentJobState(jobId, 'packaging');
         this.observability.emitDocumentEvent({
@@ -562,13 +607,18 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       });
       markStageStart('packaging');
 
-      const finalKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: 'final.docx' });
+      const finalFileName = `final-${Date.now()}.docx`;
+      const finalKey = DocumentObjectKeyLayout.outputFinal({ jobId, fileName: finalFileName });
       await this.uploadObject(finalKey, outputDocxBytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       await writeArtifact({
         artifactType: 'final_docx',
         objectKey: finalKey,
         byteSize: outputDocxBytes.byteLength,
         stage: 'packaging',
+        metadata: {
+          file_name: finalFileName,
+          versioned_output: true,
+        },
       });
       this.observability.emitDocumentEvent({
         level: 'info',
@@ -619,6 +669,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         anchor_resolution_rate: Number(anchorResolutionRate.toFixed(4)),
         anchor_fallback_count: anchorFallbackCount,
         insertion_collision_count: insertionCollisionCount,
+        captions_planned: insertionSummary.captions_planned,
+        captions_inserted: insertionSummary.captions_inserted,
+        captions_skipped: insertionSummary.captions_skipped,
         asset_generation_success_ratio: Number(assetGenerationSuccessRatio.toFixed(4)),
         average_clip_vision_score: avgClipVision === null ? null : Number(avgClipVision.toFixed(4)),
         formatting_integrity_checks: formattingIntegrityChecks,
@@ -892,11 +945,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       const viz = selected[i];
       const visualType = String(viz?.type || 'visual').trim().toLowerCase() || 'visual';
       const contextText = String(viz?.context || '');
-      const anchorMatch = contextText.match(/Anchor\s+([a-z0-9-]+)/i);
-      const anchorId = anchorMatch?.[1] || null;
+      const anchorId = String(viz?.anchor_id || '').trim() || null;
       const taskId = `docasset-${input.jobId}-${String(i + 1).padStart(2, '0')}-${Date.now().toString(36)}`;
       const prompt = String(viz?.prompt_template || '').trim()
         || `Create a ${visualType} about: ${String(viz?.description || viz?.title || 'document concept').trim()}`;
+      const captionText = String(viz?.caption_text || '').trim() || null;
 
       await this.storage.upsertDocumentAsset({
         assetTaskId: taskId,
@@ -910,6 +963,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           title: String(viz?.title || '').trim() || null,
           context: contextText || null,
           purpose: String(viz?.purpose || '').trim() || null,
+          caption_text: captionText,
+          caption_mode: String(viz?.caption_mode || '').trim() || null,
         }
       });
 
@@ -934,6 +989,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           refined_prompt: prompt,
           visual_type: visualType,
           anchor_id: anchorId,
+          caption_text: captionText,
           doc_job_id: input.jobId,
           source: 'document_pipeline',
         },
@@ -1003,6 +1059,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             visual_type: visualType,
             generated_url: localUrl || null,
             provider_payload: generated?.payload || null,
+            caption_text: captionText,
+            caption_mode: String(viz?.caption_mode || '').trim() || null,
           }
         });
         await input.writeArtifact({
@@ -1016,6 +1074,14 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             visual_type: visualType,
             source_local_url: localUrl || null,
             prompt,
+            caption_text: captionText,
+            caption_mode: String(viz?.caption_mode || '').trim() || null,
+            source_provider: generated?.payload?.source_provider || null,
+            source_query: generated?.payload?.source_query || null,
+            sourced_queries: generated?.payload?.sourced_queries || null,
+            sourced_candidates: generated?.payload?.sourced_candidates || null,
+            sourced_query_signals: generated?.payload?.sourced_query_signals || null,
+            sourced_query_config: generated?.payload?.sourced_query_config || null,
             clip_score: Number(generated?.payload?.metrics?.clip_score ?? generated?.payload?.clip_score ?? NaN),
             vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
           }
@@ -1044,21 +1110,26 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             vision_score: Number(generated?.payload?.metrics?.vision_score ?? generated?.payload?.vision_score ?? NaN),
             source_provider: generated?.payload?.source_provider || null,
             source_query: generated?.payload?.source_query || null,
+            caption_text: captionText,
+            caption_mode: String(viz?.caption_mode || '').trim() || null,
           }
         });
         this.observability.emitProgress({
           taskId,
           batchId: `doc-${input.jobId}`,
           status: 'completed',
-          url: objectKey,
+          url: (/^(https?:\/\/|\/generated-images\/)/i.test(localUrl) ? localUrl : null),
           details: {
             refined_prompt: prompt,
             visual_type: visualType,
             anchor_id: anchorId,
             doc_job_id: input.jobId,
+            object_key: objectKey,
             source_provider: generated?.payload?.source_provider || null,
             source_query: generated?.payload?.source_query || null,
             source_local_url: localUrl || null,
+            caption_text: captionText,
+            caption_mode: String(viz?.caption_mode || '').trim() || null,
             chart_type: generated?.payload?.chart_type,
             chart_data_points: generated?.payload?.chart_data_points,
             chart_labels_preview: generated?.payload?.chart_labels_preview,
@@ -1124,6 +1195,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
   private async loadInsertionAssetsForJob(input: {
     jobId: string;
+    userId: number;
     generated: Array<{
       anchorId: string | null;
       visualType: string;
@@ -1138,6 +1210,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     object_key: string;
     bytes: Buffer;
     extension: string;
+    width_px: number | null;
+    height_px: number | null;
   }>> {
     const results: Array<{
       anchor_id: string | null;
@@ -1145,19 +1219,54 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       object_key: string;
       bytes: Buffer;
       extension: string;
+      width_px: number | null;
+      height_px: number | null;
     }> = [];
+    const discovered = new Map<string, { anchorId: string | null; visualType: string }>();
     for (const asset of input.generated || []) {
       const key = String(asset?.objectKey || '').trim();
       if (!key) continue;
+      discovered.set(key, {
+        anchorId: asset.anchorId || null,
+        visualType: String(asset.visualType || '').trim().toLowerCase(),
+      });
+    }
+    try {
+      const persisted = await this.storage.listDocumentArtifactsForUser(input.jobId, input.userId);
+      for (const row of persisted || []) {
+        const type = String(row?.artifact_type || '').trim().toLowerCase();
+        if (!type.endsWith('_asset')) continue;
+        const key = String(row?.object_key || '').trim();
+        if (!key || key.startsWith('inline://')) continue;
+        const metadata = (typeof row?.metadata === 'object' && row?.metadata) ? row.metadata : {};
+        const anchorId = String((metadata as any)?.anchor_id || '').trim() || null;
+        const visualType = String((metadata as any)?.visual_type || type.replace(/_asset$/i, '')).trim().toLowerCase();
+        if (!discovered.has(key)) {
+          discovered.set(key, { anchorId, visualType });
+        }
+      }
+    } catch (error: any) {
+      this.logger.warn(`Unable to list persisted assets for insertion job=${input.jobId}: ${error?.message || error}`);
+    }
+
+    for (const [key, meta] of discovered.entries()) {
       try {
-        const bytes = await this.downloadObject(key);
-        const extension = String(path.extname(key || '') || '.png').toLowerCase();
+        let bytes = await this.downloadObject(key);
+        let extension = String(path.extname(key || '') || '.png').toLowerCase();
+        const safeEmbedExt = new Set(['.png', '.jpg', '.jpeg']);
+        if (!safeEmbedExt.has(extension)) {
+          bytes = await sharp(bytes).png().toBuffer();
+          extension = '.png';
+        }
+        const metadata = await sharp(bytes).metadata();
         results.push({
-          anchor_id: asset.anchorId || null,
-          visual_type: String(asset.visualType || '').trim().toLowerCase(),
+          anchor_id: meta.anchorId || null,
+          visual_type: meta.visualType,
           object_key: key,
           bytes,
           extension,
+          width_px: Number.isFinite(Number(metadata?.width)) ? Number(metadata.width) : null,
+          height_px: Number.isFinite(Number(metadata?.height)) ? Number(metadata.height) : null,
         });
       } catch (error: any) {
         this.logger.warn(`Insertion asset download failed for ${key}: ${error?.message || error}`);
@@ -1197,11 +1306,12 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
   private buildImageTask(viz: any, taskId: string, prompt: string, visualType: string): any {
     const normalized = String(visualType || '').trim().toLowerCase();
     if (normalized === 'data_viz') {
+      const payload = this.buildDocumentDataVizPayload(viz, prompt);
       return {
         type: 'data_viz',
         id: taskId,
         refined_prompt: prompt,
-        payload: {},
+        payload,
       };
     }
     if (normalized === 'sourced_image') {
@@ -1227,8 +1337,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         ? {
             type: 'flowchart',
             mermaid_code: String(viz?.mermaid_code || '').trim() || undefined,
+            title: String(viz?.title || '').trim() || 'Flowchart',
+            description: String(viz?.description || '').trim() || '',
+            context: String(viz?.context || '').trim() || '',
+            purpose: String(viz?.purpose || '').trim() || '',
+            items: this.buildFlowchartItems(viz, prompt),
+            grounding_mode: 'extractive',
+            grounding_source_text: this.buildGroundingSourceText(viz, prompt),
           }
-        : {};
+        : this.buildGroundedInfographicPayload(viz, prompt);
       return {
         type: 'infographic',
         id: taskId,
@@ -1236,6 +1353,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         payload,
         metadata: {
           template_type: normalized === 'flowchart' ? 'flowchart' : 'steps',
+          grounding_strict: true,
+          source: 'document_pipeline',
         },
       };
     }
@@ -1266,5 +1385,176 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
   private async sleep(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private buildDocumentDataVizPayload(viz: any, prompt: string): any {
+    const text = [
+      String(viz?.title || '').trim(),
+      String(viz?.description || '').trim(),
+      String(viz?.context || '').trim(),
+      String(viz?.purpose || '').trim(),
+      String(prompt || '').trim(),
+    ].filter(Boolean).join(' | ');
+
+    const chartType = /\b(line|trend|timeseries)\b/i.test(text)
+      ? 'line'
+      : /\b(pie|donut|share|composition)\b/i.test(text)
+        ? 'pie'
+        : /\b(funnel|stage conversion)\b/i.test(text)
+          ? 'funnel'
+          : 'bar';
+
+    const labels = Array.from(new Set((text.match(/\bQ[1-4]\b/gi) || []).map((v) => v.toUpperCase()))).slice(0, 8);
+    const numbers = (text.match(/-?\d+(?:\.\d+)?/g) || [])
+      .map((n) => Number(n))
+      .filter((n) => Number.isFinite(n))
+      .slice(0, 12);
+
+    let data: Array<{ label: string; value: number }> = [];
+    if (labels.length) {
+      data = labels.map((label, i) => ({ label, value: numbers[i] ?? (i + 1) * 10 }));
+    } else if (numbers.length >= 2) {
+      data = numbers.slice(0, 8).map((value, i) => ({ label: `Item ${i + 1}`, value }));
+    } else {
+      data = [
+        { label: 'A', value: 10 },
+        { label: 'B', value: 20 },
+        { label: 'C', value: 30 },
+      ];
+    }
+
+    return {
+      chartType,
+      data,
+      format: 'static',
+      title: String(viz?.title || '').trim() || 'Data Visualization',
+    };
+  }
+
+  private buildGroundingSourceText(viz: any, prompt: string): string {
+    return [
+      String(viz?.title || '').trim(),
+      String(viz?.description || '').trim(),
+      String(viz?.context || '').trim(),
+      String(viz?.purpose || '').trim(),
+      String(prompt || '').trim(),
+    ].filter(Boolean).join(' | ');
+  }
+
+  private buildFlowchartItems(viz: any, prompt: string): Array<{ title: string; description: string }> {
+    const items: Array<{ title: string; description: string }> = [];
+    const seen = new Set<string>();
+    const push = (titleRaw: string, descriptionRaw = '') => {
+      const title = String(titleRaw || '').replace(/\s+/g, ' ').trim();
+      const description = String(descriptionRaw || '').replace(/\s+/g, ' ').trim();
+      if (!title) return;
+      const fp = `${title.toLowerCase()}|${description.toLowerCase()}`;
+      if (seen.has(fp)) return;
+      seen.add(fp);
+      items.push({ title: title.slice(0, 120), description: description.slice(0, 180) });
+    };
+
+    const mermaid = String(viz?.mermaid_code || '').trim();
+    if (mermaid) {
+      const lineDefs = mermaid.split(/\r?\n/);
+      for (const line of lineDefs) {
+        const m = line.match(/\b([A-Za-z0-9_]+)\s*[\[\(\{]([^\]\)\}]+)[\]\)\}]/);
+        if (!m) continue;
+        const label = String(m[2] || '').replace(/['"]/g, '').replace(/\s+/g, ' ').trim();
+        if (!label) continue;
+        const title = label.split(':')[0]?.trim() || label;
+        push(title, label);
+      }
+    }
+
+    const source = [
+      String(viz?.description || '').trim(),
+      String(viz?.context || '').trim(),
+      String(viz?.purpose || '').trim(),
+      String(prompt || '').trim(),
+    ].filter(Boolean).join(' ');
+    const stepMatches = Array.from(source.matchAll(/\bStep\s*(\d+)\s*[:.-]?\s*([^.\n;]+)/gi));
+    for (const match of stepMatches) {
+      const n = String(match[1] || '').trim();
+      const text = String(match[2] || '').replace(/\s+/g, ' ').trim();
+      if (!text) continue;
+      push(`Step ${n}`, text);
+    }
+
+    if (!items.length) {
+      const title = String(viz?.title || 'Process Flow').trim();
+      const desc = String(viz?.description || '').trim();
+      push(title, desc || 'Sequential process step');
+    }
+    return items.slice(0, 12);
+  }
+
+  private buildGroundedInfographicPayload(viz: any, prompt: string): any {
+    const sourceText = this.buildGroundingSourceText(viz, prompt);
+    const listTerms = this.extractGroundedInfographicItems(sourceText, viz, prompt);
+
+    return {
+      type: 'infographic',
+      title: String(viz?.title || '').trim() || 'Document Concept',
+      description: String(viz?.description || '').trim() || '',
+      context: String(viz?.context || '').trim() || '',
+      purpose: String(viz?.purpose || '').trim() || '',
+      items: listTerms.map((t) => ({ title: t, description: '' })),
+      grounding_mode: 'extractive',
+      grounding_source_text: sourceText,
+    };
+  }
+
+  private extractGroundedInfographicItems(sourceText: string, viz: any, prompt: string): string[] {
+    const cleaned = String(sourceText || '').replace(/\s+/g, ' ').trim();
+    const lower = cleaned.toLowerCase();
+
+    const explicitTriadMatches = Array.from(
+      new Set([
+        ...Array.from(lower.matchAll(/\bprocedural instructions?\b/g)).map(() => 'Procedural Instructions'),
+        ...Array.from(lower.matchAll(/\bdata[-\s]?heavy reporting\b/g)).map(() => 'Data-Heavy Reporting'),
+        ...Array.from(lower.matchAll(/\batmospheric storytelling\b/g)).map(() => 'Atmospheric Storytelling'),
+      ])
+    );
+    if (explicitTriadMatches.length >= 2) {
+      return explicitTriadMatches.slice(0, 6);
+    }
+
+    const normalizeTerm = (value: string): string => {
+      const compact = String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/^["'`]+|["'`]+$/g, '')
+        .replace(/^(and|or|to|for|with)\s+/i, '')
+        .replace(/\s+/g, ' ');
+      return compact;
+    };
+
+    const isNoiseTerm = (value: string): boolean => {
+      const v = String(value || '').toLowerCase();
+      if (!v) return true;
+      if (v.length < 4 || v.length > 80) return true;
+      if (/^anchor\b/.test(v)) return true;
+      if (/\banchor-[a-z0-9-]+\b/.test(v)) return true;
+      if (/\bsection\b/.test(v) && /\bintroduction\b/.test(v)) return true;
+      if (/\b(document|doc)\b/.test(v) && /\b(core|overview|summary|summarize|objective|objectives)\b/.test(v)) return true;
+      if (/\b(visually|illustrate|create|instructional infographic)\b/.test(v)) return true;
+      if (/^scribeflow test goals?$/.test(v)) return true;
+      return false;
+    };
+
+    const coarseCandidates = cleaned
+      .split(/[|,;]+/g)
+      .map((s) => normalizeTerm(s))
+      .filter((s) => !isNoiseTerm(s));
+
+    const sentenceCandidates = cleaned
+      .split(/[.?!]/g)
+      .flatMap((segment) => segment.split(/\band\b/gi))
+      .map((s) => normalizeTerm(s))
+      .filter((s) => !isNoiseTerm(s));
+
+    const all = Array.from(new Set([...coarseCandidates, ...sentenceCandidates]));
+    return all.slice(0, 6);
   }
 }

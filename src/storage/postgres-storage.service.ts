@@ -132,6 +132,9 @@ export type DocumentObservabilityMetrics = {
     flowchart_mermaid_invalid_total: number;
     flowchart_mermaid_self_correct_total: number;
     flowchart_mermaid_fallback_total: number;
+    captions_planned_total: number;
+    captions_inserted_total: number;
+    captions_skipped_total: number;
 };
 
 export type DocumentJobObsRow = {
@@ -407,9 +410,9 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                  updated_at = NOW()
              WHERE queue_status = 'processing'
                AND state NOT IN ('completed', 'failed')
-               AND (lease_expires_at IS NULL OR lease_expires_at < NOW() - (($1::text || ' minutes')::interval))
+               AND (lease_expires_at IS NULL OR lease_expires_at < NOW())
              RETURNING job_id`,
-            [Math.max(1, staleMinutes || 10)]
+            []
         );
         return rows.length;
     }
@@ -866,6 +869,21 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                    AND queue_status = 'processing'`,
                 [taskId, String(reason || 'orphan_worker_cleanup').slice(0, 300)]
             );
+            await this.query(
+                `UPDATE document_jobs
+                 SET queue_status = 'queued',
+                     state = 'queued',
+                     lease_owner = NULL,
+                     lease_expires_at = NULL,
+                     last_heartbeat_at = NULL,
+                     available_at = NOW(),
+                     error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] Worker GC: ' || $2, 20000),
+                     updated_at = NOW()
+                 WHERE job_id = $1
+                   AND queue_status = 'processing'
+                   AND state NOT IN ('completed', 'failed')`,
+                [taskId, String(reason || 'orphan_worker_cleanup').slice(0, 300)]
+            );
         }
         return taskId;
     }
@@ -908,6 +926,21 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                      updated_at = NOW()
                  WHERE task_id = ANY($1::text[])
                    AND queue_status = 'processing'`,
+                [taskIds]
+            );
+            await this.query(
+                `UPDATE document_jobs
+                 SET queue_status = 'queued',
+                     state = 'queued',
+                     lease_owner = NULL,
+                     lease_expires_at = NULL,
+                     last_heartbeat_at = NULL,
+                     available_at = NOW(),
+                     error_log = LEFT(COALESCE(error_log, '') || E'\n[' || NOW() || '] Worker Timeout detected by supervisor', 20000),
+                     updated_at = NOW()
+                 WHERE job_id = ANY($1::text[])
+                   AND queue_status = 'processing'
+                   AND state NOT IN ('completed', 'failed')`,
                 [taskIds]
             );
         }
@@ -1362,6 +1395,9 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
             flowchart_mermaid_invalid_total: 0,
             flowchart_mermaid_self_correct_total: 0,
             flowchart_mermaid_fallback_total: 0,
+            captions_planned_total: 0,
+            captions_inserted_total: 0,
+            captions_skipped_total: 0,
         };
         if (!this.pool) {
             return empty;
@@ -1436,7 +1472,34 @@ export class PostgresStorageService implements OnModuleInit, OnModuleDestroy {
                       FROM document_artifacts da
                       WHERE da.artifact_type = 'manifest_json'
                         AND da.metadata::text LIKE '%mermaid_validation_failed_after_single_retry%'
-                  ) AS flowchart_mermaid_fallback_total
+                  ) AS flowchart_mermaid_fallback_total,
+                  COALESCE(
+                    (
+                      SELECT SUM((metadata->>'captions_planned')::int)
+                      FROM document_artifacts
+                      WHERE artifact_type = 'surgical_log_json'
+                        AND (metadata->>'captions_planned') ~ '^[0-9]+$'
+                    ),
+                    0
+                  )::int AS captions_planned_total,
+                  COALESCE(
+                    (
+                      SELECT SUM((metadata->>'captions_inserted')::int)
+                      FROM document_artifacts
+                      WHERE artifact_type = 'surgical_log_json'
+                        AND (metadata->>'captions_inserted') ~ '^[0-9]+$'
+                    ),
+                    0
+                  )::int AS captions_inserted_total,
+                  COALESCE(
+                    (
+                      SELECT SUM((metadata->>'captions_skipped')::int)
+                      FROM document_artifacts
+                      WHERE artifact_type = 'surgical_log_json'
+                        AND (metadata->>'captions_skipped') ~ '^[0-9]+$'
+                    ),
+                    0
+                  )::int AS captions_skipped_total
                FROM base b, stage_metrics sm, counters c`
         );
         const row = rows[0];

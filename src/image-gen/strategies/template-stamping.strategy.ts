@@ -75,9 +75,21 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
 
         // Incorporate payload into the prompt for "Visual Architect"
         const fullPrompt = `${task.refined_prompt}\n\nDATA SPECIFICATION (USE THIS FOR ITEMS AND STRUCTURE):\n${JSON.stringify(task.payload, null, 2)}`;
+        const strictGrounding = Boolean((task as any)?.metadata?.grounding_strict)
+            || String((task as any)?.payload?.grounding_mode || '').toLowerCase() === 'extractive';
         let blueprint: HtmlInfographicBlueprint;
         try {
-            blueprint = await this.generateBlueprint(fullPrompt, task.id, task.payload);
+            if (strictGrounding) {
+                this.observability.emitLog(
+                    'info',
+                    'Strict grounding enabled: using extractive deterministic blueprint (LLM expansion disabled).',
+                    'VisualArchitect',
+                    task.id
+                );
+                blueprint = this.buildFallbackBlueprint(task);
+            } else {
+                blueprint = await this.generateBlueprint(fullPrompt, task.id, task.payload);
+            }
         } catch (e) {
             const details = this.extractErrorDetails(e);
             const authFailure = details.statusCode === 401 || details.statusCode === 403 || /user not found/i.test(details.message);
@@ -178,6 +190,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
         const imagesStart = performance.now();
         const usedPrompts: string[] = [];
         const promptUsage = new Map<string, number>();
+        const strictGrounding = Boolean((task as any)?.metadata?.grounding_strict)
+            || String((task as any)?.payload?.grounding_mode || '').toLowerCase() === 'extractive';
 
         if (!blueprint.items || !Array.isArray(blueprint.items)) {
             this.logger.warn(`[VisualArchitect] Blueprint items missing or invalid. Log: ${blueprint.correction_log?.join(', ')}`);
@@ -191,8 +205,9 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             const title = (item?.title || `Spoke ${idx + 1}`).trim();
             const desc = (item?.description || '').trim();
             const concept = this.buildHubIconConcept(`${title}. ${desc}`, idx, totalItems, centerTitle);
+            const semanticCue = this.buildHubSemanticCue(title, desc, centerTitle);
 
-            const base = `symbolic minimalist icon for ${concept}. Semantic cue: ${this.toTextSafeIconConcept(centerTitle)}. Object/action metaphor only, organic wellness style, no clocks or timer dials.`;
+            const base = `symbolic minimalist educational icon for ${concept}. Semantic cue: ${semanticCue}. Object/action metaphor only, no text, no letters, no numbers, no clocks, no timer dials, no stopwatch, no pie-gauge.`;
             const normalized = base.toLowerCase().replace(/\s+/g, ' ').trim();
             const seen = promptUsage.get(normalized) || 0;
             promptUsage.set(normalized, seen + 1);
@@ -204,8 +219,16 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
             return base;
         };
 
-        const itemImagePromises = blueprint.items.map((item, idx) =>
-            this.generateImage(buildSpokePrompt(item, idx), theme, false, task.id, '256x256')
+        const itemImagePromises = blueprint.items.map((item, idx) => {
+            if (strictGrounding) {
+                return this.renderDocumentSafeHubIcon(item, centerTitle, idx, theme, 256)
+                    .then(async (buffer) => {
+                        const assetFilename = `spoke_${idx}.png`;
+                        await this.localStorage.save(path.join(relativeOutputDir, 'assets', assetFilename), buffer);
+                        return { index: idx, url: `./assets/${assetFilename}`, prompt: 'deterministic_document_icon' };
+                    });
+            }
+            return this.generateImage(buildSpokePrompt(item, idx), theme, false, task.id, '256x256')
                 .then(async (result) => {
                     if (!result.url) return { index: idx, url: '', prompt: '' };
                     const buffer = Buffer.from(result.url.replace(/^data:image\/\w+;base64,/, ''), 'base64');
@@ -220,12 +243,19 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
                 .catch(err => {
                     this.logger.error(`[ImageGen] Item ${idx} failed: ${err.message}`);
                     throw new Error(`Critical Asset Generation Failed: ${err.message}`);
-                })
-        );
+                });
+        });
 
         // Refinement 4: Generate Center Hub Image
+        const centerImagePrompt = [
+            'abstract soft gradient texture for infographic hub background',
+            'non-representational, calm color blend, subtle depth, smooth shapes',
+            'no text, no letters, no numbers, no symbols, no icons, no logos',
+            'no charts, no UI elements, no words, no watermark',
+            `${String(theme.primary_accent || '#2563eb')} and ${String(theme.background_main || '#ffffff')} tones`,
+        ].join(', ');
         const centerImagePromise = this.generateImage(
-            `${blueprint.center_topic.title}: ${blueprint.center_topic.description} abstract serene background, soft lighting, ${theme.primary_accent} and ${theme.background_main} tones`,
+            centerImagePrompt,
             theme,
             true, // isBackground
             task.id,
@@ -304,7 +334,8 @@ export class TemplateStampingStrategy extends BaseImageStrategy {
     
     CRITICAL DIRECTIVES:
     - Type Normalization: The incoming "type" is advisory. If it is unknown (e.g. "annotated_triangle"), you MUST normalize to the closest supported template and continue. Do NOT reject solely because the source type label is not in the template catalog.
-    - Hallucination Guardrail: If input is extremely sparse (e.g. only a title with no context), return a "correction_log". However, if subjects and metrics are provided for a comparison, you SHOULD use your world knowledge to populate the values, descriptions, and scores to provide a complete pedagogical experience. Preserve the EXACT terminology from the source for the core subjects and metrics.
+    - Hallucination Guardrail: You MUST NOT invent, infer, or enrich factual content beyond the provided source payload/prompt.
+      If source detail is insufficient, keep fields minimal and add "insufficient_source_detail" in correction_log.
     - Quality Rubric: Calculate and return a quality_score (1-100) based on:
         1. Structural Fidelity (40 pts): Preservation of all branches/notes.
         2. Template Match (30 pts): Accuracy of the chosen geometry for the lesson goal.
@@ -560,16 +591,19 @@ ${text}`;
 
         if (isBackground) {
             // Refinement 8: Use the prompt for the center image background, but keep it abstract/soft
-            fullPrompt = `soft abstract background for ${prompt}, minimalist, high resolution, subtle grain, elegant, ${theme.background_main} tones, smooth gradients, calm composition`;
+            const bgTone = String(theme.background_main || '#ffffff').trim();
+            fullPrompt = `soft abstract background for ${prompt}, minimalist, high resolution, subtle grain, elegant, ${bgTone} tones, smooth gradients, calm composition`;
         } else {
             // "Sticker" Rule: Isolated on white, flat vector, matching theme accent
             const base = String(prompt || '').trim();
             const themeStyleClauses = splitClauses(theme.image_style_suffix);
+            const primaryAccent = String(theme.primary_accent || '#2563eb').trim();
+            const secondaryAccent = String(theme.secondary_accent || primaryAccent || '#93c5fd').trim();
             const styleBits = [
                 ...themeStyleClauses,
                 'high resolution',
                 'isolated on white background',
-                `${theme.primary_accent} and ${theme.secondary_accent} highlights`,
+                `${primaryAccent} and ${secondaryAccent} highlights`,
                 'subject fully visible, centered, ample whitespace, no cropped edges',
                 'text-free iconography'
             ].filter((bit) => bit && !hasSegment(base, bit));
@@ -1280,6 +1314,83 @@ ${text}`;
         ];
         const mapped = breathingMetaphors[idx % breathingMetaphors.length];
         return `${mapped}, wellness breathing practice visual metaphor`;
+    }
+
+    private buildHubSemanticCue(title: string, description: string, centerTitle: string): string {
+        const text = `${title || ''} ${description || ''} ${centerTitle || ''}`.toLowerCase();
+        const has = (re: RegExp) => re.test(text);
+
+        if (has(/\b(procedur|step|workflow|instruction|process|sequence|troubleshoot|guide)\b/)) {
+            return 'checklist workflow, ordered steps, procedural execution';
+        }
+        if (has(/\b(data|report|metric|chart|dashboard|trend|analysis|statistic)\b/)) {
+            return 'analytics report, chart bars, measurable outcomes';
+        }
+        if (has(/\b(story|narrative|atmospheric|emotion|character|experience|immersive)\b/)) {
+            return 'narrative context, dialogue, storytelling scene';
+        }
+        if (has(/\b(security|risk|threat|compliance|audit)\b/)) {
+            return 'shield and checklist, protection and compliance';
+        }
+        if (has(/\b(network|system|infrastructure|cloud|api|service)\b/)) {
+            return 'connected nodes, system components, service topology';
+        }
+        return this.toTextSafeIconConcept(`${title}. ${description}`) || this.toTextSafeIconConcept(centerTitle);
+    }
+
+    private inferDocIconCategory(text: string): 'procedural' | 'data' | 'story' | 'generic' {
+        const t = String(text || '').toLowerCase();
+        if (/\b(procedur|step|workflow|instruction|process|sequence|troubleshoot|guide)\b/.test(t)) return 'procedural';
+        if (/\b(data|report|metric|chart|dashboard|trend|analysis|statistic)\b/.test(t)) return 'data';
+        if (/\b(story|narrative|atmospheric|emotion|character|experience|immersive)\b/.test(t)) return 'story';
+        return 'generic';
+    }
+
+    private async renderDocumentSafeHubIcon(item: any, centerTitle: string, idx: number, theme: Theme, size = 256): Promise<Buffer> {
+        const text = `${String(item?.title || '')} ${String(item?.description || '')} ${String(centerTitle || '')}`;
+        const category = this.inferDocIconCategory(text);
+        const primary = theme.primary_accent || '#2B6CB0';
+        const secondary = theme.secondary_accent || '#D69E2E';
+        const stroke = '#1A365D';
+        const cx = Math.floor(size / 2);
+
+        let glyph = '';
+        if (category === 'procedural') {
+            glyph = `
+                <rect x="${cx - 48}" y="${cx - 52}" width="96" height="112" rx="14" fill="#ffffff" stroke="${stroke}" stroke-width="6"/>
+                <path d="M ${cx - 28} ${cx - 20} L ${cx - 10} ${cx - 2} L ${cx + 20} ${cx - 30}" fill="none" stroke="${primary}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M ${cx - 28} ${cx + 14} L ${cx - 10} ${cx + 32} L ${cx + 20} ${cx + 4}" fill="none" stroke="${primary}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+            `;
+        } else if (category === 'data') {
+            glyph = `
+                <rect x="${cx - 52}" y="${cx + 10}" width="24" height="46" rx="6" fill="${primary}"/>
+                <rect x="${cx - 18}" y="${cx - 8}" width="24" height="64" rx="6" fill="${secondary}"/>
+                <rect x="${cx + 16}" y="${cx - 26}" width="24" height="82" rx="6" fill="${stroke}"/>
+                <path d="M ${cx - 54} ${cx - 34} L ${cx - 14} ${cx - 46} L ${cx + 14} ${cx - 28} L ${cx + 42} ${cx - 50}" fill="none" stroke="${primary}" stroke-width="6" stroke-linecap="round"/>
+            `;
+        } else if (category === 'story') {
+            glyph = `
+                <path d="M ${cx - 54} ${cx + 44} L ${cx - 54} ${cx - 44} Q ${cx - 12} ${cx - 30} ${cx} ${cx - 44} L ${cx} ${cx + 44} Q ${cx - 12} ${cx + 30} ${cx - 54} ${cx + 44} Z" fill="#ffffff" stroke="${stroke}" stroke-width="6"/>
+                <path d="M ${cx + 54} ${cx + 44} L ${cx + 54} ${cx - 44} Q ${cx + 12} ${cx - 30} ${cx} ${cx - 44} L ${cx} ${cx + 44} Q ${cx + 12} ${cx + 30} ${cx + 54} ${cx + 44} Z" fill="#ffffff" stroke="${stroke}" stroke-width="6"/>
+                <circle cx="${cx}" cy="${cx - 6}" r="10" fill="${secondary}"/>
+            `;
+        } else {
+            const variant = idx % 3;
+            if (variant === 0) {
+                glyph = `<circle cx="${cx}" cy="${cx}" r="44" fill="#ffffff" stroke="${stroke}" stroke-width="6"/><circle cx="${cx}" cy="${cx}" r="16" fill="${primary}"/>`;
+            } else if (variant === 1) {
+                glyph = `<rect x="${cx - 44}" y="${cx - 44}" width="88" height="88" rx="18" fill="#ffffff" stroke="${stroke}" stroke-width="6"/><path d="M ${cx - 24} ${cx + 6} L ${cx - 2} ${cx + 28} L ${cx + 28} ${cx - 4}" fill="none" stroke="${primary}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>`;
+            } else {
+                glyph = `<path d="M ${cx} ${cx - 50} L ${cx + 50} ${cx} L ${cx} ${cx + 50} L ${cx - 50} ${cx} Z" fill="#ffffff" stroke="${stroke}" stroke-width="6"/><circle cx="${cx}" cy="${cx}" r="14" fill="${primary}"/>`;
+            }
+        }
+
+        const svg = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+              <rect width="${size}" height="${size}" fill="#ffffff"/>
+              ${glyph}
+            </svg>`;
+        return sharp(Buffer.from(svg)).png().toBuffer();
     }
 
     private async generateProceduralStepIcon(idx: number, theme: Theme, size = 256): Promise<Buffer> {
