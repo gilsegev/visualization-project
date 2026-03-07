@@ -3,6 +3,7 @@ import { createHash } from 'crypto';
 import JSZip = require('jszip');
 import { AnchorCandidate } from '../analysis/document-analysis.types';
 import { DocumentVisualManifest, PlannedVisualization } from '../planning/visual-manifest.types';
+import { getDocxDisplayPolicy } from './docx-display-policy';
 
 type InsertionPlan = {
   anchor_id: string;
@@ -10,6 +11,7 @@ type InsertionPlan = {
   paragraph_hash: string;
   xml_paragraph_index: number;
   visualization: PlannedVisualization;
+  display_policy: ReturnType<typeof getDocxDisplayPolicy>;
 };
 
 @Injectable()
@@ -27,6 +29,14 @@ export class DocxSurgicalInserterService {
       skipped: number;
       collisions: number;
       plans: Array<{ anchor_id: string; xml_path_id: string; paragraph_hash: string; inserted: boolean; reason?: string }>;
+      display_policy: {
+        strategy: 'fixed_physical_box_preserve_source_resolution';
+        defaults: {
+          max_width_in: number;
+          max_height_in: number;
+          wrap_mode: 'inline' | 'square';
+        };
+      };
     };
   }> {
     const zip = await JSZip.loadAsync(input.sourceBytes);
@@ -54,12 +64,14 @@ export class DocxSurgicalInserterService {
       const paragraphText = this.extractParagraphText(paragraphXml);
       const computedHash = this.hashParagraph(anchor.xml_path_id, paragraphText);
       if (computedHash !== String(anchor.paragraph_hash || '').trim()) continue;
+      const displayPolicy = getDocxDisplayPolicy(visual.type);
       plans.push({
         anchor_id: anchor.anchor_id,
         xml_path_id: anchor.xml_path_id,
         paragraph_hash: anchor.paragraph_hash,
         xml_paragraph_index: paragraphIndex,
         visualization: visual,
+        display_policy: displayPolicy,
       });
     }
 
@@ -97,7 +109,7 @@ export class DocxSurgicalInserterService {
         continue;
       }
       const insertionAt = target.index + target[0].length;
-      const markerParagraph = this.buildMarkerParagraph(plan.visualization);
+      const markerParagraph = this.buildMarkerParagraph(plan.visualization, plan.display_policy);
       docXml = `${docXml.slice(0, insertionAt)}${markerParagraph}${docXml.slice(insertionAt)}`;
       usedTargets.add(plan.xml_paragraph_index);
       inserted += 1;
@@ -120,6 +132,14 @@ export class DocxSurgicalInserterService {
         skipped,
         collisions,
         plans: logRows,
+        display_policy: {
+          strategy: 'fixed_physical_box_preserve_source_resolution',
+          defaults: {
+            max_width_in: 4.5,
+            max_height_in: 4.5,
+            wrap_mode: 'square',
+          },
+        },
       },
     };
   }
@@ -174,11 +194,14 @@ export class DocxSurgicalInserterService {
       .replace(/'/g, '&apos;');
   }
 
-  private buildMarkerParagraph(visual: PlannedVisualization): string {
+  private buildMarkerParagraph(
+    visual: PlannedVisualization,
+    displayPolicy: ReturnType<typeof getDocxDisplayPolicy>
+  ): string {
     const type = String(visual?.type || 'visual').toUpperCase();
     const title = this.escapeXml(String(visual?.title || 'Generated visual'));
     const desc = this.escapeXml(String(visual?.description || '').slice(0, 220));
-    const marker = `[VISUAL:${type}] ${title}${desc ? ` - ${desc}` : ''}`;
+    const marker = `[VISUAL:${type}] ${title}${desc ? ` - ${desc}` : ''} [DISPLAY preferred=${displayPolicy.preferred_width_in}in max=${displayPolicy.max_width_in}x${displayPolicy.max_height_in}in wrap=${displayPolicy.wrap_mode}]`;
     return `<w:p><w:r><w:t xml:space="preserve">${marker}</w:t></w:r></w:p>`;
   }
 }
