@@ -24,6 +24,7 @@ import { DocumentAnalysisService } from '../documents/analysis/document-analysis
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
 import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
+import { DocumentAssetJudgeService } from '../documents/quality/document-asset-judge.service';
 
 @Module({
     imports: [ConfigModule.forRoot({ isGlobal: true }), StorageModule, ObservabilityModule],
@@ -35,6 +36,7 @@ import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgica
         DocxTextExtractorService,
         VisualManifestPlannerService,
         DocxSurgicalInserterService,
+        DocumentAssetJudgeService,
         ImageStrategyFactory,
         LocalStorageService,
         VisualConceptStrategy,

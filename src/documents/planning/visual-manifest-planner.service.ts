@@ -2,7 +2,55 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { AnchorCandidate, ContextWindow, ParagraphNode, SectionNode } from '../analysis/document-analysis.types';
 import { validateDocumentVisualManifest } from './visual-manifest.schema';
-import { DocumentVisualManifest, ManifestValidationResult, PlannedVisualization } from './visual-manifest.types';
+import {
+  DocumentVisualManifest,
+  ManifestValidationResult,
+  PlannedVisualization,
+  PlannedVisualizationPlacement,
+  PlacementScope
+} from './visual-manifest.types';
+
+type PlannerTelemetryEvent =
+  | {
+      type: 'planner_mode';
+      mode: 'deterministic' | 'llm';
+      reason?: string;
+    }
+  | {
+      type: 'llm_request';
+      model: string;
+      system_prompt: string;
+      user_prompt: string;
+      candidate_count: number;
+      max_assets: number;
+    }
+  | {
+      type: 'llm_response';
+      model: string;
+      raw_response: string;
+      cleaned_response: string;
+      usage: {
+        prompt_tokens: number | null;
+        completion_tokens: number | null;
+        total_tokens: number | null;
+      };
+      duration_ms: number;
+      parsed_visual_count: number;
+      normalized_visual_count: number;
+      placement_normalization: Array<{
+        index: number;
+        requested_anchor_id: string | null;
+        resolved_anchor_id: string;
+        requested_scope: string | null;
+        resolved_scope: PlacementScope;
+        reasons: string[];
+      }>;
+    }
+  | {
+      type: 'llm_error';
+      model: string;
+      error_message: string;
+    };
 
 function norm(v: string): string {
   return String(v || '').replace(/\s+/g, ' ').trim();
@@ -46,12 +94,133 @@ function sectionForIndex(sections: SectionNode[], index: number): string {
   return found?.heading || 'Document Context';
 }
 
+function defaultPlacementForType(type: PlannedVisualization['type']): PlannedVisualizationPlacement {
+  if (type === 'flowchart') {
+    return {
+      scope: 'after_list_block',
+      priority: 85,
+      avoid_headings: true,
+      avoid_list_split: true,
+      max_width_in: 5.4,
+      max_height_in: 4.8,
+      alignment: 'center',
+    };
+  }
+  if (type === 'data_viz') {
+    return {
+      scope: 'after_anchor',
+      priority: 80,
+      avoid_headings: true,
+      avoid_list_split: true,
+      max_width_in: 5.4,
+      max_height_in: 4.4,
+      alignment: 'center',
+    };
+  }
+  if (type === 'infographic') {
+    return {
+      scope: 'section_intro_body',
+      priority: 75,
+      avoid_headings: true,
+      avoid_list_split: true,
+      max_width_in: 5.6,
+      max_height_in: 5.6,
+      alignment: 'center',
+    };
+  }
+  return {
+    scope: 'after_anchor',
+    priority: 70,
+    avoid_headings: true,
+    avoid_list_split: true,
+    max_width_in: 4.8,
+    max_height_in: 4.8,
+    alignment: 'center',
+  };
+}
+
+function clampPriority(value: any, fallback = 70): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.min(100, Math.round(n)));
+}
+
 function promptTemplateFor(type: PlannedVisualization['type'], text: string): string {
   if (type === 'data_viz') return `Create a chart-ready visualization from quantitative content: ${text}`;
   if (type === 'sourced_image') return `Find a realistic scene image matching this context: ${text}`;
   if (type === 'flowchart') return `Create a flowchart from ordered steps in this text: ${text}`;
   if (type === 'aesthetic_anchor') return `Create a non-literal atmospheric visual anchor for this concept: ${text}`;
   return `Create an instructional infographic from this concept: ${text}`;
+}
+
+function captionTypePrefix(type: PlannedVisualization['type']): string {
+  if (type === 'flowchart') return 'Flowchart';
+  if (type === 'data_viz') return 'Data view';
+  if (type === 'sourced_image') return 'Illustration';
+  if (type === 'aesthetic_anchor') return 'Visual context';
+  return 'Figure';
+}
+
+function sanitizeCaptionText(raw: any): string {
+  return String(raw || '')
+    .replace(/`{1,3}/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/\[(.*?)\]\((.*?)\)/g, '$1')
+    .replace(/https?:\/\/\S+/gi, '')
+    .replace(/\r?\n+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateCaption(text: string, maxChars: number): string {
+  const clean = sanitizeCaptionText(text);
+  if (!clean) return '';
+  if (clean.length <= maxChars) return clean;
+  const sliced = clean.slice(0, maxChars + 1);
+  const cut = sliced.lastIndexOf(' ');
+  const out = cut > 60 ? sliced.slice(0, cut) : clean.slice(0, maxChars);
+  return `${out.trim()}...`;
+}
+
+function buildAutoCaption(input: {
+  type: PlannedVisualization['type'];
+  title?: string;
+  purpose?: string;
+  context?: string;
+  maxChars: number;
+}): string {
+  const prefix = captionTypePrefix(input.type);
+  const title = sanitizeCaptionText(input.title || '');
+  const purpose = sanitizeCaptionText(input.purpose || '').replace(/\.+$/, '');
+  const sectionMatch = String(input.context || '').match(/section\s+"([^"]+)"/i);
+  const section = sanitizeCaptionText(sectionMatch?.[1] || '');
+  const pieces = [
+    `${prefix}:`,
+    title || 'Document concept',
+    purpose ? `- ${purpose}` : '',
+    section ? `(section: ${section})` : '',
+  ].filter(Boolean);
+  return truncateCaption(pieces.join(' '), input.maxChars);
+}
+
+function resolveCaption(input: {
+  type: PlannedVisualization['type'];
+  title?: string;
+  purpose?: string;
+  context?: string;
+  explicitCaption?: any;
+  maxChars: number;
+}): { caption_text: string; caption_mode: 'auto' | 'explicit' } {
+  const explicit = truncateCaption(String(input.explicitCaption || ''), input.maxChars);
+  if (explicit) return { caption_text: explicit, caption_mode: 'explicit' };
+  const auto = buildAutoCaption({
+    type: input.type,
+    title: input.title,
+    purpose: input.purpose,
+    context: input.context,
+    maxChars: input.maxChars,
+  });
+  return { caption_text: auto || 'Figure: Visual summary of the surrounding content.', caption_mode: 'auto' };
 }
 
 function mermaidHeader(code: string): string {
@@ -97,9 +266,100 @@ function isMermaidValid(code: string): boolean {
   return !lines.some((l) => /-->\s*$/.test(l));
 }
 
+function getMermaidValidationError(code: string): string {
+  const lines = String(code || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) return 'empty_mermaid_output';
+  if (!/^flowchart\s+(TB|TD|LR|RL|BT)\b/i.test(lines[0])) return 'missing_or_invalid_flowchart_header';
+  const hasEdge = lines.some((l) => /-->\s*/.test(l));
+  if (!hasEdge) return 'missing_edges_between_nodes';
+  if (lines.some((l) => /-->\s*$/.test(l))) return 'dangling_edge_without_target_node';
+  return 'unknown_mermaid_validation_error';
+}
+
 function selfCorrectMermaid(code: string): string {
   if (!code) return '';
-  return mermaidHeader(code).replace(/\s*-\s*>\s*/g, ' --> ');
+  return mermaidHeader(code)
+    .replace(/\s*-\s*>\s*/g, ' --> ')
+    .replace(/\s*-->\s*$/gm, '')
+    .replace(/[^\S\r\n]+$/gm, '')
+    .trim();
+}
+
+function dataVizLooksValid(text: string): boolean {
+  const t = norm(text).toLowerCase();
+  return /(\d|%|\$|\bq[1-4]\b|\b(trend|rate|distribution|count|ratio|increase|decrease|growth|decline|metric|kpi)\b)/i.test(t);
+}
+
+function parsePlacementDslToken(input: any): PlacementScope | null {
+  const raw = String(input || '').trim().toLowerCase();
+  if (!raw) return null;
+  const token = raw.replace(/[\[\]\s-]+/g, '_');
+  if (token === 'after_anchor' || token === 'after') return 'after_anchor';
+  if (token === 'after_list_block' || token === 'after_list') return 'after_list_block';
+  if (token === 'section_intro_body' || token === 'intro_body') return 'section_intro_body';
+  if (token === 'section_end' || token === 'end_of_section') return 'section_end';
+  return null;
+}
+
+function validateTypeEligibility(type: PlannedVisualization['type'], paragraphText: string, windowText: string): { valid: boolean; reason: string } {
+  const text = norm(`${paragraphText} ${windowText}`);
+  if (type === 'flowchart') {
+    const steps = extractSteps(text);
+    if (steps.length < 2) return { valid: false, reason: 'flowchart_requires_two_or_more_ordered_steps' };
+    return { valid: true, reason: 'flowchart_evidence_present' };
+  }
+  if (type === 'data_viz') {
+    if (!dataVizLooksValid(text)) return { valid: false, reason: 'data_viz_requires_numeric_or_metric_evidence' };
+    return { valid: true, reason: 'data_viz_evidence_present' };
+  }
+  return { valid: true, reason: 'type_eligible' };
+}
+
+function remapIneligibleType(type: PlannedVisualization['type'], paragraphText: string, windowText: string): PlannedVisualization['type'] {
+  const text = norm(`${paragraphText} ${windowText}`);
+  if (type === 'flowchart' || type === 'data_viz') {
+    if (atmosphericScore(text) >= 2) return 'sourced_image';
+    return 'infographic';
+  }
+  return type;
+}
+
+function rewriteConceptForAtmosphericFallback(text: string): string {
+  const bannedPatterns: RegExp[] = [
+    /\bstep-by-step\b/gi,
+    /\bsteps?\b/gi,
+    /\bstep\s*\d+\b/gi,
+    /\bflowcharts?\b/gi,
+    /\bdiagrams?\b/gi,
+    /\bcharts?\b/gi,
+    /\bbar\s*graphs?\b/gi,
+    /\bline\s*graphs?\b/gi,
+    /\bpie\s*charts?\b/gi,
+    /\btables?\b/gi,
+    /\baxes\b/gi,
+    /\bx-axis\b/gi,
+    /\by-axis\b/gi,
+    /\blabels?\b/gi,
+    /\blabeled\b/gi,
+    /\blegend\b/gi,
+    /\bannotat(?:e|ed|ion|ions)\b/gi,
+  ];
+  let cleaned = norm(text);
+  for (const pattern of bannedPatterns) cleaned = cleaned.replace(pattern, ' ');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ').trim();
+  const words = cleaned.split(' ').filter(Boolean);
+  return words.slice(0, 32).join(' ') || 'the central concept from this section';
+}
+
+function atmosphericPromptForFallback(text: string): string {
+  let concept = rewriteConceptForAtmosphericFallback(text);
+  // Final safety pass to ensure disallowed literal-instruction terms never leak into fallback prompts.
+  concept = concept
+    .replace(/\b(step|flowchart|diagram|chart|table|label|labeled|legend|annotat(?:e|ed|ion|ions))\w*\b/gi, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  if (!concept) concept = 'the central concept from this section';
+  return `Create a non-literal, high-aesthetic photograph that symbolizes this concept with no charts, text, labels, or diagrams: ${concept}`;
 }
 
 function chooseType(paragraphText: string, windowText: string, p?: ParagraphNode): PlannedVisualization['type'] {
@@ -174,6 +434,22 @@ function rangeOverlapRatio(a: AnchorRange, b: AnchorRange): number {
   return minSpan > 0 ? intersect / minSpan : 0;
 }
 
+type AnchorStructuralInfo = {
+  anchor_id: string;
+  paragraph_index: number;
+  section: string;
+  confidence: number;
+  reason: string;
+  is_heading: boolean;
+  is_list: boolean;
+  list_span_start: number;
+  list_span_end: number;
+  paragraph_length: number;
+  signal_summary: string;
+  paragraph_text: string;
+  window_text: string;
+};
+
 @Injectable()
 export class VisualManifestPlannerService {
   private readonly logger = new Logger(VisualManifestPlannerService.name);
@@ -191,6 +467,111 @@ export class VisualManifestPlannerService {
     }) : null;
   }
 
+  private buildAnchorStructuralInfo(input: {
+    paragraphs: ParagraphNode[];
+    sections: SectionNode[];
+    anchors: AnchorCandidate[];
+    contextWindows?: ContextWindow[];
+  }): AnchorStructuralInfo[] {
+    const infos: AnchorStructuralInfo[] = [];
+    const windowByAnchor = new Map((input.contextWindows || []).map((w) => [String(w.anchor_id || ''), w]));
+    for (const anchor of input.anchors || []) {
+      const p = input.paragraphs[anchor.paragraph_index];
+      if (!p) continue;
+      const w = windowByAnchor.get(anchor.anchor_id);
+      const text = norm(p.text || '');
+      const heading = /^(introduction|overview|summary|section\b|chapter\b|part\b)/i.test(text) && text.length <= 140;
+      const listLike = Boolean(p.has_sequence) || /\b(step\s+\d+|\d+\.\s+[A-Z]|^\-\s+)/i.test(text);
+      infos.push({
+        anchor_id: String(anchor.anchor_id || ''),
+        paragraph_index: Number(anchor.paragraph_index || 0),
+        section: sectionForIndex(input.sections, anchor.paragraph_index),
+        confidence: Number(anchor.confidence || 0),
+        reason: String(anchor.reason || ''),
+        is_heading: heading,
+        is_list: listLike,
+        list_span_start: Number(w?.paragraph_start_index ?? anchor.paragraph_index),
+        list_span_end: Number(w?.paragraph_end_index ?? anchor.paragraph_index),
+        paragraph_length: text.length,
+        signal_summary: [p.has_sequence ? 'sequence' : '', p.has_data ? 'data' : '', p.has_entity ? 'entity' : '']
+          .filter(Boolean)
+          .join(',') || 'text',
+        paragraph_text: text,
+        window_text: norm(w?.content || text),
+      });
+    }
+    return infos;
+  }
+
+  private scoreAnchorForType(type: PlannedVisualization['type'], info: AnchorStructuralInfo): number {
+    const text = norm(`${info.paragraph_text || ''} ${info.window_text || ''}`);
+    const sig = String(info.signal_summary || '').toLowerCase();
+    const seq = proceduralScore(text);
+    const dat = dataScore(text);
+    const atm = atmosphericScore(text);
+    let score = Number(info.confidence || 0);
+    if (type === 'flowchart') {
+      score += seq * 2;
+      if (sig.includes('sequence')) score += 2;
+      if (info.is_list) score += 1;
+      return score;
+    }
+    if (type === 'data_viz') {
+      score += dat * 2;
+      if (sig.includes('data')) score += 3;
+      if (/\b(q[1-4]|units per hour|percent|ratio|trend|kpi|metric)\b/i.test(text)) score += 4;
+      if (seq > 0) score -= 1;
+      return score;
+    }
+    if (type === 'sourced_image' || type === 'aesthetic_anchor') {
+      score += atm * 2;
+      if (sig.includes('sequence')) score -= 2;
+      if (/\b(step\s+\d+|process|workflow|procedure)\b/i.test(text)) score -= 2;
+      if (/\b(atmospheric|scene|workshop|glow|light|smoke|sawdust|forest|mood)\b/i.test(text)) score += 3;
+      return score;
+    }
+    return score + Math.max(seq, dat, atm) * 0.25;
+  }
+
+  private findBestAnchorForType(
+    type: PlannedVisualization['type'],
+    current: AnchorStructuralInfo,
+    all: AnchorStructuralInfo[],
+  ): AnchorStructuralInfo {
+    if (!Array.isArray(all) || !all.length) return current;
+    const sameSection = all.filter((a) => a.section === current.section);
+    const pool = sameSection.length ? sameSection : all;
+    const ranked = pool
+      .map((a) => ({ a, s: this.scoreAnchorForType(type, a) }))
+      .sort((x, y) => y.s - x.s);
+    return ranked[0]?.a || current;
+  }
+
+  private normalizePlacementScope(
+    requested: any,
+    anchorInfo: AnchorStructuralInfo,
+  ): { scope: PlacementScope; reasons: string[] } {
+    const reasons: string[] = [];
+    const allowed: PlacementScope[] = ['after_anchor', 'after_list_block', 'section_intro_body', 'section_end'];
+    const dslScope = parsePlacementDslToken(requested);
+    if (dslScope && dslScope !== String(requested).trim().toLowerCase()) {
+      reasons.push('placement_dsl_token_normalized');
+    }
+    let scope = dslScope && allowed.includes(dslScope) ? dslScope : 'after_anchor';
+    if (!dslScope || !allowed.includes(dslScope)) {
+      reasons.push('invalid_scope_defaulted_after_anchor');
+    }
+    if (scope === 'after_anchor' && anchorInfo.is_heading) {
+      scope = 'section_intro_body';
+      reasons.push('after_anchor_on_heading_rewritten');
+    }
+    if (scope === 'after_anchor' && anchorInfo.is_list) {
+      scope = 'after_list_block';
+      reasons.push('after_anchor_on_list_rewritten');
+    }
+    return { scope, reasons };
+  }
+
   async buildManifest(input: {
     jobId: string;
     title: string;
@@ -199,20 +580,31 @@ export class VisualManifestPlannerService {
     anchors: AnchorCandidate[];
     contextWindows?: ContextWindow[];
     maxAssets?: number;
+    onTelemetry?: (event: PlannerTelemetryEvent) => void;
   }): Promise<DocumentVisualManifest> {
+    const captionMaxChars = Math.max(100, Math.min(260, Number(process.env.DOCX_CAPTION_MAX_CHARS || 180)));
     const maxAssets = Math.max(1, Number(input.maxAssets || process.env.DOC_MAX_ASSETS || 20));
-    const deterministic = this.buildManifestDeterministic(input, maxAssets);
+    const deterministic = await this.buildManifestDeterministic(input, maxAssets, captionMaxChars);
     const useLlm = String(process.env.DOC_PLANNING_USE_LLM || 'true').toLowerCase() === 'true';
-    if (!useLlm || !this.openai) return deterministic;
+    if (!useLlm || !this.openai) {
+      input.onTelemetry?.({
+        type: 'planner_mode',
+        mode: 'deterministic',
+        reason: !useLlm ? 'DOC_PLANNING_USE_LLM=false' : 'OPENROUTER_API_KEY missing'
+      });
+      return deterministic;
+    }
+    input.onTelemetry?.({ type: 'planner_mode', mode: 'llm' });
 
     try {
-      const llmVisuals = await this.planVisualsWithLlm(input, maxAssets);
+      const llmVisuals = await this.planVisualsWithLlm(input, maxAssets, captionMaxChars, input.onTelemetry);
       if (!llmVisuals.length) return deterministic;
+      const cappedVisuals = this.applyAnchorDensityCap(llmVisuals, input.anchors, input.sections);
       const manifest: DocumentVisualManifest = {
         ...deterministic,
         lessons: [{
           ...deterministic.lessons[0],
-          visualizations: llmVisuals
+          visualizations: cappedVisuals
         }]
       };
       return manifest;
@@ -222,14 +614,14 @@ export class VisualManifestPlannerService {
     }
   }
 
-  private buildManifestDeterministic(input: {
+  private async buildManifestDeterministic(input: {
     jobId: string;
     title: string;
     paragraphs: ParagraphNode[];
     sections: SectionNode[];
     anchors: AnchorCandidate[];
     contextWindows?: ContextWindow[];
-  }, maxAssets: number): DocumentVisualManifest {
+  }, maxAssets: number, captionMaxChars: number): Promise<DocumentVisualManifest> {
     const seen = new Set<string>();
     const usedRangesByType = new Map<PlannedVisualization['type'], AnchorRange[]>();
     const visuals: PlannedVisualization[] = [];
@@ -242,7 +634,9 @@ export class VisualManifestPlannerService {
       const window = windowsByAnchor.get(anchor.anchor_id);
       const paragraphText = norm(p.text);
       const windowText = norm(window?.content || paragraphText);
-      const type = chooseType(paragraphText, windowText, p);
+      const requestedType = chooseType(paragraphText, windowText, p);
+      const eligibility = validateTypeEligibility(requestedType, paragraphText, windowText);
+      const type = eligibility.valid ? requestedType : remapIneligibleType(requestedType, paragraphText, windowText);
       const text = buildTextForType(type, paragraphText, windowText);
       const fingerprint = text.toLowerCase().replace(/[^a-z0-9 ]/g, '');
       if (!fingerprint || seen.has(fingerprint)) continue;
@@ -257,32 +651,49 @@ export class VisualManifestPlannerService {
       usedRangesByType.set(type, usedRanges);
       const planned: PlannedVisualization = {
         type,
+        anchor_id: anchor.anchor_id,
+        placement: defaultPlacementForType(type),
         title: titleFromText(text),
         description: text.slice(0, 500),
         context: `Anchor ${anchor.anchor_id} in section "${sectionForIndex(input.sections, anchor.paragraph_index)}"`,
         purpose: 'Visually reinforce the surrounding document concept.',
         prompt_template: promptTemplateFor(type, text),
       };
+      if (!eligibility.valid && type !== requestedType) {
+        planned.fallback_reason = `eligibility_remap:${requestedType}->${type}:${eligibility.reason}`;
+      }
       if (type === 'flowchart') {
-        let mermaid = toMermaidFlowchart(text);
-        let valid = isMermaidValid(mermaid);
-        if (!valid) {
-          mermaid = selfCorrectMermaid(mermaid);
-          valid = isMermaidValid(mermaid);
-        }
-        if (valid) {
-          planned.mermaid_code = mermaid;
+        const mermaidResult = await this.resolveMermaidWithRetries(text);
+        if (mermaidResult.valid && mermaidResult.code) {
+          planned.mermaid_code = mermaidResult.code;
           planned.mermaid_valid = true;
         } else {
           planned.type = 'aesthetic_anchor';
-          planned.prompt_template = promptTemplateFor('aesthetic_anchor', text);
-          planned.fallback_reason = 'mermaid_validation_failed_after_single_retry';
+          planned.placement = defaultPlacementForType('aesthetic_anchor');
+          planned.prompt_template = atmosphericPromptForFallback(text);
+          planned.fallback_reason = 'mermaid_validation_failed_after_double_retry';
           planned.mermaid_valid = false;
         }
+      } else if (type === 'data_viz' && !dataVizLooksValid(text)) {
+        planned.type = 'aesthetic_anchor';
+        planned.placement = defaultPlacementForType('aesthetic_anchor');
+        planned.prompt_template = atmosphericPromptForFallback(text);
+        planned.fallback_reason = 'data_viz_validation_failed';
       }
+      const caption = resolveCaption({
+        type: planned.type,
+        title: planned.title,
+        purpose: planned.purpose,
+        context: planned.context,
+        maxChars: captionMaxChars,
+      });
+      planned.caption_text = caption.caption_text;
+      planned.caption_mode = caption.caption_mode;
       visuals.push(planned);
       if (visuals.length >= maxAssets) break;
     }
+
+    const cappedVisuals = this.applyAnchorDensityCap(visuals, input.anchors, input.sections);
 
     const manifest: DocumentVisualManifest = {
       course: {
@@ -293,12 +704,16 @@ export class VisualManifestPlannerService {
         {
           lessonId: `doc-${input.jobId}`,
           title: 'Document Visual Plan',
-          visualizations: visuals.length ? visuals : [{
+          visualizations: cappedVisuals.length ? cappedVisuals : [{
             type: 'infographic',
+            anchor_id: input.anchors[0]?.anchor_id || 'fallback-anchor',
+            placement: defaultPlacementForType('infographic'),
             title: 'Overview',
             description: 'Visual summary of the document.',
             context: 'Fallback planning mode',
-            purpose: 'Provide at least one visual anchor.'
+            purpose: 'Provide at least one visual anchor.',
+            caption_text: 'Figure: Overview visual for the surrounding section context.',
+            caption_mode: 'auto'
           }]
         }
       ],
@@ -318,20 +733,29 @@ export class VisualManifestPlannerService {
     sections: SectionNode[];
     anchors: AnchorCandidate[];
     contextWindows?: ContextWindow[];
-  }, maxAssets: number): Promise<PlannedVisualization[]> {
+  }, maxAssets: number, captionMaxChars: number, onTelemetry?: (event: PlannerTelemetryEvent) => void): Promise<PlannedVisualization[]> {
     if (!this.openai) return [];
     const windowsByAnchor = new Map((input.contextWindows || []).map((w) => [String(w.anchor_id || ''), w]));
+    const structural = this.buildAnchorStructuralInfo(input);
+    const structuralById = new Map(structural.map((s) => [s.anchor_id, s]));
     const candidates = input.anchors.slice(0, Math.max(maxAssets * 3, 12)).map((a) => {
       const p = input.paragraphs[a.paragraph_index];
       const w = windowsByAnchor.get(a.anchor_id);
       const text = norm((w?.content || p?.text || '').slice(0, 1800));
+      const meta = structuralById.get(a.anchor_id);
       return {
         anchor_id: a.anchor_id,
         section: sectionForIndex(input.sections, a.paragraph_index),
         paragraph_index: a.paragraph_index,
         confidence: a.confidence,
         reason: a.reason,
-        text
+        text,
+        is_heading: Boolean(meta?.is_heading),
+        is_list: Boolean(meta?.is_list),
+        list_span_start: Number(meta?.list_span_start ?? a.paragraph_index),
+        list_span_end: Number(meta?.list_span_end ?? a.paragraph_index),
+        paragraph_length: Number(meta?.paragraph_length ?? text.length),
+        signal_summary: String(meta?.signal_summary || ''),
       };
     }).filter((c) => c.text.length > 0);
 
@@ -340,8 +764,11 @@ export class VisualManifestPlannerService {
       'Return JSON only (no markdown).',
       `Plan up to ${maxAssets} visuals from anchor candidates.`,
       'Use types: infographic | sourced_image | data_viz | flowchart | aesthetic_anchor.',
+      'Each visualization must include an evidence_spans array with short quoted phrases from the candidate text that justify the chosen type.',
       'Prefer data_viz for numeric/trend content; flowchart for procedural steps; sourced_image for scene context.',
-      'Output shape: {"visualizations":[{"type":"...","title":"...","description":"...","context":"...","purpose":"..."}]}'
+      'Placement scope must use one of: [AFTER_ANCHOR] | [AFTER_LIST_BLOCK] | [SECTION_INTRO_BODY] | [SECTION_END].',
+      'Output shape: {"visualizations":[{"type":"...","anchor_id":"...","placement":{"scope":"[AFTER_ANCHOR]|[AFTER_LIST_BLOCK]|[SECTION_INTRO_BODY]|[SECTION_END]","priority":1-100,"avoid_headings":true|false,"avoid_list_split":true|false,"max_width_in":number,"max_height_in":number,"alignment":"center|left"},"title":"...","description":"...","context":"...","purpose":"...","caption_text":"optional short caption","evidence_spans":["..."]}]}',
+      'Use anchor_id values from the provided candidates when possible.'
     ].join('\n');
 
     const userPrompt = JSON.stringify({
@@ -352,23 +779,54 @@ export class VisualManifestPlannerService {
     });
 
     const model = String(process.env.DOC_PLANNING_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001').trim();
-    const completion = await this.openai.chat.completions.create({
+    onTelemetry?.({
+      type: 'llm_request',
       model,
-      response_format: { type: 'text' },
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 2400,
-      temperature: 0.2
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      candidate_count: candidates.length,
+      max_assets: maxAssets,
     });
-    const raw = String(completion?.choices?.[0]?.message?.content || '').trim();
-    const cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    const inVisuals = Array.isArray(parsed?.visualizations) ? parsed.visualizations : [];
 
+    const startedAt = Date.now();
+    let completion: any;
+    let raw = '';
+    let cleaned = '';
+    let parsed: any = {};
+    try {
+      completion = await this.openai.chat.completions.create({
+        model,
+        response_format: { type: 'text' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        max_tokens: 2400,
+        temperature: 0.2
+      });
+      raw = String(completion?.choices?.[0]?.message?.content || '').trim();
+      cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+      parsed = JSON.parse(cleaned);
+    } catch (error: any) {
+      onTelemetry?.({
+        type: 'llm_error',
+        model,
+        error_message: String(error?.message || error || 'Unknown LLM planning error')
+      });
+      throw error;
+    }
+    const inVisuals = Array.isArray(parsed?.visualizations) ? parsed.visualizations : [];
     const seen = new Set<string>();
     const visuals: PlannedVisualization[] = [];
+    const placementNormalization: Array<{
+      index: number;
+      requested_anchor_id: string | null;
+      resolved_anchor_id: string;
+      requested_scope: string | null;
+      resolved_scope: PlacementScope;
+      reasons: string[];
+    }> = [];
+    const sectionCounts = new Map<string, number>();
     for (const v of inVisuals) {
       if (visuals.length >= maxAssets) break;
       const text = norm(String(v?.description || v?.title || '').slice(0, 2000));
@@ -379,37 +837,244 @@ export class VisualManifestPlannerService {
       const mappedType = ['infographic', 'sourced_image', 'data_viz', 'flowchart', 'aesthetic_anchor'].includes(typeCandidate)
         ? typeCandidate
         : pickType(text);
+      const requestedAnchorId = norm(String((v as any)?.anchor_id || ''));
+      const baseAnchorId = requestedAnchorId && structuralById.has(requestedAnchorId)
+        ? requestedAnchorId
+        : (input.anchors[0]?.anchor_id || '');
+      const baseAnchorInfo = structuralById.get(baseAnchorId) || structural[0];
+      if (!baseAnchorInfo) continue;
+      const typeAlignedAnchor = this.findBestAnchorForType(mappedType, baseAnchorInfo, structural);
+      const eligibility = validateTypeEligibility(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+      const resolvedType = eligibility.valid
+        ? mappedType
+        : remapIneligibleType(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+      const requestedScope = norm(String((v as any)?.placement?.scope || ''));
+      const scopeNormalized = this.normalizePlacementScope(requestedScope, typeAlignedAnchor);
+      const defaultPlacement = defaultPlacementForType(resolvedType);
+      const placement: PlannedVisualizationPlacement = {
+        scope: scopeNormalized.scope,
+        priority: clampPriority((v as any)?.placement?.priority, defaultPlacement.priority),
+        avoid_headings: typeof (v as any)?.placement?.avoid_headings === 'boolean'
+          ? Boolean((v as any)?.placement?.avoid_headings)
+          : defaultPlacement.avoid_headings,
+        avoid_list_split: typeof (v as any)?.placement?.avoid_list_split === 'boolean'
+          ? Boolean((v as any)?.placement?.avoid_list_split)
+          : defaultPlacement.avoid_list_split,
+        max_width_in: Number.isFinite(Number((v as any)?.placement?.max_width_in))
+          ? Number((v as any)?.placement?.max_width_in)
+          : defaultPlacement.max_width_in,
+        max_height_in: Number.isFinite(Number((v as any)?.placement?.max_height_in))
+          ? Number((v as any)?.placement?.max_height_in)
+          : defaultPlacement.max_height_in,
+        alignment: ['left', 'center'].includes(String((v as any)?.placement?.alignment || '').toLowerCase())
+          ? (String((v as any)?.placement?.alignment || '').toLowerCase() as 'left' | 'center')
+          : (defaultPlacement.alignment || 'center'),
+      };
+      if (resolvedType === 'sourced_image' && /\b(step\s+\d+|process|workflow|procedure)\b/i.test(typeAlignedAnchor.window_text || '')) {
+        placement.scope = 'section_end';
+      }
+      const sectionCount = sectionCounts.get(typeAlignedAnchor.section) || 0;
+      if (sectionCount >= 3) {
+        continue;
+      }
       const planned: PlannedVisualization = {
-        type: mappedType,
+        type: resolvedType,
+        anchor_id: typeAlignedAnchor.anchor_id,
+        placement,
         title: titleFromText(norm(v?.title || text)),
         description: text || 'Contextual visual planned from document anchors.',
-        context: norm(v?.context || `Anchor-derived context in section "${norm(v?.section || 'Document Context')}"`),
+        context: `Anchor ${typeAlignedAnchor.anchor_id} in section "${typeAlignedAnchor.section}"`,
         purpose: norm(v?.purpose || 'Visually reinforce the surrounding document concept.'),
-        prompt_template: promptTemplateFor(mappedType, text)
+        prompt_template: promptTemplateFor(resolvedType, text)
       };
+      if (!eligibility.valid && resolvedType !== mappedType) {
+        planned.fallback_reason = `eligibility_remap:${mappedType}->${resolvedType}:${eligibility.reason}`;
+      }
       if (planned.type === 'flowchart') {
-        let mermaid = toMermaidFlowchart(text);
-        let valid = isMermaidValid(mermaid);
-        if (!valid) {
-          mermaid = selfCorrectMermaid(mermaid);
-          valid = isMermaidValid(mermaid);
-        }
-        if (valid) {
-          planned.mermaid_code = mermaid;
+        const mermaidResult = await this.resolveMermaidWithRetries(text);
+        if (mermaidResult.valid && mermaidResult.code) {
+          planned.mermaid_code = mermaidResult.code;
           planned.mermaid_valid = true;
         } else {
           planned.type = 'aesthetic_anchor';
-          planned.prompt_template = promptTemplateFor('aesthetic_anchor', text);
-          planned.fallback_reason = 'mermaid_validation_failed_after_single_retry';
+          planned.placement = defaultPlacementForType('aesthetic_anchor');
+          planned.prompt_template = atmosphericPromptForFallback(text);
+          planned.fallback_reason = 'mermaid_validation_failed_after_double_retry';
           planned.mermaid_valid = false;
         }
+      } else if (planned.type === 'data_viz' && !dataVizLooksValid(text)) {
+        planned.type = 'aesthetic_anchor';
+        planned.placement = defaultPlacementForType('aesthetic_anchor');
+        planned.prompt_template = atmosphericPromptForFallback(text);
+        planned.fallback_reason = 'data_viz_validation_failed';
       }
+      const caption = resolveCaption({
+        type: planned.type,
+        title: planned.title,
+        purpose: planned.purpose,
+        context: planned.context,
+        explicitCaption: (v as any)?.caption_text,
+        maxChars: captionMaxChars,
+      });
+      planned.caption_text = caption.caption_text;
+      planned.caption_mode = caption.caption_mode;
+      sectionCounts.set(typeAlignedAnchor.section, sectionCount + 1);
+      const reasons = [...scopeNormalized.reasons];
+      if (typeAlignedAnchor.anchor_id !== baseAnchorInfo.anchor_id) {
+        reasons.push('type_anchor_realigned');
+      }
+      if (!eligibility.valid && resolvedType !== mappedType) {
+        reasons.push(`type_remap:${mappedType}->${resolvedType}`);
+      }
+      placementNormalization.push({
+        index: visuals.length,
+        requested_anchor_id: requestedAnchorId || null,
+        resolved_anchor_id: planned.anchor_id,
+        requested_scope: requestedScope || null,
+        resolved_scope: planned.placement.scope,
+        reasons,
+      });
       visuals.push(planned);
     }
-    return visuals;
+    const normalizedVisuals = this.applyAnchorDensityCap(visuals, input.anchors, input.sections);
+    onTelemetry?.({
+      type: 'llm_response',
+      model,
+      raw_response: raw,
+      cleaned_response: cleaned,
+      usage: {
+        prompt_tokens: Number.isFinite(Number(completion?.usage?.prompt_tokens)) ? Number(completion?.usage?.prompt_tokens) : null,
+        completion_tokens: Number.isFinite(Number(completion?.usage?.completion_tokens)) ? Number(completion?.usage?.completion_tokens) : null,
+        total_tokens: Number.isFinite(Number(completion?.usage?.total_tokens)) ? Number(completion?.usage?.total_tokens) : null,
+      },
+      duration_ms: Date.now() - startedAt,
+      parsed_visual_count: inVisuals.length,
+      normalized_visual_count: normalizedVisuals.length,
+      placement_normalization: placementNormalization,
+    });
+    return normalizedVisuals;
   }
 
-  validateManifest(manifest: DocumentVisualManifest): ManifestValidationResult {
-    return validateDocumentVisualManifest(manifest);
+  private async resolveMermaidWithRetries(text: string): Promise<{ code: string | null; valid: boolean }> {
+    let candidate = toMermaidFlowchart(text);
+    let lastError = getMermaidValidationError(candidate);
+    if (isMermaidValid(candidate)) return { code: candidate, valid: true };
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const ruleBased = selfCorrectMermaid(candidate);
+      if (isMermaidValid(ruleBased)) return { code: ruleBased, valid: true };
+      const ruleErr = getMermaidValidationError(ruleBased);
+      candidate = ruleBased;
+      lastError = ruleErr;
+      const llmFixed = await this.repairMermaidWithLlm(candidate, text, ruleErr, attempt);
+      if (llmFixed) {
+        const normalized = selfCorrectMermaid(llmFixed);
+        if (isMermaidValid(normalized)) return { code: normalized, valid: true };
+        candidate = normalized;
+        lastError = getMermaidValidationError(normalized);
+      }
+    }
+
+    this.logger.warn(`Mermaid validation failed after 2 retries: ${lastError}`);
+    return { code: null, valid: false };
+  }
+
+  private async repairMermaidWithLlm(code: string, sourceText: string, validationError: string, attempt: number): Promise<string | null> {
+    if (!this.openai) return null;
+    const model = String(process.env.DOC_PLANNING_MODEL || process.env.OPENROUTER_MODEL || 'google/gemini-2.0-flash-001').trim();
+    const systemPrompt = [
+      'You are a Mermaid flowchart syntax repair assistant.',
+      'Return Mermaid code only. No markdown fences.',
+      'Preserve flowchart semantics and keep all labels concise.',
+      `Validation error to fix: ${validationError}`,
+      `Retry pass: ${attempt} of 2`,
+    ].join('\n');
+    const userPrompt = [
+      'Source procedural text:',
+      sourceText,
+      '',
+      'Invalid Mermaid code:',
+      code,
+      '',
+      'Return corrected Mermaid flowchart code only.'
+    ].join('\n');
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model,
+        response_format: { type: 'text' },
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0,
+        max_tokens: 800,
+      });
+      const raw = String(completion?.choices?.[0]?.message?.content || '').trim();
+      return raw.replace(/```mermaid/gi, '').replace(/```/g, '').trim();
+    } catch (error: any) {
+      this.logger.warn(`Mermaid repair LLM call failed: ${error?.message || error}`);
+      return null;
+    }
+  }
+
+  private applyAnchorDensityCap(
+    visuals: PlannedVisualization[],
+    anchors: AnchorCandidate[],
+    sections: SectionNode[]
+  ): PlannedVisualization[] {
+    if (!visuals.length || !anchors.length) return visuals;
+    const capPerAnchor = 2;
+    const emergencySectionCap = 3;
+    const anchorMeta = anchors.map((a) => ({
+      anchor_id: String(a.anchor_id || ''),
+      paragraph_index: Number(a.paragraph_index || 0),
+      confidence: Number(a.confidence || 0),
+      section: sectionForIndex(sections, Number(a.paragraph_index || 0)),
+    })).filter((a) => a.anchor_id);
+    const byId = new Map(anchorMeta.map((a) => [a.anchor_id, a]));
+    const counts = new Map<string, number>();
+    const sectionCounts = new Map<string, number>();
+
+    const pickAnchor = (seedId: string | null, sectionHint: string | null): string => {
+      const seed = seedId && byId.has(seedId) ? byId.get(seedId)! : null;
+      const targetPool = anchorMeta.filter((a) => {
+        const anchorCount = counts.get(a.anchor_id) || 0;
+        const sectionCount = sectionCounts.get(a.section) || 0;
+        return anchorCount < capPerAnchor && sectionCount < emergencySectionCap;
+      });
+      const pool = targetPool.length ? targetPool : anchorMeta;
+      const scored = pool
+        .filter((a) => !sectionHint || norm(a.section).toLowerCase() === sectionHint.toLowerCase())
+        .sort((a, b) => {
+          const da = seed ? Math.abs(a.paragraph_index - seed.paragraph_index) : 0;
+          const db = seed ? Math.abs(b.paragraph_index - seed.paragraph_index) : 0;
+          if (da !== db) return da - db;
+          if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+          return (counts.get(a.anchor_id) || 0) - (counts.get(b.anchor_id) || 0);
+        });
+      const chosen = (scored[0] || pool[0] || anchorMeta[0]).anchor_id;
+      counts.set(chosen, (counts.get(chosen) || 0) + 1);
+      const chosenSection = byId.get(chosen)?.section || 'Document Context';
+      sectionCounts.set(chosenSection, (sectionCounts.get(chosenSection) || 0) + 1);
+      return chosen;
+    };
+
+    return visuals.map((v) => {
+      const sectionHint = byId.get(String(v.anchor_id || ''))?.section || null;
+      const proposedId = byId.has(String(v.anchor_id || '')) ? String(v.anchor_id) : null;
+      const assigned = pickAnchor(proposedId, sectionHint);
+      const resolvedSection = byId.get(assigned)?.section || sectionHint || 'Document Context';
+      return {
+        ...v,
+        anchor_id: assigned,
+        context: `Anchor ${assigned} in section "${resolvedSection}"`,
+      };
+    });
+  }
+
+  validateManifest(manifest: DocumentVisualManifest, opts?: { anchors?: AnchorCandidate[] }): ManifestValidationResult {
+    return validateDocumentVisualManifest(manifest, {
+      anchorIds: (opts?.anchors || []).map((a) => String(a?.anchor_id || '')).filter(Boolean),
+    });
   }
 }

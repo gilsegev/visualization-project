@@ -7,6 +7,7 @@ import { DocumentAnalysisService } from '../documents/analysis/document-analysis
 import { DocxTextExtractorService } from '../documents/analysis/docx-text-extractor.service';
 import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgical-inserter.service';
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
+import { DocumentAssetJudgeService } from '../documents/quality/document-asset-judge.service';
 import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
@@ -32,6 +33,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     private readonly docxTextExtractor: DocxTextExtractorService,
     private readonly inserter: DocxSurgicalInserterService,
     private readonly planner: VisualManifestPlannerService,
+    private readonly assetJudge: DocumentAssetJudgeService,
     private readonly strategyFactory: ImageStrategyFactory,
     private readonly observability: ObservabilityGateway,
     private readonly semaphore: WorkerResourceSemaphoreService,
@@ -551,6 +553,14 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             inserted_count: insertionResult.surgicalLog.inserted,
             skipped_count: insertionResult.surgicalLog.skipped,
             collision_count: insertionResult.surgicalLog.collisions,
+            planned_visuals: Number((insertionResult as any)?.surgicalLog?.planned || 0),
+            resolved_visuals: Number((insertionResult as any)?.surgicalLog?.resolved || 0),
+            inserted_visuals: Number((insertionResult as any)?.surgicalLog?.inserted || 0),
+            skipped_visuals: Number((insertionResult as any)?.surgicalLog?.skipped || 0),
+            placement_conflicts: Number((insertionResult as any)?.surgicalLog?.placement_conflicts || 0),
+            list_block_adjustments: Number((insertionResult as any)?.surgicalLog?.list_block_adjustments || 0),
+            heading_avoidance_adjustments: Number((insertionResult as any)?.surgicalLog?.heading_avoidance_adjustments || 0),
+            snap_to_grid_adjustments: Number((insertionResult as any)?.surgicalLog?.snap_to_grid_adjustments || 0),
             captions_planned: Number((insertionResult as any)?.surgicalLog?.captions_planned || 0),
             captions_inserted: Number((insertionResult as any)?.surgicalLog?.captions_inserted || 0),
             captions_skipped: Number((insertionResult as any)?.surgicalLog?.captions_skipped || 0),
@@ -947,8 +957,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       const contextText = String(viz?.context || '');
       const anchorId = String(viz?.anchor_id || '').trim() || null;
       const taskId = `docasset-${input.jobId}-${String(i + 1).padStart(2, '0')}-${Date.now().toString(36)}`;
-      const prompt = String(viz?.prompt_template || '').trim()
+      const rawPrompt = String(viz?.prompt_template || '').trim()
         || `Create a ${visualType} about: ${String(viz?.description || viz?.title || 'document concept').trim()}`;
+      const prompt = this.sanitizeGenerationPrompt(rawPrompt);
       const captionText = String(viz?.caption_text || '').trim() || null;
 
       await this.storage.upsertDocumentAsset({
@@ -1042,6 +1053,31 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         if (!loaded?.buffer) {
           throw new Error(`Generated asset output missing for ${taskId}`);
         }
+        const judgeVerdict = await this.assetJudge.judge({
+          imageBytes: loaded.buffer,
+          extension: loaded.ext || '.png',
+          visualType,
+          prompt,
+        });
+        this.observability.emitLog(judgeVerdict.passed ? 'info' : 'warn', `Document asset judge verdict job=${input.jobId} asset=${taskId} pass=${judgeVerdict.passed}`, 'DocumentAssetJudge', undefined, undefined, {
+          metadata: {
+            user_id: input.userId,
+            doc_job_id: input.jobId,
+            asset_task_id: taskId,
+            stage: 'generating_assets',
+            event_type: judgeVerdict.passed ? 'quality_scored' : 'stage_failed',
+            provider_status: judgeVerdict.passed ? 'judge_passed' : 'judge_rejected',
+            visual_type: visualType,
+            judge_enabled: judgeVerdict.enabled,
+            judge_model: judgeVerdict.model,
+            judge_score: judgeVerdict.score,
+            judge_reason: judgeVerdict.reason,
+            judge_concerns: judgeVerdict.concerns,
+          }
+        });
+        if (!judgeVerdict.passed) {
+          throw new Error(`Asset rejected by judge: ${judgeVerdict.reason}`);
+        }
         const ext = loaded.ext || '.png';
         const objectKey = DocumentObjectKeyLayout.asset({ jobId: input.jobId }, `${taskId}${ext}`);
         const contentType = this.contentTypeForExtension(ext);
@@ -1061,6 +1097,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             provider_payload: generated?.payload || null,
             caption_text: captionText,
             caption_mode: String(viz?.caption_mode || '').trim() || null,
+            judge_enabled: judgeVerdict.enabled,
+            judge_model: judgeVerdict.model,
+            judge_score: judgeVerdict.score,
+            judge_reason: judgeVerdict.reason,
+            judge_concerns: judgeVerdict.concerns,
           }
         });
         await input.writeArtifact({
@@ -1076,6 +1117,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             prompt,
             caption_text: captionText,
             caption_mode: String(viz?.caption_mode || '').trim() || null,
+            judge_enabled: judgeVerdict.enabled,
+            judge_model: judgeVerdict.model,
+            judge_score: judgeVerdict.score,
+            judge_reason: judgeVerdict.reason,
+            judge_concerns: judgeVerdict.concerns,
             source_provider: generated?.payload?.source_provider || null,
             source_query: generated?.payload?.source_query || null,
             sourced_queries: generated?.payload?.sourced_queries || null,
@@ -1112,6 +1158,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             source_query: generated?.payload?.source_query || null,
             caption_text: captionText,
             caption_mode: String(viz?.caption_mode || '').trim() || null,
+            judge_enabled: judgeVerdict.enabled,
+            judge_model: judgeVerdict.model,
+            judge_score: judgeVerdict.score,
+            judge_reason: judgeVerdict.reason,
+            judge_concerns: judgeVerdict.concerns,
           }
         });
         this.observability.emitProgress({
@@ -1128,6 +1179,10 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             source_provider: generated?.payload?.source_provider || null,
             source_query: generated?.payload?.source_query || null,
             source_local_url: localUrl || null,
+            judge_enabled: judgeVerdict.enabled,
+            judge_model: judgeVerdict.model,
+            judge_score: judgeVerdict.score,
+            judge_reason: judgeVerdict.reason,
             caption_text: captionText,
             caption_mode: String(viz?.caption_mode || '').trim() || null,
             chart_type: generated?.payload?.chart_type,
@@ -1429,6 +1484,24 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       format: 'static',
       title: String(viz?.title || '').trim() || 'Data Visualization',
     };
+  }
+
+  private sanitizeGenerationPrompt(rawPrompt: string): string {
+    let out = String(rawPrompt || '').replace(/\s+/g, ' ').trim();
+    const redactPatterns: RegExp[] = [
+      /\banchor-[a-z0-9-]+\b/gi,
+      /\banchor\s+[a-z0-9-]+\b/gi,
+      /\bsection\s+"[^"]+"\b/gi,
+      /\bxml_path_id\b/gi,
+      /\bparagraph_hash\b/gi,
+      /\bparagraph_index\b/gi,
+      /\bdoc_job_id\b/gi,
+      /\bprovider_status\b/gi,
+    ];
+    for (const pattern of redactPatterns) out = out.replace(pattern, ' ');
+    out = out.replace(/\s{2,}/g, ' ').trim();
+    const constraints = 'Do not include UI elements, mouse cursors, watermark text, placeholder text, random letters, or gibberish.';
+    return `${out}\n${constraints}`.trim();
   }
 
   private buildGroundingSourceText(viz: any, prompt: string): string {
