@@ -1009,6 +1009,25 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
       try {
         const task = this.buildImageTask(viz, taskId, prompt, visualType);
+        if (visualType === 'data_viz') {
+          const dataPreview = Array.isArray((task as any)?.payload?.data)
+            ? (task as any).payload.data.slice(0, 8).map((row: any) => `${String(row?.label || '')}:${String(row?.value || '')}`).join(', ')
+            : '';
+          this.observability.emitLog('info', `Data viz payload prepared job=${input.jobId} asset=${taskId}`, 'DocumentAsset', undefined, undefined, {
+            metadata: {
+              user_id: input.userId,
+              doc_job_id: input.jobId,
+              asset_task_id: taskId,
+              stage: 'generating_assets',
+              event_type: 'artifact_written',
+              provider_status: 'data_viz_payload_built',
+              visual_type: visualType,
+              chart_type: (task as any)?.payload?.chartType || null,
+              data_preview: dataPreview || null,
+              source_preview: String((task as any)?.payload?.source_preview || '').slice(0, 320) || null,
+            }
+          });
+        }
         let generated: any;
         try {
           const strategy = this.strategyFactory.getStrategy(task);
@@ -1462,6 +1481,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           : 'bar';
 
     const pairMatches = Array.from(text.matchAll(/\b([A-Za-z][A-Za-z0-9_ ]{0,20})\s*[:=-]\s*(-?\d+(?:\.\d+)?)\b/g));
+    const qValueMatches = Array.from(text.matchAll(/\b(Q[1-4])\b[^0-9-]{0,24}(-?\d+(?:\.\d+)?)/gi))
+      .map((m) => ({ label: String(m[1] || '').toUpperCase(), value: Number(m[2]) }))
+      .filter((p) => Number.isFinite(p.value));
     const qPairs = pairMatches
       .map((m) => ({ label: String(m[1] || '').trim(), value: Number(m[2]) }))
       .filter((p) => Number.isFinite(p.value) && /\bQ[1-4]\b/i.test(p.label))
@@ -1477,7 +1499,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       .slice(0, 12);
 
     let data: Array<{ label: string; value: number }> = [];
-    if (qPairs.length >= 2) {
+    if (qValueMatches.length >= 2) {
+      data = qValueMatches.slice(0, 8);
+    } else if (qPairs.length >= 2) {
       data = qPairs.map((p) => ({ label: p.label.toUpperCase(), value: p.value }));
     } else if (genericPairs.length >= 2) {
       data = genericPairs.map((p) => ({ label: p.label.replace(/\s+/g, ' ').trim().slice(0, 24), value: p.value }));
@@ -1498,6 +1522,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       data,
       format: 'static',
       title: String(viz?.title || '').trim() || 'Data Visualization',
+      source_preview: text.slice(0, 320),
     };
   }
 
