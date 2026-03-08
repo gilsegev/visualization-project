@@ -1459,6 +1459,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           ? 'funnel'
           : 'bar';
 
+    const pairMatches = Array.from(text.matchAll(/\b([A-Za-z][A-Za-z0-9_ ]{0,20})\s*[:=-]\s*(-?\d+(?:\.\d+)?)\b/g));
+    const qPairs = pairMatches
+      .map((m) => ({ label: String(m[1] || '').trim(), value: Number(m[2]) }))
+      .filter((p) => Number.isFinite(p.value) && /\bQ[1-4]\b/i.test(p.label))
+      .slice(0, 8);
+    const genericPairs = pairMatches
+      .map((m) => ({ label: String(m[1] || '').trim(), value: Number(m[2]) }))
+      .filter((p) => Number.isFinite(p.value))
+      .slice(0, 8);
     const labels = Array.from(new Set((text.match(/\bQ[1-4]\b/gi) || []).map((v) => v.toUpperCase()))).slice(0, 8);
     const numbers = (text.match(/-?\d+(?:\.\d+)?/g) || [])
       .map((n) => Number(n))
@@ -1466,7 +1475,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       .slice(0, 12);
 
     let data: Array<{ label: string; value: number }> = [];
-    if (labels.length) {
+    if (qPairs.length >= 2) {
+      data = qPairs.map((p) => ({ label: p.label.toUpperCase(), value: p.value }));
+    } else if (genericPairs.length >= 2) {
+      data = genericPairs.map((p) => ({ label: p.label.replace(/\s+/g, ' ').trim().slice(0, 24), value: p.value }));
+    } else if (labels.length) {
       data = labels.map((label, i) => ({ label, value: numbers[i] ?? (i + 1) * 10 }));
     } else if (numbers.length >= 2) {
       data = numbers.slice(0, 8).map((value, i) => ({ label: `Item ${i + 1}`, value }));

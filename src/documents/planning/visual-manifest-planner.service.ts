@@ -446,9 +446,18 @@ type AnchorStructuralInfo = {
   list_span_end: number;
   paragraph_length: number;
   signal_summary: string;
+  is_scaffold: boolean;
   paragraph_text: string;
   window_text: string;
 };
+
+function isScaffoldText(text: string): boolean {
+  const t = norm(text).toLowerCase();
+  if (!t) return false;
+  if (/\btpm\s*note\b/.test(t)) return true;
+  if (/\b(aesthetic_anchor|sourced_image|data_viz|flowchart|infographic)\b/.test(t) && /\b(asset|trigger|mapping logic|primary target)\b/.test(t)) return true;
+  return false;
+}
 
 @Injectable()
 export class VisualManifestPlannerService {
@@ -482,6 +491,7 @@ export class VisualManifestPlannerService {
       const text = norm(p.text || '');
       const heading = /^(introduction|overview|summary|section\b|chapter\b|part\b)/i.test(text) && text.length <= 140;
       const listLike = Boolean(p.has_sequence) || /\b(step\s+\d+|\d+\.\s+[A-Z]|^\-\s+)/i.test(text);
+      const scaffold = isScaffoldText(`${text} ${norm(w?.content || '')}`);
       infos.push({
         anchor_id: String(anchor.anchor_id || ''),
         paragraph_index: Number(anchor.paragraph_index || 0),
@@ -493,9 +503,10 @@ export class VisualManifestPlannerService {
         list_span_start: Number(w?.paragraph_start_index ?? anchor.paragraph_index),
         list_span_end: Number(w?.paragraph_end_index ?? anchor.paragraph_index),
         paragraph_length: text.length,
-        signal_summary: [p.has_sequence ? 'sequence' : '', p.has_data ? 'data' : '', p.has_entity ? 'entity' : '']
+        signal_summary: [p.has_sequence ? 'sequence' : '', p.has_data ? 'data' : '', p.has_entity ? 'entity' : '', scaffold ? 'scaffold' : '']
           .filter(Boolean)
           .join(',') || 'text',
+        is_scaffold: scaffold,
         paragraph_text: text,
         window_text: norm(w?.content || text),
       });
@@ -510,6 +521,7 @@ export class VisualManifestPlannerService {
     const dat = dataScore(text);
     const atm = atmosphericScore(text);
     let score = Number(info.confidence || 0);
+    if (info.is_scaffold) score -= 8;
     if (type === 'flowchart') {
       score += seq * 2;
       if (sig.includes('sequence')) score += 2;
@@ -756,8 +768,9 @@ export class VisualManifestPlannerService {
         list_span_end: Number(meta?.list_span_end ?? a.paragraph_index),
         paragraph_length: Number(meta?.paragraph_length ?? text.length),
         signal_summary: String(meta?.signal_summary || ''),
+        is_scaffold: Boolean(meta?.is_scaffold),
       };
-    }).filter((c) => c.text.length > 0);
+    }).filter((c) => c.text.length > 0 && !c.is_scaffold);
 
     const systemPrompt = [
       'You are a document visualization planner.',
