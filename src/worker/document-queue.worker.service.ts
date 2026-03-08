@@ -1451,8 +1451,10 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       String(prompt || '').trim(),
     ].filter(Boolean).join(' | ');
 
-    const chartType = /\b(line|trend|timeseries)\b/i.test(text)
-      ? 'line'
+    const chartType = /\b(bar\s*graph|bar\s*chart|histogram|column\s*chart)\b/i.test(text)
+      ? 'bar'
+      : /\b(line|trend|timeseries)\b/i.test(text)
+        ? 'line'
       : /\b(pie|donut|share|composition)\b/i.test(text)
         ? 'pie'
         : /\b(funnel|stage conversion)\b/i.test(text)

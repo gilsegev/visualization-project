@@ -187,6 +187,7 @@ export class DocxSurgicalInserterService {
     let nextRelId = this.nextRelationshipId(relsXml);
     let nextDocPrId = await this.nextDocPrId(zip, docXml);
     let nextMediaIndex = this.nextMediaIndex(zip);
+    const minGap = Math.max(0, Number(process.env.DOC_INSERTION_MIN_PARAGRAPH_GAP || 3));
 
     for (const plan of plans) {
       const currentMatches = [...docXml.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)];
@@ -229,6 +230,14 @@ export class DocxSurgicalInserterService {
             reason: 'anchor_collision_no_fallback_slot',
           });
           continue;
+        }
+      }
+      if (minGap > 0 && this.hasNearbyUsedTarget(usedTargets, resolvedParagraphIndex, minGap)) {
+        placementMetrics.snap_to_grid_adjustments += 1;
+        snapReason = [snapReason, `min_gap_${minGap}_adjustment`].filter(Boolean).join('|');
+        const gapFallback = this.findNextAvailableParagraphIndex(currentMatches, resolvedParagraphIndex + 1, usedTargets, minGap);
+        if (gapFallback > 0) {
+          resolvedParagraphIndex = gapFallback;
         }
       }
       const target = currentMatches[resolvedParagraphIndex - 1];
@@ -506,15 +515,24 @@ export class DocxSurgicalInserterService {
     paragraphs: RegExpMatchArray[],
     startIndex: number,
     usedTargets: Set<number>,
+    minGap = 0,
   ): number {
     const start = Math.max(1, Number(startIndex || 1));
     for (let i = start; i <= paragraphs.length; i += 1) {
       if (usedTargets.has(i)) continue;
+      if (minGap > 0 && this.hasNearbyUsedTarget(usedTargets, i, minGap)) continue;
       const xml = String(paragraphs[i - 1]?.[0] || '');
       if (!xml || this.isHeadingParagraph(xml)) continue;
       return i;
     }
     return -1;
+  }
+
+  private hasNearbyUsedTarget(usedTargets: Set<number>, candidate: number, minGap: number): boolean {
+    for (const taken of usedTargets) {
+      if (Math.abs(Number(taken) - Number(candidate)) < minGap) return true;
+    }
+    return false;
   }
 
   private isListParagraph(paragraphXml: string): boolean {

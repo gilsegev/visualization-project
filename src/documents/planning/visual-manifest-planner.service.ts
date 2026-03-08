@@ -842,7 +842,7 @@ export class VisualManifestPlannerService {
     const sectionCounts = new Map<string, number>();
     for (const v of inVisuals) {
       if (visuals.length >= maxAssets) break;
-      const text = norm(String(v?.description || v?.title || '').slice(0, 2000));
+      let text = norm(String(v?.description || v?.title || '').slice(0, 2000));
       const fingerprint = text.toLowerCase().replace(/[^a-z0-9 ]/g, '');
       if (!fingerprint || seen.has(fingerprint)) continue;
       seen.add(fingerprint);
@@ -900,6 +900,14 @@ export class VisualManifestPlannerService {
         purpose: norm(v?.purpose || 'Visually reinforce the surrounding document concept.'),
         prompt_template: promptTemplateFor(resolvedType, text)
       };
+      if (resolvedType === 'data_viz') {
+        const quantitativeText = buildDataVizText(typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+        if (quantitativeText) {
+          text = quantitativeText;
+          planned.description = quantitativeText.slice(0, 500);
+          planned.prompt_template = promptTemplateFor('data_viz', quantitativeText);
+        }
+      }
       if (!eligibility.valid && resolvedType !== mappedType) {
         planned.fallback_reason = `eligibility_remap:${mappedType}->${resolvedType}:${eligibility.reason}`;
       }
