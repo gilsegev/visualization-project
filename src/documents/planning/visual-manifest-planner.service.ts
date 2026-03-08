@@ -554,8 +554,17 @@ export class VisualManifestPlannerService {
     const sameSection = all.filter((a) => a.section === current.section);
     const pool = sameSection.length ? sameSection : all;
     const ranked = pool
-      .map((a) => ({ a, s: this.scoreAnchorForType(type, a) }))
+      .map((a) => {
+        const distancePenalty = Math.min(2.5, Math.abs(Number(a.paragraph_index || 0) - Number(current.paragraph_index || 0)) * 0.08);
+        return { a, s: this.scoreAnchorForType(type, a) - distancePenalty };
+      })
       .sort((x, y) => y.s - x.s);
+    // Keep local context stable for overview-style visuals unless there is a clear better anchor.
+    if (type === 'infographic') {
+      const currentScore = this.scoreAnchorForType(type, current);
+      const bestScore = Number(ranked[0]?.s || currentScore);
+      if (bestScore - currentScore < 0.4) return current;
+    }
     return ranked[0]?.a || current;
   }
 
