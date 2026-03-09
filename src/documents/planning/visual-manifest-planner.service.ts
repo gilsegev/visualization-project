@@ -491,7 +491,9 @@ export class VisualManifestPlannerService {
       const text = norm(p.text || '');
       const heading = /^(introduction|overview|summary|section\b|chapter\b|part\b)/i.test(text) && text.length <= 140;
       const listLike = Boolean(p.has_sequence) || /\b(step\s+\d+|\d+\.\s+[A-Z]|^\-\s+)/i.test(text);
-      const scaffold = isScaffoldText(`${text} ${norm(w?.content || '')}`);
+      // Evaluate scaffold-ness from the anchor paragraph itself. Using the full
+      // context window can incorrectly mark nearby real anchors as scaffold.
+      const scaffold = isScaffoldText(text);
       infos.push({
         anchor_id: String(anchor.anchor_id || ''),
         paragraph_index: Number(anchor.paragraph_index || 0),
