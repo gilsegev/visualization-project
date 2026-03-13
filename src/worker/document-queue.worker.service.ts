@@ -1023,6 +1023,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
               provider_status: 'data_viz_payload_built',
               visual_type: visualType,
               chart_type: (task as any)?.payload?.chartType || null,
+              data_source: (task as any)?.payload?.data_source || null,
               data_preview: dataPreview || null,
               source_preview: String((task as any)?.payload?.source_preview || '').slice(0, 320) || null,
             }
@@ -1094,7 +1095,55 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             judge_concerns: judgeVerdict.concerns,
           }
         });
-        if (!judgeVerdict.passed) {
+        const taskPayload: any = (task as any)?.payload || {};
+        const dataSource = String(taskPayload?.data_source || '').toLowerCase();
+        const d2CliUsed = (generated as any)?.payload?.metrics?.d2_cli_used;
+        const isGroundedDataViz =
+          visualType === 'data_viz'
+          && Array.isArray(taskPayload?.data)
+          && taskPayload.data.length >= 3
+          && dataSource !== 'seed_default'
+          && dataSource !== 'numeric_only';
+        const isFlowchartNoD2 =
+          visualType === 'flowchart'
+          && d2CliUsed === false;
+        if (!judgeVerdict.passed && isGroundedDataViz) {
+          this.observability.emitLog('warn', `Document asset judge soft-pass job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentAssetJudge', undefined, undefined, {
+            metadata: {
+              user_id: input.userId,
+              doc_job_id: input.jobId,
+              asset_task_id: taskId,
+              stage: 'generating_assets',
+              event_type: 'quality_scored',
+              provider_status: 'judge_soft_passed',
+              visual_type: visualType,
+              judge_enabled: judgeVerdict.enabled,
+              judge_model: judgeVerdict.model,
+              judge_score: judgeVerdict.score,
+              judge_reason: judgeVerdict.reason,
+              judge_concerns: judgeVerdict.concerns,
+              data_source: dataSource || null,
+            }
+          });
+        } else if (!judgeVerdict.passed && isFlowchartNoD2) {
+          this.observability.emitLog('warn', `Document asset judge soft-pass job=${input.jobId} asset=${taskId} type=flowchart reason=d2_cli_unavailable`, 'DocumentAssetJudge', undefined, undefined, {
+            metadata: {
+              user_id: input.userId,
+              doc_job_id: input.jobId,
+              asset_task_id: taskId,
+              stage: 'generating_assets',
+              event_type: 'quality_scored',
+              provider_status: 'judge_soft_passed',
+              visual_type: visualType,
+              judge_enabled: judgeVerdict.enabled,
+              judge_model: judgeVerdict.model,
+              judge_score: judgeVerdict.score,
+              judge_reason: judgeVerdict.reason,
+              judge_concerns: judgeVerdict.concerns,
+              d2_cli_used: false,
+            }
+          });
+        } else if (!judgeVerdict.passed) {
           throw new Error(`Asset rejected by judge: ${judgeVerdict.reason}`);
         }
         const ext = loaded.ext || '.png';
@@ -1480,6 +1529,15 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           ? 'funnel'
           : 'bar';
 
+    const explicitPoints = Array.isArray(viz?.data_points)
+      ? viz.data_points
+          .map((p: any) => ({
+            label: String(p?.label || '').replace(/\s+/g, ' ').trim().slice(0, 30),
+            value: Number(p?.value),
+          }))
+          .filter((p: any) => p.label && Number.isFinite(p.value))
+          .slice(0, 8)
+      : [];
     const pairMatches = Array.from(text.matchAll(/\b([A-Za-z][A-Za-z0-9_ ]{0,20})\s*[:=-]\s*(-?\d+(?:\.\d+)?)\b/g));
     const qValueMatches = Array.from(text.matchAll(/\b(Q[1-4])\b[^0-9-]{0,24}(-?\d+(?:\.\d+)?)/gi))
       .map((m) => ({ label: String(m[1] || '').toUpperCase(), value: Number(m[2]) }))
@@ -1499,31 +1557,59 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       .slice(0, 12);
 
     let data: Array<{ label: string; value: number }> = [];
-    if (qValueMatches.length >= 2) {
+    let dataSource: string = 'fallback_seed';
+    if (explicitPoints.length >= 2) {
+      data = explicitPoints;
+      dataSource = 'planned_data_points';
+    } else if (qValueMatches.length >= 2) {
       data = qValueMatches.slice(0, 8);
+      dataSource = 'quarter_matches';
     } else if (qPairs.length >= 2) {
       data = qPairs.map((p) => ({ label: p.label.toUpperCase(), value: p.value }));
+      dataSource = 'quarter_pairs';
     } else if (genericPairs.length >= 2) {
       data = genericPairs.map((p) => ({ label: p.label.replace(/\s+/g, ' ').trim().slice(0, 24), value: p.value }));
+      dataSource = 'label_value_pairs';
     } else if (labels.length) {
       data = labels.map((label, i) => ({ label, value: numbers[i] ?? (i + 1) * 10 }));
+      dataSource = 'quarter_labels';
     } else if (numbers.length >= 2) {
-      data = numbers.slice(0, 8).map((value, i) => ({ label: `Item ${i + 1}`, value }));
+      data = numbers.slice(0, 8).map((value, i) => ({ label: `Metric ${i + 1}`, value }));
+      dataSource = 'numeric_only';
     } else {
       data = [
         { label: 'A', value: 10 },
         { label: 'B', value: 20 },
         { label: 'C', value: 30 },
       ];
+      dataSource = 'seed_default';
     }
+
+    const normalizedData = this.normalizeDataVizSeries(data).slice(0, 8);
 
     return {
       chartType,
-      data,
+      data: normalizedData,
       format: 'static',
       title: String(viz?.title || '').trim() || 'Data Visualization',
       source_preview: text.slice(0, 320),
+      data_source: dataSource,
     };
+  }
+
+  private normalizeDataVizSeries(data: Array<{ label: string; value: number }>): Array<{ label: string; value: number }> {
+    const out: Array<{ label: string; value: number }> = [];
+    const counts = new Map<string, number>();
+    for (const row of data || []) {
+      const value = Number(row?.value);
+      if (!Number.isFinite(value)) continue;
+      const base = String(row?.label || '').replace(/\s+/g, ' ').trim().slice(0, 28) || 'Metric';
+      const seen = counts.get(base) || 0;
+      counts.set(base, seen + 1);
+      const label = seen > 0 ? `${base} ${seen + 1}` : base;
+      out.push({ label, value });
+    }
+    return out;
   }
 
   private sanitizeGenerationPrompt(rawPrompt: string): string {
