@@ -9,6 +9,7 @@ import { ObservabilityGateway } from '../../observability/observability.gateway'
 
 @Injectable()
 export class DataVizStrategy extends BaseImageStrategy {
+  private readonly chartEngine = String(process.env.CHART_ENGINE || 'echarts').trim().toLowerCase();
   private readonly chartThemePresets: Record<string, {
     background: string;
     textPrimary: string;
@@ -255,7 +256,7 @@ export class DataVizStrategy extends BaseImageStrategy {
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
     const theme = this.buildCourseChartTheme(task);
-    const vChartLib = this.loadVChartLib();
+    const chartRuntime = this.loadChartRuntime();
 
     // Construct the HTML with VChart spec
     // Reusing the robust spec logic from Prompt 8
@@ -263,7 +264,7 @@ export class DataVizStrategy extends BaseImageStrategy {
       <!DOCTYPE html>
       <html>
       <head>
-        <script>${vChartLib}</script>
+        <script>${chartRuntime}</script>
         <style>
           body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${theme.background}; }
           #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; box-sizing: border-box; border: 2px solid ${theme.containerBorder}; border-radius: 14px; }
@@ -438,6 +439,36 @@ export class DataVizStrategy extends BaseImageStrategy {
       </body>
       </html>
     `;
+  }
+
+  private loadChartRuntime(): string {
+    if (this.chartEngine === 'echarts') {
+      return this.loadEChartsLib();
+    }
+    return this.loadVChartLib();
+  }
+
+  private loadEChartsLib(): string {
+    const candidates = [
+      path.resolve(process.cwd(), 'public/assets/echarts.min.js'),
+      path.resolve(process.cwd(), 'node_modules/echarts/dist/echarts.min.js'),
+      path.resolve(process.cwd(), 'node_modules/echarts/dist/echarts.js'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      try {
+        const content = fs.readFileSync(candidate, 'utf8');
+        if (content && content.length > 1000) {
+          this.logger.log(`[DataViz] Loaded ECharts runtime from: ${candidate}`);
+          return content;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+
+    throw new Error('ECharts runtime not found. Expected public/assets/echarts.min.js or node_modules/echarts/dist/echarts.min.js');
   }
 
   private loadVChartLib(): string {
