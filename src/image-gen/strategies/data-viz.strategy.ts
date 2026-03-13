@@ -255,16 +255,61 @@ export class DataVizStrategy extends BaseImageStrategy {
   }
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
-    const theme = this.buildCourseChartTheme(task);
-    const chartRuntime = this.loadChartRuntime();
+    if (this.chartEngine === 'echarts') {
+      return this.getEChartsHtmlContent(task, payload, chartData, isAnimated);
+    }
+    return this.getVChartHtmlContent(task, payload, chartData, isAnimated);
+  }
 
-    // Construct the HTML with VChart spec
-    // Reusing the robust spec logic from Prompt 8
+  private getEChartsHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
+    const theme = this.buildCourseChartTheme(task);
+    const chartRuntime = this.loadEChartsLib();
+    const normalizedType = this.normalizeChartType(String(payload?.chartType || 'bar'));
+    const chartTitle = String(payload?.title || task.refined_prompt || 'Chart');
+    const option = this.buildEChartsOption(normalizedType, chartTitle, chartData, theme, isAnimated);
+
     return `
       <!DOCTYPE html>
       <html>
       <head>
+        <meta charset="utf-8" />
         <script>${chartRuntime}</script>
+        <style>
+          body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${theme.background}; }
+          #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; box-sizing: border-box; border: 2px solid ${theme.containerBorder}; border-radius: 14px; overflow: hidden; background: ${theme.background}; }
+        </style>
+      </head>
+      <body>
+        <div id="chart-container"></div>
+        <script>
+          window.__chartReady = false;
+          const option = ${JSON.stringify(option)};
+          const container = document.getElementById('chart-container');
+          const chart = echarts.init(container, null, { renderer: 'svg' });
+          chart.setOption(option, true);
+          const markReady = () => { window.__chartReady = true; };
+          if (${isAnimated}) {
+            chart.on('finished', markReady);
+            setTimeout(markReady, 2200);
+          } else {
+            setTimeout(markReady, 150);
+          }
+          window.addEventListener('resize', () => chart.resize());
+        </script>
+      </body>
+      </html>
+    `;
+  }
+
+  private getVChartHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
+    const theme = this.buildCourseChartTheme(task);
+    const vChartLib = this.loadVChartLib();
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <script>${vChartLib}</script>
         <style>
           body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${theme.background}; }
           #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; box-sizing: border-box; border: 2px solid ${theme.containerBorder}; border-radius: 14px; }
@@ -273,6 +318,7 @@ export class DataVizStrategy extends BaseImageStrategy {
       <body>
         <div id="chart-container"></div>
         <script>
+    window.__chartReady = false;
     const THEME = ${JSON.stringify(theme)};
     const isAnimated = ${isAnimated};
     const commonSpec = {
@@ -285,42 +331,39 @@ export class DataVizStrategy extends BaseImageStrategy {
       colorField: THEME.multicolorByDatum ? 'color_slot' : undefined,
       title: {
         visible: true,
-        text: '${String(payload?.title || task.refined_prompt).replace(/'/g, "\\'")}',
-        textStyle: { 
-            fontSize: 28, 
-            fontWeight: 'bold', 
-            fill: THEME.textPrimary, 
+        text: ${JSON.stringify(String(payload?.title || task.refined_prompt))},
+        textStyle: {
+            fontSize: 28,
+            fontWeight: 'bold',
+            fill: THEME.textPrimary,
             fontFamily: THEME.fontFamily
         },
         padding: { bottom: 20 }
       },
-      legends: { 
-        visible: true, 
+      legends: {
+        visible: true,
         orient: 'bottom',
         item: {
             label: {
                 style: {
-                    fill: THEME.textSecondary, 
+                    fill: THEME.textSecondary,
                     fontSize: 13
                 }
             }
         }
       },
-      // Animation Logic
       animation: isAnimated,
       animationAppear: {
         duration: 1500,
         easing: 'cubicOut',
         oneByOne: true
       },
-      
-      // Axes - Empty default, will be populated for cartesian
       axes: []
     };
 
     let spec = {};
     const type = '${payload.chartType}';
-    
+
     if (type === 'pie' || type === 'donut') {
        spec = {
           ...commonSpec,
@@ -334,7 +377,7 @@ export class DataVizStrategy extends BaseImageStrategy {
                   fill: '#e2e8f0'
               }
           },
-          axes: [] // GUARD: No axes for pie
+          axes: []
        };
     } else if (type === 'funnel') {
        spec = {
@@ -347,14 +390,13 @@ export class DataVizStrategy extends BaseImageStrategy {
                   fill: '#e2e8f0'
               }
           },
-          axes: [] // GUARD: No axes for funnel
+          axes: []
        };
     } else {
        const baseValues = ${JSON.stringify(chartData)};
        if (THEME.multicolorByDatum) {
           commonSpec.data.values = baseValues.map((d, idx) => ({ ...d, color_slot: 'c' + (idx % THEME.palette.length) }));
        }
-       // Cartesian types (Bar, Line)
        spec = {
           ...commonSpec,
           xField: 'label',
@@ -411,7 +453,7 @@ export class DataVizStrategy extends BaseImageStrategy {
                   shadowBlur: 0
               }
           };
-       } else { // Bar
+       } else {
           spec.bar = {
               state: {
                   hover: { fill: THEME.accentSecondary }
@@ -435,10 +477,214 @@ export class DataVizStrategy extends BaseImageStrategy {
     const VChartClass = (typeof VChart !== 'undefined' && VChart.default) ? VChart.default : VChart;
     const vchart = new VChartClass(spec, { dom: 'chart-container' });
     vchart.renderSync();
+    window.__chartReady = true;
         </script>
       </body>
       </html>
     `;
+  }
+
+  private normalizeChartType(type: string): 'bar' | 'line' | 'pie' | 'funnel' {
+    const raw = String(type || '').toLowerCase();
+    if (raw.includes('line')) return 'line';
+    if (raw.includes('pie') || raw.includes('donut')) return 'pie';
+    if (raw.includes('funnel')) return 'funnel';
+    return 'bar';
+  }
+
+  private buildEChartsOption(
+    type: 'bar' | 'line' | 'pie' | 'funnel',
+    title: string,
+    chartData: any[],
+    theme: ReturnType<DataVizStrategy['buildCourseChartTheme']>,
+    isAnimated: boolean,
+  ): Record<string, any> {
+    const rows = Array.isArray(chartData) ? chartData : [];
+    const labels = rows.map((row) => String(row?.label ?? ''));
+    const values = rows.map((row) => Number(row?.value ?? 0));
+    const seriesData = rows.map((row, idx) => ({
+      value: Number(row?.value ?? 0),
+      name: String(row?.label ?? ''),
+      itemStyle: theme.multicolorByDatum ? { color: theme.palette[idx % theme.palette.length] } : undefined,
+    }));
+
+    const base: Record<string, any> = {
+      backgroundColor: theme.background,
+      animation: isAnimated,
+      animationDuration: 1400,
+      animationEasing: 'cubicOut',
+      color: theme.palette,
+      title: {
+        text: title,
+        top: 18,
+        left: 'center',
+        textStyle: {
+          color: theme.textPrimary,
+          fontFamily: theme.fontFamily.replace(/'/g, ''),
+          fontSize: 30,
+          fontWeight: 700,
+        },
+      },
+      tooltip: {
+        trigger: type === 'pie' || type === 'funnel' ? 'item' : 'axis',
+        backgroundColor: '#ffffff',
+        borderColor: theme.containerBorder,
+        textStyle: {
+          color: theme.textPrimary,
+          fontFamily: theme.fontFamily.replace(/'/g, ''),
+        },
+      },
+      legend: {
+        bottom: 18,
+        left: 'center',
+        textStyle: {
+          color: theme.textSecondary,
+          fontFamily: theme.fontFamily.replace(/'/g, ''),
+        },
+      },
+      textStyle: {
+        fontFamily: theme.fontFamily.replace(/'/g, ''),
+      },
+    };
+
+    if (type === 'pie') {
+      return {
+        ...base,
+        series: [{
+          type: 'pie',
+          radius: ['0%', '72%'],
+          center: ['50%', '50%'],
+          top: 90,
+          bottom: 70,
+          avoidLabelOverlap: true,
+          itemStyle: {
+            borderColor: theme.background,
+            borderWidth: 3,
+          },
+          label: {
+            color: theme.textPrimary,
+            formatter: '{b}\n{d}%',
+            fontSize: 14,
+          },
+          labelLine: {
+            lineStyle: {
+              color: theme.textSecondary,
+            },
+          },
+          data: seriesData,
+        }],
+      };
+    }
+
+    if (type === 'funnel') {
+      return {
+        ...base,
+        series: [{
+          type: 'funnel',
+          top: 110,
+          left: '12%',
+          width: '76%',
+          bottom: 80,
+          minSize: '20%',
+          maxSize: '92%',
+          gap: 6,
+          sort: 'descending',
+          label: {
+            show: true,
+            position: 'inside',
+            color: '#ffffff',
+            fontWeight: 700,
+          },
+          labelLine: { show: false },
+          itemStyle: {
+            borderColor: theme.background,
+            borderWidth: 2,
+          },
+          emphasis: {
+            label: { color: '#ffffff' },
+          },
+          data: seriesData,
+        }],
+      };
+    }
+
+    return {
+      ...base,
+      grid: {
+        left: 88,
+        right: 40,
+        top: 110,
+        bottom: 90,
+        containLabel: true,
+      },
+      xAxis: {
+        type: 'category',
+        data: labels,
+        axisLabel: {
+          color: theme.textSecondary,
+          fontSize: 13,
+          fontWeight: 600,
+          interval: 0,
+          rotate: labels.some((label) => String(label).length > 12) ? 20 : 0,
+        },
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: theme.gridColor } },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          color: theme.textSecondary,
+          fontSize: 12,
+        },
+        splitLine: {
+          lineStyle: {
+            color: theme.gridColor,
+            type: [4, 4],
+          },
+        },
+      },
+      series: [
+        type === 'line'
+          ? {
+              type: 'line',
+              smooth: true,
+              data: seriesData.map((row) => row.value),
+              symbol: 'circle',
+              symbolSize: theme.pointSize || 8,
+              lineStyle: {
+                width: theme.lineStrokeWidth || 3,
+                color: theme.accentPrimary,
+              },
+              itemStyle: {
+                color: theme.accentPrimary,
+                borderColor: theme.background,
+                borderWidth: theme.pointStrokeWidth || 2,
+              },
+            }
+          : {
+              type: 'bar',
+              data: seriesData,
+              barWidth: '52%',
+              itemStyle: {
+                borderRadius: [10, 10, 0, 0],
+                borderColor: theme.barStroke || theme.accentPrimary,
+                borderWidth: theme.barStrokeWidth || 0,
+                shadowBlur: theme.pseudo3dBars ? 10 : 0,
+                shadowOffsetX: theme.pseudo3dBars ? 4 : 0,
+                shadowOffsetY: theme.pseudo3dBars ? 4 : 0,
+                shadowColor: theme.pseudo3dBars ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0)',
+              },
+              label: theme.valueLabel
+                ? {
+                    show: true,
+                    position: 'top',
+                    color: theme.textSecondary,
+                    fontSize: 12,
+                  }
+                : undefined,
+            },
+      ],
+    };
   }
 
   private loadChartRuntime(): string {
@@ -597,9 +843,8 @@ export class DataVizStrategy extends BaseImageStrategy {
 
     try {
       await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('#chart-container canvas', { timeout: 10000 });
-      // Buffer for render
-      await page.waitForTimeout(500);
+      await page.waitForFunction(() => (window as any).__chartReady === true, undefined, { timeout: 10000 });
+      await page.waitForTimeout(250);
 
       const buffer = await page.locator('#chart-container').screenshot();
       const fileName = `task-${task.id}-data_viz.png`;
@@ -623,9 +868,7 @@ export class DataVizStrategy extends BaseImageStrategy {
 
     try {
       await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('#chart-container canvas', { timeout: 10000 });
-
-      // Wait for animation duration (1500) + buffer (500) = 2000ms
+      await page.waitForFunction(() => (window as any).__chartReady === true, undefined, { timeout: 10000 });
       await page.waitForTimeout(2000);
 
       // Close to flush video
