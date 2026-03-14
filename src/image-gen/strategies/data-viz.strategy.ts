@@ -601,10 +601,17 @@ export class DataVizStrategy extends BaseImageStrategy {
     const minValue = values.length ? Math.min(...values) : 0;
     const trendMin = Math.max(0, Math.floor(minValue * 0.85));
     const trendMax = maxValue > 0 ? Math.ceil(maxValue * 1.12) : undefined;
+    const focusIndex = values.length ? values.indexOf(maxValue) : -1;
     const seriesData = rows.map((row, idx) => ({
       value: Number(row?.value ?? 0),
       name: String(row?.label ?? ''),
-      itemStyle: theme.multicolorByDatum ? { color: theme.palette[idx % theme.palette.length] } : undefined,
+      itemStyle: theme.multicolorByDatum
+        ? { color: theme.palette[idx % theme.palette.length] }
+        : idx === focusIndex
+          ? { color: theme.accentPrimary }
+          : type === 'bar'
+            ? { color: this.hexToRgba(theme.accentPrimary, 0.72) }
+            : undefined,
     }));
 
     const base: Record<string, any> = {
@@ -620,14 +627,15 @@ export class DataVizStrategy extends BaseImageStrategy {
         textStyle: {
           color: theme.textPrimary,
           fontFamily: theme.fontFamily.replace(/'/g, ''),
-          fontSize: type === 'line' ? 32 : 30,
+          fontSize: type === 'line' ? 32 : type === 'bar' ? 31 : 30,
           fontWeight: 700,
         },
       },
       tooltip: {
         trigger: type === 'pie' || type === 'funnel' ? 'item' : 'axis',
-        backgroundColor: '#ffffff',
+        backgroundColor: this.hexToRgba(theme.background, 0.98),
         borderColor: theme.containerBorder,
+        borderWidth: 1,
         valueFormatter: (value: number) => {
           if (valueFormat === 'percent') return `${value}%`;
           return valueSuffix ? `${value}${valueSuffix}` : `${value}`;
@@ -654,21 +662,44 @@ export class DataVizStrategy extends BaseImageStrategy {
     if (type === 'pie') {
       return {
         ...base,
+        graphic: [{
+          type: 'text',
+          left: 'center',
+          top: '44%',
+          style: {
+            text: rows[focusIndex]?.name || '',
+            fill: theme.textSecondary,
+            font: `600 14px ${theme.fontFamily.replace(/'/g, '')}`,
+            textAlign: 'center',
+          },
+        }, {
+          type: 'text',
+          left: 'center',
+          top: '48%',
+          style: {
+            text: focusIndex >= 0 ? `${values[focusIndex]}${valueSuffix || (valueFormat === 'percent' ? '%' : '')}` : '',
+            fill: theme.textPrimary,
+            font: `700 24px ${theme.fontFamily.replace(/'/g, '')}`,
+            textAlign: 'center',
+          },
+        }],
         series: [{
           type: 'pie',
-          radius: ['0%', '72%'],
+          radius: ['42%', '72%'],
           center: ['50%', '50%'],
-          top: 90,
-          bottom: 70,
+          top: 96,
+          bottom: 82,
           avoidLabelOverlap: true,
           itemStyle: {
             borderColor: theme.background,
-            borderWidth: 3,
+            borderWidth: 4,
+            borderRadius: 8,
           },
           label: {
             color: theme.textPrimary,
             formatter: '{b}\n{d}%',
-            fontSize: 14,
+            fontSize: 13,
+            fontWeight: 600,
           },
           labelLine: {
             lineStyle: {
@@ -685,24 +716,27 @@ export class DataVizStrategy extends BaseImageStrategy {
         ...base,
         series: [{
           type: 'funnel',
-          top: 110,
-          left: '12%',
-          width: '76%',
-          bottom: 80,
+          top: 120,
+          left: '14%',
+          width: '72%',
+          bottom: 92,
           minSize: '20%',
           maxSize: '92%',
-          gap: 6,
+          gap: 10,
           sort: 'descending',
           label: {
             show: true,
             position: 'inside',
             color: '#ffffff',
             fontWeight: 700,
+            fontSize: 14,
+            formatter: (params: any) => `${params?.name || ''}\n${params?.value ?? ''}${valueSuffix || (valueFormat === 'percent' ? '%' : '')}`,
           },
           labelLine: { show: false },
           itemStyle: {
             borderColor: theme.background,
-            borderWidth: 2,
+            borderWidth: 3,
+            borderRadius: 6,
           },
           emphasis: {
             label: { color: '#ffffff' },
@@ -715,10 +749,10 @@ export class DataVizStrategy extends BaseImageStrategy {
     return {
       ...base,
       grid: {
-        left: type === 'line' ? 78 : 88,
-        right: type === 'line' ? 72 : 40,
-        top: type === 'line' ? 120 : 110,
-        bottom: type === 'line' ? 80 : 90,
+        left: type === 'line' ? 78 : 82,
+        right: type === 'line' ? 72 : 48,
+        top: type === 'line' ? 120 : 118,
+        bottom: type === 'line' ? 80 : 88,
         containLabel: true,
       },
       xAxis: {
@@ -726,7 +760,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         data: labels,
         axisLabel: {
           color: theme.textSecondary,
-          fontSize: type === 'line' ? 14 : 13,
+          fontSize: type === 'line' ? 14 : 14,
           fontWeight: 600,
           interval: 0,
           rotate: labels.some((label) => String(label).length > 12) ? 20 : 0,
@@ -747,6 +781,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         axisLabel: {
           color: theme.textSecondary,
           fontSize: type === 'line' ? 13 : 12,
+          margin: 12,
           formatter: valueFormat === 'percent'
             ? '{value}%'
             : (valueSuffix ? `{value}${valueSuffix}` : '{value}'),
@@ -800,22 +835,27 @@ export class DataVizStrategy extends BaseImageStrategy {
           : {
               type: 'bar',
               data: seriesData,
-              barWidth: '52%',
+              barWidth: rows.length <= 4 ? '46%' : '52%',
               itemStyle: {
-                borderRadius: [10, 10, 0, 0],
+                borderRadius: [12, 12, 0, 0],
                 borderColor: theme.barStroke || theme.accentPrimary,
                 borderWidth: theme.barStrokeWidth || 0,
-                shadowBlur: theme.pseudo3dBars ? 10 : 0,
+                shadowBlur: theme.pseudo3dBars ? 10 : 8,
                 shadowOffsetX: theme.pseudo3dBars ? 4 : 0,
-                shadowOffsetY: theme.pseudo3dBars ? 4 : 0,
-                shadowColor: theme.pseudo3dBars ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0)',
+                shadowOffsetY: theme.pseudo3dBars ? 4 : 5,
+                shadowColor: theme.pseudo3dBars ? 'rgba(0,0,0,0.15)' : this.hexToRgba(theme.accentPrimary, 0.12),
               },
-              label: theme.valueLabel
+              label: theme.valueLabel || rows.length <= 6
                 ? {
                     show: true,
                     position: 'top',
-                    color: theme.textSecondary,
-                    fontSize: 12,
+                    color: theme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: 700,
+                    distance: 10,
+                    formatter: valueFormat === 'percent'
+                      ? '{c}%'
+                      : (valueSuffix ? `{c}${valueSuffix}` : '{c}'),
                   }
                 : undefined,
             },
