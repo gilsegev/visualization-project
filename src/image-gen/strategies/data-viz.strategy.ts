@@ -603,7 +603,12 @@ export class DataVizStrategy extends BaseImageStrategy {
     const trendMax = maxValue > 0 ? Math.ceil(maxValue * 1.12) : undefined;
     const focusIndex = values.length ? values.indexOf(maxValue) : -1;
     const barFocusColor = theme.accentPrimary;
-    const barMutedColor = this.hexToRgba(theme.accentPrimary, 0.78);
+    const barSecondaryColors = [
+      this.hexToRgba(theme.accentPrimary, 0.62),
+      this.hexToRgba(theme.accentPrimary, 0.48),
+      this.hexToRgba(theme.accentPrimary, 0.34),
+      this.hexToRgba(theme.accentPrimary, 0.24),
+    ];
     const seriesData = rows.map((row, idx) => ({
       value: Number(row?.value ?? 0),
       name: String(row?.label ?? ''),
@@ -612,7 +617,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         : idx === focusIndex
           ? { color: barFocusColor }
           : type === 'bar'
-            ? { color: barMutedColor }
+            ? { color: barSecondaryColors[Math.min(idx, barSecondaryColors.length - 1)] }
             : undefined,
     }));
 
@@ -624,6 +629,7 @@ export class DataVizStrategy extends BaseImageStrategy {
       color: theme.palette,
       title: {
         text: title,
+        subtext: type === 'bar' && yAxisLabel ? yAxisLabel : '',
         top: 20,
         left: 'center',
         textStyle: {
@@ -632,6 +638,13 @@ export class DataVizStrategy extends BaseImageStrategy {
           fontSize: type === 'line' ? 32 : type === 'bar' ? 31 : 30,
           fontWeight: 700,
         },
+        subtextStyle: {
+          color: theme.textSecondary,
+          fontFamily: theme.fontFamily.replace(/'/g, ''),
+          fontSize: 13,
+          fontWeight: 600,
+        },
+        itemGap: 10,
       },
       tooltip: {
         trigger: type === 'pie' || type === 'funnel' ? 'item' : 'axis',
@@ -795,6 +808,7 @@ export class DataVizStrategy extends BaseImageStrategy {
             type: type === 'line' ? [3, 6] : [2, 8],
           },
         },
+        splitNumber: type === 'bar' ? 4 : undefined,
       },
       series: [
         type === 'line'
@@ -840,25 +854,25 @@ export class DataVizStrategy extends BaseImageStrategy {
               data: seriesData,
               barWidth: rows.length <= 4 ? '46%' : '52%',
               itemStyle: {
-                borderRadius: [12, 12, 0, 0],
+                borderRadius: [16, 16, 0, 0],
                 borderColor: theme.barStroke || theme.accentPrimary,
                 borderWidth: theme.barStrokeWidth || 0,
-                shadowBlur: theme.pseudo3dBars ? 10 : 8,
+                shadowBlur: theme.pseudo3dBars ? 10 : 12,
                 shadowOffsetX: theme.pseudo3dBars ? 4 : 0,
-                shadowOffsetY: theme.pseudo3dBars ? 4 : 5,
-                shadowColor: theme.pseudo3dBars ? 'rgba(0,0,0,0.15)' : this.hexToRgba(theme.accentPrimary, 0.12),
+                shadowOffsetY: theme.pseudo3dBars ? 4 : 8,
+                shadowColor: theme.pseudo3dBars ? 'rgba(0,0,0,0.15)' : this.hexToRgba(theme.accentPrimary, 0.16),
               },
               label: theme.valueLabel || rows.length <= 6
                 ? {
                     show: true,
                     position: 'top',
                     color: theme.textPrimary,
-                    fontSize: 13,
+                    fontSize: 14,
                     fontWeight: 700,
                     distance: 8,
-                    backgroundColor: this.hexToRgba(theme.background, 0.94),
-                    borderRadius: 8,
-                    padding: [3, 6, 3, 6],
+                    backgroundColor: this.hexToRgba(theme.background, 0.98),
+                    borderRadius: 10,
+                    padding: [4, 7, 4, 7],
                     formatter: valueFormat === 'percent'
                       ? '{c}%'
                       : (valueSuffix ? `{c}${valueSuffix}` : '{c}'),
@@ -866,18 +880,6 @@ export class DataVizStrategy extends BaseImageStrategy {
                 : undefined,
             },
       ],
-      graphic: type === 'bar' && yAxisLabel
-        ? [{
-            type: 'text',
-            left: 84,
-            top: 92,
-            style: {
-              text: yAxisLabel,
-              fill: theme.textSecondary,
-              font: `600 13px ${theme.fontFamily.replace(/'/g, '')}`,
-            },
-          }]
-        : undefined,
     };
   }
 
