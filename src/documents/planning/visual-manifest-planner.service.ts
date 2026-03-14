@@ -144,6 +144,13 @@ function titleFromText(text: string): string {
   return norm(text).split(' ').slice(0, 8).join(' ') || 'Key Concept';
 }
 
+function isWeakConceptText(text: string): boolean {
+  const t = norm(text);
+  if (!t) return true;
+  if (t.length < 28) return true;
+  return /^(highlights?|overview|summary|key points?|insights?|snapshot|introduction)$/i.test(t);
+}
+
 function pickType(text: string, p?: ParagraphNode): PlannedVisualization['type'] {
   const t = norm(text).toLowerCase();
   if (p?.has_sequence || /\b(step\s+\d+|first|second|third|then|next|workflow|process)\b/.test(t)) return 'flowchart';
@@ -1220,12 +1227,25 @@ export class VisualManifestPlannerService {
     try {
       const llmVisuals = await this.planVisualsWithLlm(input, maxAssets, captionMaxChars, input.onTelemetry);
       if (!llmVisuals.length) return deterministic;
+      const deterministicVisuals = deterministic.lessons[0]?.visualizations || [];
+      const llmHasFlowchart = llmVisuals.some((v) => v.type === 'flowchart');
+      const supplementalVisuals = !llmHasFlowchart
+        ? deterministicVisuals.filter((v) => v.type === 'flowchart').slice(0, 1)
+        : [];
+      const mergedVisuals = [...llmVisuals];
+      for (const candidate of supplementalVisuals) {
+        const alreadyPresent = mergedVisuals.some((v) =>
+          v.type === candidate.type
+          && String(v.anchor_id || '') === String(candidate.anchor_id || '')
+        );
+        if (!alreadyPresent) mergedVisuals.push(candidate);
+      }
       const cappedVisuals = this.applyAnchorDensityCap(llmVisuals, input.anchors, input.sections);
       const manifest: DocumentVisualManifest = {
         ...deterministic,
         lessons: [{
           ...deterministic.lessons[0],
-          visualizations: cappedVisuals
+          visualizations: this.applyAnchorDensityCap(mergedVisuals.slice(0, maxAssets), input.anchors, input.sections)
         }]
       };
       return manifest;
@@ -1550,10 +1570,17 @@ export class VisualManifestPlannerService {
       const baseAnchorInfo = structuralById.get(baseAnchorId) || structural[0];
       if (!baseAnchorInfo) continue;
       const typeAlignedAnchor = this.findBestAnchorForType(mappedType, baseAnchorInfo, structural);
+      const fallbackText = buildTextForType(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+      if (isWeakConceptText(text)) {
+        text = fallbackText;
+      }
       const eligibility = validateTypeEligibility(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
       const resolvedType = eligibility.valid
         ? mappedType
         : remapIneligibleType(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+      if (isWeakConceptText(text)) {
+        text = buildTextForType(resolvedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+      }
       const requestedScope = norm(String((v as any)?.placement?.scope || ''));
       const scopeNormalized = this.normalizePlacementScope(requestedScope, typeAlignedAnchor);
       const defaultPlacement = defaultPlacementForType(resolvedType);
