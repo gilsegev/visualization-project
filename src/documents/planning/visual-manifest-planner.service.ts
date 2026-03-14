@@ -56,6 +56,63 @@ function norm(v: string): string {
   return String(v || '').replace(/\s+/g, ' ').trim();
 }
 
+function stripCodeFences(text: string): string {
+  return String(text || '').replace(/```json/gi, '').replace(/```/g, '').trim();
+}
+
+function trimToFirstJsonObject(text: string): string {
+  const raw = String(text || '');
+  const start = raw.indexOf('{');
+  return start >= 0 ? raw.slice(start) : raw;
+}
+
+function repairPossiblyTruncatedJson(text: string): string {
+  const src = trimToFirstJsonObject(stripCodeFences(text))
+    .replace(/,\s*([}\]])/g, '$1');
+  if (!src) return src;
+
+  let out = '';
+  let inString = false;
+  let escaped = false;
+  const stack: string[] = [];
+
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    out += ch;
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{' || ch === '[') {
+      stack.push(ch);
+      continue;
+    }
+    if (ch === '}' || ch === ']') {
+      const top = stack[stack.length - 1];
+      if ((top === '{' && ch === '}') || (top === '[' && ch === ']')) {
+        stack.pop();
+      }
+    }
+  }
+
+  if (inString) out += '"';
+  while (stack.length) {
+    const top = stack.pop();
+    out += top === '{' ? '}' : ']';
+  }
+  return out.replace(/,\s*([}\]])/g, '$1').trim();
+}
+
 function titleFromText(text: string): string {
   return norm(text).split(' ').slice(0, 8).join(' ') || 'Key Concept';
 }
@@ -879,6 +936,25 @@ function summarizeGroundedDataSeries(series: GroundedDataSeries): string {
     .join('; ');
 }
 
+function inferCountMeasureLabel(text: string): string {
+  const t = norm(text).toLowerCase();
+  if (!t) return 'Value';
+  if (/\banglers?\b/.test(t)) return 'Anglers';
+  if (/\bparticipants?\b/.test(t)) return 'Participants';
+  if (/\bamericans?\b/.test(t)) return 'Americans';
+  if (/\bpeople\b/.test(t)) return 'People';
+  if (/\busers?\b/.test(t)) return 'Users';
+  if (/\bpopulation\b/.test(t)) return 'Population';
+  return 'Value';
+}
+
+function inferValueSuffix(series: GroundedDataSeries): '' | 'K' | 'M' | 'B' {
+  // Root-cause fix: bind chart units to grounded series semantics, not broad prose windows.
+  if (series.kind === 'currency') return 'B';
+  if (series.kind === 'count') return 'M';
+  return '';
+}
+
 function extractGroundedDataPoints(
   paragraphText: string,
   windowText: string,
@@ -1187,6 +1263,14 @@ export class VisualManifestPlannerService {
           const seriesSummary = describeGroundedDataSeries(series);
           planned.title = seriesSummary.title;
           planned.purpose = seriesSummary.purpose;
+          planned.value_format = series.kind === 'percent' ? 'percent' : 'count';
+          planned.value_suffix = inferValueSuffix(series);
+          if (planned.value_format === 'percent') {
+            planned.y_axis_label = 'Percent (%)';
+          } else {
+            const measure = inferCountMeasureLabel(`${paragraphText} ${windowText}`);
+            planned.y_axis_label = planned.value_suffix ? `${measure} (${planned.value_suffix})` : measure;
+          }
           planned.chart_role = inferChartRole(series);
           const summaryText = summarizeGroundedDataSeries(series);
           if (summaryText) {
@@ -1297,7 +1381,7 @@ export class VisualManifestPlannerService {
     const candidates = input.anchors.slice(0, Math.max(maxAssets * 3, 12)).map((a) => {
       const p = input.paragraphs[a.paragraph_index];
       const w = windowsByAnchor.get(a.anchor_id);
-      const text = norm((w?.content || p?.text || '').slice(0, 1800));
+      const text = norm((w?.content || p?.text || '').slice(0, 1200));
       const meta = structuralById.get(a.anchor_id);
       return {
         anchor_id: a.anchor_id,
@@ -1356,19 +1440,43 @@ export class VisualManifestPlannerService {
     let cleaned = '';
     let parsed: any = {};
     try {
-      completion = await this.openai.chat.completions.create({
-        model,
-        response_format: { type: 'text' },
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: 2400,
-        temperature: 0.2
-      });
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: userPrompt }
+      ];
+      try {
+        completion = await this.openai.chat.completions.create({
+          model,
+          response_format: { type: 'json_object' as const },
+          messages,
+          max_tokens: 1800,
+          temperature: 0.1
+        });
+      } catch (jsonModeError: any) {
+        const msg = String(jsonModeError?.message || '').toLowerCase();
+        const jsonModeUnsupported =
+          msg.includes('response_format') ||
+          msg.includes('json_object') ||
+          msg.includes('unsupported') ||
+          msg.includes('invalid parameter');
+        if (!jsonModeUnsupported) throw jsonModeError;
+        completion = await this.openai.chat.completions.create({
+          model,
+          response_format: { type: 'text' },
+          messages,
+          max_tokens: 1800,
+          temperature: 0.1
+        });
+      }
       raw = String(completion?.choices?.[0]?.message?.content || '').trim();
-      cleaned = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-      parsed = JSON.parse(cleaned);
+      cleaned = stripCodeFences(raw);
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        const repaired = repairPossiblyTruncatedJson(cleaned);
+        cleaned = repaired || cleaned;
+        parsed = JSON.parse(cleaned);
+      }
     } catch (error: any) {
       onTelemetry?.({
         type: 'llm_error',
@@ -1475,6 +1583,14 @@ export class VisualManifestPlannerService {
           const seriesSummary = describeGroundedDataSeries(series);
           planned.title = seriesSummary.title;
           planned.purpose = seriesSummary.purpose;
+          planned.value_format = series.kind === 'percent' ? 'percent' : 'count';
+          planned.value_suffix = inferValueSuffix(series);
+          if (planned.value_format === 'percent') {
+            planned.y_axis_label = 'Percent (%)';
+          } else {
+            const measure = inferCountMeasureLabel(`${dataParagraph} ${dataWindow}`);
+            planned.y_axis_label = planned.value_suffix ? `${measure} (${planned.value_suffix})` : measure;
+          }
           planned.chart_role = planned.chart_role || inferChartRole(series);
           const summaryText = summarizeGroundedDataSeries(series);
           if (summaryText) {
