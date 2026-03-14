@@ -113,6 +113,33 @@ function repairPossiblyTruncatedJson(text: string): string {
   return out.replace(/,\s*([}\]])/g, '$1').trim();
 }
 
+function extractFirstBalancedJsonObject(text: string): string {
+  const src = trimToFirstJsonObject(stripCodeFences(text));
+  if (!src || src[0] !== '{') return '';
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) return src.slice(0, i + 1);
+    }
+  }
+  return '';
+}
+
 function titleFromText(text: string): string {
   return norm(text).split(' ').slice(0, 8).join(' ') || 'Key Concept';
 }
@@ -1473,9 +1500,17 @@ export class VisualManifestPlannerService {
       try {
         parsed = JSON.parse(cleaned);
       } catch {
-        const repaired = repairPossiblyTruncatedJson(cleaned);
+        const balanced = extractFirstBalancedJsonObject(cleaned);
+        const repaired = repairPossiblyTruncatedJson(balanced || cleaned);
         cleaned = repaired || cleaned;
-        parsed = JSON.parse(cleaned);
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          const llmRepaired = await this.repairPlanningJsonWithLlm(cleaned, model);
+          if (!llmRepaired) throw new Error('LLM planning JSON repair failed');
+          cleaned = llmRepaired;
+          parsed = JSON.parse(cleaned);
+        }
       }
     } catch (error: any) {
       onTelemetry?.({
@@ -1487,6 +1522,7 @@ export class VisualManifestPlannerService {
     }
     const inVisuals = Array.isArray(parsed?.visualizations) ? parsed.visualizations : [];
     const seen = new Set<string>();
+    const seenDataSeries = new Set<string>();
     const visuals: PlannedVisualization[] = [];
     const placementNormalization: Array<{
       index: number;
@@ -1640,6 +1676,16 @@ export class VisualManifestPlannerService {
       });
       planned.caption_text = caption.caption_text;
       planned.caption_mode = caption.caption_mode;
+      if (planned.type === 'data_viz' && Array.isArray(planned.data_points) && planned.data_points.length >= 2) {
+        const seriesFingerprint = [
+          planned.anchor_id,
+          planned.data_points.map((point) => `${norm(point.label).toLowerCase()}:${Number(point.value)}`).join('|'),
+        ].join('::');
+        if (seenDataSeries.has(seriesFingerprint)) {
+          continue;
+        }
+        seenDataSeries.add(seriesFingerprint);
+      }
       sectionCounts.set(typeAlignedAnchor.section, sectionCount + 1);
       const reasons = [...scopeNormalized.reasons];
       if (typeAlignedAnchor.anchor_id !== baseAnchorInfo.anchor_id) {
@@ -1675,6 +1721,38 @@ export class VisualManifestPlannerService {
       placement_normalization: placementNormalization,
     });
     return normalizedVisuals;
+  }
+
+  private async repairPlanningJsonWithLlm(rawJsonLike: string, model: string): Promise<string | null> {
+    if (!this.openai) return null;
+    const repairPrompt = [
+      'You repair malformed JSON into valid strict JSON.',
+      'Return only one JSON object.',
+      'Required top-level shape: {"visualizations":[...]}',
+      'If content is unusable, return {"visualizations":[]}.',
+      '',
+      'Malformed input:',
+      String(rawJsonLike || '').slice(0, 12000),
+    ].join('\n');
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model,
+        response_format: { type: 'json_object' as const },
+        messages: [
+          { role: 'system', content: 'Return strict JSON only.' },
+          { role: 'user', content: repairPrompt },
+        ],
+        temperature: 0,
+        max_tokens: 1800,
+      });
+      const raw = String(completion?.choices?.[0]?.message?.content || '').trim();
+      const cleaned = stripCodeFences(raw);
+      JSON.parse(cleaned);
+      return cleaned;
+    } catch (error) {
+      this.logger.warn(`Planning JSON repair call failed: ${String((error as any)?.message || error)}`);
+      return null;
+    }
   }
 
   private async resolveMermaidWithRetries(text: string): Promise<{ code: string | null; valid: boolean }> {
