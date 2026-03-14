@@ -9,6 +9,7 @@ import { DocxSurgicalInserterService } from '../documents/insertion/docx-surgica
 import { VisualManifestPlannerService } from '../documents/planning/visual-manifest-planner.service';
 import { DocumentAssetJudgeService } from '../documents/quality/document-asset-judge.service';
 import { ImageStrategyFactory } from '../image-gen/image-strategy.factory';
+import { resolveStyleSelection } from '../image-gen/style-registry.config';
 import { ObservabilityGateway } from '../observability/observability.gateway';
 import { PostgresStorageService } from '../storage/postgres-storage.service';
 import { DocumentObjectKeyLayout, R2ObjectStorageService } from '../storage/object-storage';
@@ -938,6 +939,25 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
   }> {
     const visuals = (input.manifest?.lessons || [])
       .flatMap((lesson: any) => Array.isArray(lesson?.visualizations) ? lesson.visualizations : []);
+    const documentStyle = resolveStyleSelection(input.manifest, {});
+    this.observability.emitLog('info', `Document styling decision job=${input.jobId}`, 'DocumentStyling', undefined, undefined, {
+      metadata: {
+        user_id: input.userId,
+        doc_job_id: input.jobId,
+        stage: 'planning',
+        event_type: 'artifact_written',
+        provider_status: 'document_style_selected',
+        style_profile_id: documentStyle.profile.id,
+        infographic_theme_id: documentStyle.infographicThemeId,
+        chart_theme_id: documentStyle.chartThemeId,
+        chart_family: documentStyle.documentChartStyleDecision.chart_family,
+        chart_tone: documentStyle.documentChartStyleDecision.tone,
+        chart_density: documentStyle.documentChartStyleDecision.density,
+        chart_energy: documentStyle.documentChartStyleDecision.energy,
+        chart_surface: documentStyle.documentChartStyleDecision.surface,
+        planned_visual_count: visuals.length,
+      }
+    });
     const maxAssets = Math.max(1, Number(process.env.DOC_ASSET_GEN_MAX || 8));
     const assetTimeoutMs = Math.max(15000, Number(process.env.DOC_ASSET_GEN_TIMEOUT_MS || 120000));
     const selected = visuals.slice(0, maxAssets);
@@ -953,6 +973,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     }> = [];
     for (let i = 0; i < selected.length; i += 1) {
       const viz = selected[i];
+      const styleSelection = resolveStyleSelection(input.manifest, viz);
       const visualType = String(viz?.type || 'visual').trim().toLowerCase() || 'visual';
       const contextText = String(viz?.context || '');
       const anchorId = String(viz?.anchor_id || '').trim() || null;
@@ -1008,7 +1029,29 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       } as any);
 
       try {
-        const task = this.buildImageTask(viz, taskId, prompt, visualType);
+        const task = this.buildImageTask(viz, taskId, prompt, visualType, styleSelection);
+        this.observability.emitLog('info', `Asset styling decision job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentStyling', undefined, undefined, {
+          metadata: {
+            user_id: input.userId,
+            doc_job_id: input.jobId,
+            asset_task_id: taskId,
+            stage: 'generating_assets',
+            event_type: 'artifact_written',
+            provider_status: 'asset_style_selected',
+            visual_type: visualType,
+            anchor_id: anchorId,
+            style_profile_id: styleSelection.profile.id,
+            infographic_theme_id: styleSelection.infographicThemeId,
+            chart_theme_id: styleSelection.chartThemeId,
+            chart_role: String(viz?.chart_role || '').trim() || null,
+            chart_family: String(viz?.chart_family || '').trim() || null,
+            renderer_hint: String(viz?.renderer_hint || '').trim() || null,
+            chart_tone: styleSelection.documentChartStyleDecision.tone,
+            chart_density: styleSelection.documentChartStyleDecision.density,
+            chart_energy: styleSelection.documentChartStyleDecision.energy,
+            chart_surface: styleSelection.documentChartStyleDecision.surface,
+          }
+        });
         if (visualType === 'data_viz') {
           const dataPreview = Array.isArray((task as any)?.payload?.data)
             ? (task as any).payload.data.slice(0, 8).map((row: any) => `${String(row?.label || '')}:${String(row?.value || '')}`).join(', ')
@@ -1023,6 +1066,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
               provider_status: 'data_viz_payload_built',
               visual_type: visualType,
               chart_type: (task as any)?.payload?.chartType || null,
+              chart_role: (task as any)?.metadata?.chart_role || null,
+              chart_family: (task as any)?.metadata?.chart_family || null,
+              renderer_hint: (task as any)?.metadata?.renderer_hint || null,
+              chart_theme_id: (task as any)?.metadata?.chart_theme_id || null,
+              style_profile_id: (task as any)?.metadata?.style_profile_id || null,
               data_source: (task as any)?.payload?.data_source || null,
               data_preview: dataPreview || null,
               source_preview: String((task as any)?.payload?.source_preview || '').slice(0, 320) || null,
@@ -1426,7 +1474,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     return 'image/png';
   }
 
-  private buildImageTask(viz: any, taskId: string, prompt: string, visualType: string): any {
+  private buildImageTask(viz: any, taskId: string, prompt: string, visualType: string, styleSelection?: any): any {
     const normalized = String(visualType || '').trim().toLowerCase();
     if (normalized === 'data_viz') {
       const payload = this.buildDocumentDataVizPayload(viz, prompt);
@@ -1435,6 +1483,16 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         id: taskId,
         refined_prompt: prompt,
         payload,
+        metadata: {
+          source: 'document_pipeline',
+          chart_theme_id: styleSelection?.chartThemeId || null,
+          style_profile_id: styleSelection?.profile?.id || null,
+          chart_role: String(viz?.chart_role || '').trim() || null,
+          chart_family: String(viz?.chart_family || '').trim() || null,
+          renderer_hint: String(viz?.renderer_hint || '').trim() || null,
+          document_chart_style_decision: styleSelection?.documentChartStyleDecision || null,
+          chart_style_tokens: styleSelection?.chartStyleTokens || null,
+        },
       };
     }
     if (normalized === 'sourced_image') {
@@ -1587,6 +1645,24 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
     const normalizedData = this.normalizeDataVizSeries(data).slice(0, 8);
 
+    const unitContext = `${String(viz?.title || '')} ${String(viz?.description || '')} ${String(viz?.context || '')} ${String(viz?.purpose || '')} ${text}`;
+    const inferredValueFormat: 'percent' | 'count' = /\b(percent|percentage|share|rate)\b/i.test(unitContext)
+      ? 'percent'
+      : 'count';
+    const inferredValueSuffix = /\bmillion(s)?\b/i.test(unitContext)
+      ? 'M'
+      : /\bbillion(s)?\b/i.test(unitContext)
+        ? 'B'
+        : /\bthousand(s)?\b/i.test(unitContext)
+          ? 'K'
+          : '';
+    const inferredYAxisLabel = inferredValueFormat === 'percent'
+      ? 'Percent (%)'
+      : (inferredValueSuffix ? `Value (${inferredValueSuffix})` : 'Value');
+    const explicitYAxisLabel = String(viz?.y_axis_label || '').trim();
+    const explicitValueSuffix = String(viz?.value_suffix || '').trim().toUpperCase();
+    const explicitValueFormat = String(viz?.value_format || '').trim().toLowerCase();
+
     return {
       chartType,
       data: normalizedData,
@@ -1594,6 +1670,9 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       title: String(viz?.title || '').trim() || 'Data Visualization',
       source_preview: text.slice(0, 320),
       data_source: dataSource,
+      value_format: explicitValueFormat === 'percent' ? 'percent' : inferredValueFormat,
+      value_suffix: ['K', 'M', 'B'].includes(explicitValueSuffix) ? explicitValueSuffix : inferredValueSuffix,
+      y_axis_label: explicitYAxisLabel || inferredYAxisLabel,
     };
   }
 
@@ -1636,7 +1715,6 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       String(viz?.description || '').trim(),
       String(viz?.context || '').trim(),
       String(viz?.purpose || '').trim(),
-      String(prompt || '').trim(),
     ].filter(Boolean).join(' | ');
   }
 
@@ -1733,6 +1811,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       const v = String(value || '').toLowerCase();
       if (!v) return true;
       if (v.length < 4 || v.length > 80) return true;
+      if (/\b(mouse cursors|watermark text|placeholder text|random letters|gibberish|ui elements?)\b/.test(v)) return true;
       if (/^anchor\b/.test(v)) return true;
       if (/\banchor-[a-z0-9-]+\b/.test(v)) return true;
       if (/\bsection\b/.test(v) && /\bintroduction\b/.test(v)) return true;

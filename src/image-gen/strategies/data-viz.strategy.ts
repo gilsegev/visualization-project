@@ -159,10 +159,12 @@ export class DataVizStrategy extends BaseImageStrategy {
   protected async performGeneration(task: ImageTask, index?: number): Promise<ImageGenerationResult> {
     const startedAt = Date.now();
     const payload = task.payload as any;
+    const metadata = (task as any)?.metadata || {};
     // Implementation of Prompt 9: Use 'format' from payload, or fallback to 'exportType'
     const exportType = 'exportType' in task ? task.exportType : 'static';
     const format = payload.format || exportType;
     const isAnimated = format === 'animated';
+    const renderer = this.shouldUseD3(task, payload) ? 'd3' : (this.chartEngine === 'echarts' ? 'echarts' : 'vchart');
 
     this.logger.log(`[DEBUG] Task ${task.id}: Starting data viz (${payload.chartType}) - Mode: ${format}`);
 
@@ -187,6 +189,23 @@ export class DataVizStrategy extends BaseImageStrategy {
       `Chart config: type=${String(payload.chartType || 'bar')} format=${format} rows=${rowCount}${labelsPreview ? ` labels=${labelsPreview}` : ''}`,
       'DataViz',
       task.id
+    );
+    this.observability.emitLog(
+      'info',
+      `Chart styling decision renderer=${renderer} family=${String(metadata?.chart_family || 'default')} role=${String(metadata?.chart_role || 'comparison')}`,
+      'DataViz',
+      task.id,
+      undefined,
+      {
+        metadata: {
+          chart_theme_id: metadata?.chart_theme_id || null,
+          style_profile_id: metadata?.style_profile_id || null,
+          chart_role: metadata?.chart_role || null,
+          chart_family: metadata?.chart_family || null,
+          renderer_hint: metadata?.renderer_hint || null,
+          renderer_selected: renderer,
+        }
+      }
     );
 
     if (isAnimated) {
