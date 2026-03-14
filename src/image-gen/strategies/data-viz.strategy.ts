@@ -597,6 +597,10 @@ export class DataVizStrategy extends BaseImageStrategy {
     const rows = Array.isArray(chartData) ? chartData : [];
     const labels = rows.map((row) => String(row?.label ?? ''));
     const values = rows.map((row) => Number(row?.value ?? 0));
+    const maxValue = values.length ? Math.max(...values) : 0;
+    const minValue = values.length ? Math.min(...values) : 0;
+    const trendMin = Math.max(0, Math.floor(minValue * 0.85));
+    const trendMax = maxValue > 0 ? Math.ceil(maxValue * 1.12) : undefined;
     const seriesData = rows.map((row, idx) => ({
       value: Number(row?.value ?? 0),
       name: String(row?.label ?? ''),
@@ -611,12 +615,12 @@ export class DataVizStrategy extends BaseImageStrategy {
       color: theme.palette,
       title: {
         text: title,
-        top: 18,
+        top: 20,
         left: 'center',
         textStyle: {
           color: theme.textPrimary,
           fontFamily: theme.fontFamily.replace(/'/g, ''),
-          fontSize: 30,
+          fontSize: type === 'line' ? 32 : 30,
           fontWeight: 700,
         },
       },
@@ -634,6 +638,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         },
       },
       legend: {
+        show: false,
         bottom: 18,
         left: 'center',
         textStyle: {
@@ -710,10 +715,10 @@ export class DataVizStrategy extends BaseImageStrategy {
     return {
       ...base,
       grid: {
-        left: 88,
-        right: 40,
-        top: 110,
-        bottom: 90,
+        left: type === 'line' ? 78 : 88,
+        right: type === 'line' ? 72 : 40,
+        top: type === 'line' ? 120 : 110,
+        bottom: type === 'line' ? 80 : 90,
         containLabel: true,
       },
       xAxis: {
@@ -721,16 +726,18 @@ export class DataVizStrategy extends BaseImageStrategy {
         data: labels,
         axisLabel: {
           color: theme.textSecondary,
-          fontSize: 13,
+          fontSize: type === 'line' ? 14 : 13,
           fontWeight: 600,
           interval: 0,
           rotate: labels.some((label) => String(label).length > 12) ? 20 : 0,
         },
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: theme.gridColor } },
+        axisLine: { lineStyle: { color: theme.gridColor, width: type === 'line' ? 1.2 : 1 } },
       },
       yAxis: {
         type: 'value',
+        min: type === 'line' ? trendMin : undefined,
+        max: type === 'line' ? trendMax : undefined,
         name: yAxisLabel || undefined,
         nameTextStyle: {
           color: theme.textSecondary,
@@ -747,7 +754,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         splitLine: {
           lineStyle: {
             color: theme.gridColor,
-            type: [4, 4],
+            type: type === 'line' ? [3, 6] : [4, 4],
           },
         },
       },
@@ -755,18 +762,32 @@ export class DataVizStrategy extends BaseImageStrategy {
         type === 'line'
           ? {
               type: 'line',
-              smooth: true,
+              smooth: false,
               data: seriesData.map((row) => row.value),
               symbol: 'circle',
-              symbolSize: theme.pointSize || 8,
+              symbolSize: (theme.pointSize || 8) + 3,
               lineStyle: {
-                width: theme.lineStrokeWidth || 3,
+                width: (theme.lineStrokeWidth || 3) + 0.8,
                 color: theme.accentPrimary,
+              },
+              areaStyle: {
+                color: this.hexToRgba(theme.accentPrimary, 0.12),
               },
               itemStyle: {
                 color: theme.accentPrimary,
                 borderColor: theme.background,
-                borderWidth: theme.pointStrokeWidth || 2,
+                borderWidth: (theme.pointStrokeWidth || 2) + 1,
+              },
+              label: {
+                show: true,
+                position: 'top',
+                distance: 10,
+                color: theme.textPrimary,
+                fontSize: 13,
+                fontWeight: 700,
+                formatter: valueFormat === 'percent'
+                  ? '{c}%'
+                  : (valueSuffix ? `{c}${valueSuffix}` : '{c}'),
               },
             }
           : {
