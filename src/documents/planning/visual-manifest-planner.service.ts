@@ -902,6 +902,17 @@ function selectGroundedDataPoints(
   return selected;
 }
 
+function hasLocalChartSeries(
+  anchor: AnchorStructuralInfo,
+  intent: { title?: string; purpose?: string; description?: string }
+): boolean {
+  return Boolean(selectGroundedDataPoints(anchor.paragraph_text, anchor.paragraph_text, intent));
+}
+
+function hasLocalFlowchartEvidence(anchor: AnchorStructuralInfo): boolean {
+  return extractSteps(anchor.paragraph_text).length >= 2 || validateTypeEligibility('flowchart', anchor.paragraph_text, anchor.paragraph_text).valid;
+}
+
 function describeGroundedDataSeries(series: GroundedDataSeries): { title: string; purpose: string } {
   const labels = series.points.map((point) => norm(point.label).toLowerCase());
   if (labels.every((label) => /^age \d{2}-\d{2}$/.test(label) || /^age \d{2}\+$/.test(label))) {
@@ -1569,7 +1580,16 @@ export class VisualManifestPlannerService {
         : (input.anchors[0]?.anchor_id || '');
       const baseAnchorInfo = structuralById.get(baseAnchorId) || structural[0];
       if (!baseAnchorInfo) continue;
-      const typeAlignedAnchor = this.findBestAnchorForType(mappedType, baseAnchorInfo, structural);
+      const keepBaseAnchor =
+        (mappedType === 'data_viz' && hasLocalChartSeries(baseAnchorInfo, {
+          title: String(v?.title || ''),
+          purpose: String(v?.purpose || ''),
+          description: text,
+        }))
+        || (mappedType === 'flowchart' && hasLocalFlowchartEvidence(baseAnchorInfo));
+      const typeAlignedAnchor = keepBaseAnchor
+        ? baseAnchorInfo
+        : this.findBestAnchorForType(mappedType, baseAnchorInfo, structural);
       const fallbackText = buildTextForType(mappedType, typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
       if (isWeakConceptText(text)) {
         text = fallbackText;
