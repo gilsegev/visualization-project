@@ -602,15 +602,17 @@ export class DataVizStrategy extends BaseImageStrategy {
     const trendMin = Math.max(0, Math.floor(minValue * 0.85));
     const trendMax = maxValue > 0 ? Math.ceil(maxValue * 1.12) : undefined;
     const focusIndex = values.length ? values.indexOf(maxValue) : -1;
+    const barFocusColor = theme.accentPrimary;
+    const barMutedColor = this.hexToRgba(theme.accentPrimary, 0.78);
     const seriesData = rows.map((row, idx) => ({
       value: Number(row?.value ?? 0),
       name: String(row?.label ?? ''),
       itemStyle: theme.multicolorByDatum
         ? { color: theme.palette[idx % theme.palette.length] }
         : idx === focusIndex
-          ? { color: theme.accentPrimary }
+          ? { color: barFocusColor }
           : type === 'bar'
-            ? { color: this.hexToRgba(theme.accentPrimary, 0.72) }
+            ? { color: barMutedColor }
             : undefined,
     }));
 
@@ -751,7 +753,7 @@ export class DataVizStrategy extends BaseImageStrategy {
       grid: {
         left: type === 'line' ? 78 : 82,
         right: type === 'line' ? 72 : 48,
-        top: type === 'line' ? 120 : 118,
+        top: type === 'line' ? 120 : 132,
         bottom: type === 'line' ? 80 : 88,
         containLabel: true,
       },
@@ -766,7 +768,7 @@ export class DataVizStrategy extends BaseImageStrategy {
           rotate: labels.some((label) => String(label).length > 12) ? 20 : 0,
         },
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.45) : theme.gridColor, width: type === 'line' ? 1 : 1 } },
+        axisLine: { lineStyle: { color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.45) : this.hexToRgba(theme.textSecondary, 0.38), width: 1 } },
       },
       yAxis: {
         type: 'value',
@@ -774,9 +776,10 @@ export class DataVizStrategy extends BaseImageStrategy {
         max: type === 'line' ? trendMax : undefined,
         name: yAxisLabel || undefined,
         nameTextStyle: {
-          color: theme.textSecondary,
-          fontSize: 12,
-          padding: [0, 0, 8, 0],
+          color: theme.textPrimary,
+          fontSize: type === 'bar' ? 13 : 12,
+          fontWeight: type === 'bar' ? 600 : 400,
+          padding: [0, 0, 12, 0],
         },
         axisLabel: {
           color: theme.textSecondary,
@@ -788,8 +791,8 @@ export class DataVizStrategy extends BaseImageStrategy {
         },
         splitLine: {
           lineStyle: {
-            color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.22) : theme.gridColor,
-            type: type === 'line' ? [3, 6] : [4, 4],
+            color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.22) : this.hexToRgba(theme.textSecondary, 0.16),
+            type: type === 'line' ? [3, 6] : [2, 8],
           },
         },
       },
@@ -852,7 +855,10 @@ export class DataVizStrategy extends BaseImageStrategy {
                     color: theme.textPrimary,
                     fontSize: 13,
                     fontWeight: 700,
-                    distance: 10,
+                    distance: 8,
+                    backgroundColor: this.hexToRgba(theme.background, 0.94),
+                    borderRadius: 8,
+                    padding: [3, 6, 3, 6],
                     formatter: valueFormat === 'percent'
                       ? '{c}%'
                       : (valueSuffix ? `{c}${valueSuffix}` : '{c}'),
@@ -860,6 +866,18 @@ export class DataVizStrategy extends BaseImageStrategy {
                 : undefined,
             },
       ],
+      graphic: type === 'bar' && yAxisLabel
+        ? [{
+            type: 'text',
+            left: 84,
+            top: 92,
+            style: {
+              text: yAxisLabel,
+              fill: theme.textSecondary,
+              font: `600 13px ${theme.fontFamily.replace(/'/g, '')}`,
+            },
+          }]
+        : undefined,
     };
   }
 
