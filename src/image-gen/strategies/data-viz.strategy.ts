@@ -295,9 +295,17 @@ export class DataVizStrategy extends BaseImageStrategy {
     const theme = this.buildCourseChartTheme(task);
     const d3Runtime = this.loadD3Lib();
     const title = String(payload?.title || task.refined_prompt || 'Chart');
+    const subtitle = String(payload?.y_axis_label || '').trim()
+      || (String(payload?.value_format || '').trim().toLowerCase() === 'percent' ? 'Percent share' : '')
+      || (String(payload?.value_suffix || '').trim() ? `Values in ${String(payload?.value_suffix || '').trim()}` : '');
     const rows = (Array.isArray(chartData) ? chartData : [])
       .map((row) => ({ label: String(row?.label ?? ''), value: Number(row?.value ?? 0) }))
       .filter((row) => row.label && Number.isFinite(row.value));
+    const paper = this.hexToRgba(theme.accentPrimary, 0.05);
+    const mutedBar = this.hexToRgba(theme.accentPrimary, 0.45);
+    const track = this.hexToRgba(theme.textSecondary, 0.12);
+    const rule = this.hexToRgba(theme.textSecondary, 0.18);
+    const grid = this.hexToRgba(theme.textSecondary, 0.14);
     return `
       <!DOCTYPE html>
       <html>
@@ -305,8 +313,8 @@ export class DataVizStrategy extends BaseImageStrategy {
         <meta charset="utf-8" />
         <script>${d3Runtime}</script>
         <style>
-          body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: ${theme.background}; }
-          #chart-container { width: 1024px; height: 1024px; background: ${theme.background}; border: 2px solid ${theme.containerBorder}; border-radius: 14px; overflow: hidden; font-family: ${theme.fontFamily}; }
+          body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: ${paper}; }
+          #chart-container { width: 1024px; height: 1024px; background: ${theme.background}; border: 1px solid ${theme.containerBorder}; border-radius: 18px; overflow: hidden; font-family: ${theme.fontFamily}; }
           text { font-family: ${theme.fontFamily}; }
         </style>
       </head>
@@ -315,28 +323,37 @@ export class DataVizStrategy extends BaseImageStrategy {
         <script>
           window.__chartReady = false;
           const rows = ${JSON.stringify(rows)};
-          const w = 1024, h = 1024, m = { top: 130, right: 96, bottom: 120, left: 160 };
+          const w = 1024, h = 1024, m = { top: 220, right: 118, bottom: 92, left: 236 };
           const title = ${JSON.stringify(title)};
+          const subtitle = ${JSON.stringify(subtitle)};
           const max = d3.max(rows, d => d.value) || 1;
           const focus = rows.reduce((best, row) => row.value > (best?.value ?? -Infinity) ? row : best, null);
           const svg = d3.select('#chart-container').append('svg').attr('width', w).attr('height', h);
-          svg.append('text').attr('x', w / 2).attr('y', 58).attr('text-anchor', 'middle').attr('fill', '${theme.textPrimary}').attr('font-size', 30).attr('font-weight', 700).text(title);
-          const x = d3.scaleBand().domain(rows.map(d => d.label)).range([m.left, w - m.right]).padding(0.22);
-          const y = d3.scaleLinear().domain([0, max * 1.18]).nice().range([h - m.bottom, m.top]);
-          svg.append('g').attr('transform', 'translate(0,' + (h - m.bottom) + ')').call(d3.axisBottom(x).tickSize(0))
+          svg.append('rect').attr('x', 0).attr('y', 0).attr('width', w).attr('height', h).attr('fill', '${theme.background}');
+          svg.append('rect').attr('x', 46).attr('y', 54).attr('width', 6).attr('height', 74).attr('rx', 3).attr('fill', '${theme.accentPrimary}');
+          svg.append('text').attr('x', 74).attr('y', 82).attr('fill', '${theme.textSecondary}').attr('font-size', 15).attr('font-weight', 700).text('Editorial Spotlight');
+          svg.append('text').attr('x', 74).attr('y', 122).attr('fill', '${theme.textPrimary}').attr('font-size', 36).attr('font-weight', 800).text(title);
+          if (subtitle) svg.append('text').attr('x', 74).attr('y', 154).attr('fill', '${theme.textSecondary}').attr('font-size', 16).attr('font-weight', 600).text(subtitle);
+          svg.append('line').attr('x1', 74).attr('x2', w - 74).attr('y1', 182).attr('y2', 182).attr('stroke', '${rule}').attr('stroke-width', 1.5);
+          const x = d3.scaleLinear().domain([0, max * 1.12]).nice().range([m.left, w - m.right]);
+          const y = d3.scaleBand().domain(rows.map(d => d.label)).range([m.top, h - m.bottom]).padding(0.3);
+          svg.append('g').attr('transform', 'translate(0,' + (h - m.bottom) + ')').call(d3.axisBottom(x).ticks(4).tickSize(-(h - m.top - m.bottom)))
             .call(g => g.select('.domain').remove())
-            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 13).attr('font-weight', 600));
-          svg.append('g').attr('transform', 'translate(' + m.left + ',0)').call(d3.axisLeft(y).ticks(5).tickSize(-(w - m.left - m.right)))
-            .call(g => g.select('.domain').remove())
-            .call(g => g.selectAll('.tick line').attr('stroke', '${theme.gridColor}'))
-            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 12));
+            .call(g => g.selectAll('.tick line').attr('stroke', '${grid}').attr('stroke-dasharray', '4 8'))
+            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 12).attr('font-weight', 600))
+            .call(g => g.selectAll('.tick').filter(d => Number(d) === 0).remove());
+          svg.selectAll('text.label').data(rows).enter().append('text')
+            .attr('x', m.left - 18).attr('y', d => (y(d.label) || 0) + y.bandwidth() / 2 + 5).attr('text-anchor', 'end')
+            .attr('fill', d => d.label === focus?.label ? '${theme.textPrimary}' : '${theme.textSecondary}')
+            .attr('font-size', 18).attr('font-weight', d => d.label === focus?.label ? 800 : 700).text(d => d.label);
+          svg.selectAll('rect.track').data(rows).enter().append('rect')
+            .attr('x', m.left).attr('y', d => y(d.label)).attr('width', w - m.left - m.right).attr('height', y.bandwidth()).attr('rx', 18).attr('fill', '${track}');
           svg.selectAll('rect.bar').data(rows).enter().append('rect')
-            .attr('x', d => x(d.label)).attr('y', d => y(d.value)).attr('width', x.bandwidth()).attr('height', d => y(0) - y(d.value))
-            .attr('rx', 12).attr('fill', d => d.label === focus?.label ? '${theme.accentPrimary}' : '${theme.palette[1] || theme.accentSecondary}')
-            .attr('stroke', '${theme.barStroke}').attr('stroke-width', ${theme.barStrokeWidth || 0});
+            .attr('x', m.left).attr('y', d => y(d.label)).attr('width', d => Math.max(8, x(d.value) - m.left)).attr('height', y.bandwidth()).attr('rx', 18)
+            .attr('fill', d => d.label === focus?.label ? '${theme.accentPrimary}' : '${mutedBar}');
           svg.selectAll('text.value').data(rows).enter().append('text')
-            .attr('x', d => (x(d.label) || 0) + x.bandwidth() / 2).attr('y', d => y(d.value) - 12).attr('text-anchor', 'middle')
-            .attr('fill', '${theme.textPrimary}').attr('font-size', 13).attr('font-weight', d => d.label === focus?.label ? 700 : 600).text(d => d.value);
+            .attr('x', d => Math.min(w - m.right + 8, x(d.value) + 12)).attr('y', d => (y(d.label) || 0) + y.bandwidth() / 2 + 6)
+            .attr('fill', '${theme.textPrimary}').attr('font-size', 24).attr('font-weight', 800).text(d => d.value);
           window.__chartReady = true;
         </script>
       </body>
@@ -1082,7 +1099,7 @@ export class DataVizStrategy extends BaseImageStrategy {
     try {
       await page.setContent(htmlContent, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(() => (window as any).__chartReady === true, undefined, { timeout: 10000 });
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(80);
 
       const buffer = await page.locator('#chart-container').screenshot();
       const fileName = `task-${task.id}-data_viz.png`;

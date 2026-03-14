@@ -1078,6 +1078,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
           });
         }
         let generated: any;
+        const assetStartedAt = Date.now();
+        const renderStartedAt = Date.now();
         try {
           const strategy = this.strategyFactory.getStrategy(task);
           generated = await Promise.race([
@@ -1116,17 +1118,22 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
             }),
           ]);
         }
+        const renderMs = Date.now() - renderStartedAt;
         const localUrl = String(generated?.posterUrl || generated?.url || '').trim();
+        const loadStartedAt = Date.now();
         const loaded = await this.loadGeneratedAsset(localUrl);
+        const loadMs = Date.now() - loadStartedAt;
         if (!loaded?.buffer) {
           throw new Error(`Generated asset output missing for ${taskId}`);
         }
+        const judgeStartedAt = Date.now();
         const judgeVerdict = await this.assetJudge.judge({
           imageBytes: loaded.buffer,
           extension: loaded.ext || '.png',
           visualType,
           prompt,
         });
+        const judgeMs = Date.now() - judgeStartedAt;
         this.observability.emitLog(judgeVerdict.passed ? 'info' : 'warn', `Document asset judge verdict job=${input.jobId} asset=${taskId} pass=${judgeVerdict.passed}`, 'DocumentAssetJudge', undefined, undefined, {
           metadata: {
             user_id: input.userId,
@@ -1197,7 +1204,25 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         const ext = loaded.ext || '.png';
         const objectKey = DocumentObjectKeyLayout.asset({ jobId: input.jobId }, `${taskId}${ext}`);
         const contentType = this.contentTypeForExtension(ext);
+        const uploadStartedAt = Date.now();
         await this.uploadObject(objectKey, loaded.buffer, contentType);
+        const uploadMs = Date.now() - uploadStartedAt;
+        this.observability.emitLog('info', `Asset pipeline timings job=${input.jobId} asset=${taskId} render_ms=${renderMs} load_ms=${loadMs} judge_ms=${judgeMs} upload_ms=${uploadMs} total_ms=${Date.now() - assetStartedAt}`, 'DocumentAssetTiming', undefined, undefined, {
+          metadata: {
+            user_id: input.userId,
+            doc_job_id: input.jobId,
+            asset_task_id: taskId,
+            stage: 'generating_assets',
+            event_type: 'quality_scored',
+            provider_status: 'asset_timing_measured',
+            visual_type: visualType,
+            render_ms: renderMs,
+            load_ms: loadMs,
+            judge_ms: judgeMs,
+            upload_ms: uploadMs,
+            total_ms: Date.now() - assetStartedAt,
+          }
+        });
 
         await this.storage.upsertDocumentAsset({
           assetTaskId: taskId,
