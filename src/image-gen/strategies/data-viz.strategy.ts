@@ -295,9 +295,12 @@ export class DataVizStrategy extends BaseImageStrategy {
     const theme = this.buildCourseChartTheme(task);
     const d3Runtime = this.loadD3Lib();
     const title = String(payload?.title || task.refined_prompt || 'Chart');
-    const subtitle = String(payload?.y_axis_label || '').trim()
-      || (String(payload?.value_format || '').trim().toLowerCase() === 'percent' ? 'Percent share' : '')
-      || (String(payload?.value_suffix || '').trim() ? `Values in ${String(payload?.value_suffix || '').trim()}` : '');
+    const valueSuffix = String(payload?.value_suffix || '').trim().toUpperCase();
+    const subtitle = this.describeUnit(
+      String(payload?.y_axis_label || '').trim(),
+      String(payload?.value_format || '').trim().toLowerCase() === 'percent' ? 'percent' : 'count',
+      valueSuffix,
+    );
     const rows = (Array.isArray(chartData) ? chartData : [])
       .map((row) => ({ label: String(row?.label ?? ''), value: Number(row?.value ?? 0) }))
       .filter((row) => row.label && Number.isFinite(row.value));
@@ -326,6 +329,7 @@ export class DataVizStrategy extends BaseImageStrategy {
           const w = 1024, h = 1024, m = { top: 220, right: 118, bottom: 92, left: 236 };
           const title = ${JSON.stringify(title)};
           const subtitle = ${JSON.stringify(subtitle)};
+          const valueSuffix = ${JSON.stringify(valueSuffix)};
           const max = d3.max(rows, d => d.value) || 1;
           const focus = rows.reduce((best, row) => row.value > (best?.value ?? -Infinity) ? row : best, null);
           const svg = d3.select('#chart-container').append('svg').attr('width', w).attr('height', h);
@@ -340,7 +344,7 @@ export class DataVizStrategy extends BaseImageStrategy {
           svg.append('g').attr('transform', 'translate(0,' + (h - m.bottom) + ')').call(d3.axisBottom(x).ticks(4).tickSize(-(h - m.top - m.bottom)))
             .call(g => g.select('.domain').remove())
             .call(g => g.selectAll('.tick line').attr('stroke', '${grid}').attr('stroke-dasharray', '4 8'))
-            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 12).attr('font-weight', 600))
+            .call(g => g.selectAll('text').text(d => valueSuffix ? String(d) + valueSuffix : String(d)).attr('fill', '${theme.textSecondary}').attr('font-size', 12).attr('font-weight', 600))
             .call(g => g.selectAll('.tick').filter(d => Number(d) === 0).remove());
           svg.selectAll('text.label').data(rows).enter().append('text')
             .attr('x', m.left - 18).attr('y', d => (y(d.label) || 0) + y.bandwidth() / 2 + 5).attr('text-anchor', 'end')
@@ -353,12 +357,26 @@ export class DataVizStrategy extends BaseImageStrategy {
             .attr('fill', d => d.label === focus?.label ? '${theme.accentPrimary}' : '${mutedBar}');
           svg.selectAll('text.value').data(rows).enter().append('text')
             .attr('x', d => Math.min(w - m.right + 8, x(d.value) + 12)).attr('y', d => (y(d.label) || 0) + y.bandwidth() / 2 + 6)
-            .attr('fill', '${theme.textPrimary}').attr('font-size', 24).attr('font-weight', 800).text(d => d.value);
+            .attr('fill', '${theme.textPrimary}').attr('font-size', 24).attr('font-weight', 800).text(d => valueSuffix ? String(d.value) + valueSuffix : String(d.value));
           window.__chartReady = true;
         </script>
       </body>
       </html>
     `;
+  }
+
+  private describeUnit(yAxisLabel: string, valueFormat: 'percent' | 'count', valueSuffix: string): string {
+    if (yAxisLabel) {
+      return yAxisLabel
+        .replace(/\(M\)/i, '(millions)')
+        .replace(/\(B\)/i, '(billions)')
+        .replace(/\(K\)/i, '(thousands)');
+    }
+    if (valueFormat === 'percent') return 'Percent (%)';
+    if (valueSuffix === 'M') return 'Values in millions';
+    if (valueSuffix === 'B') return 'Values in billions';
+    if (valueSuffix === 'K') return 'Values in thousands';
+    return '';
   }
 
   private getEChartsHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
