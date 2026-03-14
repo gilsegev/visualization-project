@@ -368,7 +368,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         <script>${chartRuntime}</script>
         <style>
           body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: ${theme.background}; }
-          #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; box-sizing: border-box; border: 2px solid ${theme.containerBorder}; border-radius: 14px; overflow: hidden; background: ${theme.background}; }
+          #chart-container { width: 1024px; height: 1024px; font-family: ${theme.fontFamily}; box-sizing: border-box; border: 1px solid ${theme.containerBorder}; border-radius: 14px; overflow: hidden; background: ${theme.background}; }
         </style>
       </head>
       <body>
@@ -732,7 +732,7 @@ export class DataVizStrategy extends BaseImageStrategy {
           rotate: labels.some((label) => String(label).length > 12) ? 20 : 0,
         },
         axisTick: { show: false },
-        axisLine: { lineStyle: { color: theme.gridColor, width: type === 'line' ? 1.2 : 1 } },
+        axisLine: { lineStyle: { color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.45) : theme.gridColor, width: type === 'line' ? 1 : 1 } },
       },
       yAxis: {
         type: 'value',
@@ -746,14 +746,14 @@ export class DataVizStrategy extends BaseImageStrategy {
         },
         axisLabel: {
           color: theme.textSecondary,
-          fontSize: 12,
+          fontSize: type === 'line' ? 13 : 12,
           formatter: valueFormat === 'percent'
             ? '{value}%'
             : (valueSuffix ? `{value}${valueSuffix}` : '{value}'),
         },
         splitLine: {
           lineStyle: {
-            color: theme.gridColor,
+            color: type === 'line' ? this.hexToRgba(theme.textSecondary, 0.22) : theme.gridColor,
             type: type === 'line' ? [3, 6] : [4, 4],
           },
         },
@@ -769,22 +769,29 @@ export class DataVizStrategy extends BaseImageStrategy {
               lineStyle: {
                 width: (theme.lineStrokeWidth || 3) + 0.8,
                 color: theme.accentPrimary,
+                cap: 'round',
+                join: 'round',
               },
               areaStyle: {
-                color: this.hexToRgba(theme.accentPrimary, 0.12),
+                color: this.hexToRgba(theme.accentPrimary, 0.16),
               },
               itemStyle: {
                 color: theme.accentPrimary,
                 borderColor: theme.background,
                 borderWidth: (theme.pointStrokeWidth || 2) + 1,
+                shadowBlur: 10,
+                shadowColor: this.hexToRgba(theme.accentPrimary, 0.18),
               },
               label: {
                 show: true,
                 position: 'top',
                 distance: 10,
                 color: theme.textPrimary,
-                fontSize: 13,
+                fontSize: 14,
                 fontWeight: 700,
+                backgroundColor: this.hexToRgba(theme.background, 0.92),
+                borderRadius: 8,
+                padding: [3, 6, 3, 6],
                 formatter: valueFormat === 'percent'
                   ? '{c}%'
                   : (valueSuffix ? `{c}${valueSuffix}` : '{c}'),
@@ -920,7 +927,7 @@ export class DataVizStrategy extends BaseImageStrategy {
         accentSecondary: tokens.color.palette?.[1] || tokens.color.emphasis || '#2F855A',
         palette: Array.isArray(tokens.color.palette) && tokens.color.palette.length ? tokens.color.palette : ['#2B6CB0', '#2F855A', '#D69E2E'],
         fontFamily: `'${String(tokens.type.titleFamily || tokens.type.bodyFamily || 'Inter').replace(/'/g, '')}', sans-serif`,
-        containerBorder: tokens.surface.border,
+        containerBorder: this.hexToRgba(tokens.color.emphasis || tokens.surface.border, 0.28),
         gridOpacity: tokens.axis.gridOpacity ?? 0.25,
         barStroke: tokens.color.emphasis || tokens.color.palette?.[0] || '#2B6CB0',
         barStrokeWidth: 0,
@@ -959,7 +966,7 @@ export class DataVizStrategy extends BaseImageStrategy {
     const fallbackPalette = ['#2B6CB0', '#2F855A', '#D69E2E', '#DD6B20', '#4A5568'];
     const palette = (coursePalette.length ? coursePalette : fallbackPalette).slice(0, 8);
 
-    const background = customTheme?.background_main || '#F7FAFC';
+    const background = customTheme?.background_main || '#FCFCFA';
     const textPrimary = customTheme?.text_main || palette[4] || '#1A365D';
     const textSecondary = customTheme?.text_secondary || '#4A5568';
     const accentPrimary = customTheme?.primary_accent || palette[0] || '#2B6CB0';
