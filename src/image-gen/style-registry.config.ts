@@ -1,4 +1,5 @@
 import { THEME_LIBRARY, Theme } from './themes.config';
+import { ChartRole, ChartStyleTokens, DocumentChartStyleDecision } from './chart-style.types';
 
 export interface StyleProfile {
   id: string;
@@ -18,6 +19,9 @@ export interface StyleSelection {
   chartThemeId: string;
   generatedImageStyleSuffix: string;
   sourcedImageStyleSuffix: string;
+  styleDecision: DocumentChartStyleDecision;
+  documentChartStyleDecision: DocumentChartStyleDecision;
+  chartStyleTokens: ChartStyleTokens;
 }
 
 export const STYLE_REGISTRY: Record<string, StyleProfile> = {
@@ -174,13 +178,92 @@ export function resolveStyleSelection(manifest: any, viz: any): StyleSelection {
     || String(courseStyling?.sourced_image_style_suffix || '').trim()
     || profile.assets.sourced_images.image_style_suffix;
 
+  const chartRole = ['comparison', 'trend', 'composition', 'spotlight', 'distribution'].includes(String(viz?.chart_role || ''))
+    ? viz.chart_role as ChartRole
+    : 'comparison';
+  const styleDecision = resolveDocumentChartStyleDecision(manifest, viz, profile, chartThemeId);
+  const chartStyleTokens = resolveChartStyleTokens(styleDecision.chart_theme_id, chartRole, styleDecision.chart_family);
+
   return {
     profile,
     infographicThemeId,
     chartThemeId,
     generatedImageStyleSuffix,
     sourcedImageStyleSuffix,
+    styleDecision,
+    documentChartStyleDecision: {
+      ...styleDecision,
+      tokens: chartStyleTokens,
+    },
+    chartStyleTokens,
   };
+}
+
+export function resolveDocumentChartStyleDecision(
+  manifest: any,
+  viz: any,
+  profile = resolveStyleProfileForManifest(manifest),
+  chartThemeId = String(viz?.metadata?.chart_theme_id || viz?.chart_theme_id || profile.assets.charts.chart_theme_id).trim(),
+): DocumentChartStyleDecision {
+  const context = [
+    String(manifest?.course?.title || ''),
+    String(manifest?.course?.targetAudience || ''),
+    String(manifest?.course?.designPhilosophy || ''),
+    String(manifest?.course?.globalStyleGuide?.mood || ''),
+    String(viz?.title || ''),
+    String(viz?.purpose || ''),
+  ].join(' ').toLowerCase();
+  const surface = /midnight|dark|noir|night|neon/.test(profile.id) ? 'dark' : 'light';
+  const tone =
+    /technical|engineering|system|architecture/.test(context) ? 'technical'
+    : /story|history|culture|narrative/.test(context) ? 'narrative'
+    : /guide|learning|education|field|document readers/.test(context) ? 'educational'
+    : 'executive';
+  const energy = /playful|dynamic|vivid|contrast|neon/.test(context) ? 'vivid' : tone === 'executive' ? 'restrained' : 'balanced';
+  const density = /overview|summary|executive/.test(context) ? 'low' : /technical|reference|compliance|detailed/.test(context) ? 'high' : 'medium';
+  const chart_family =
+    tone === 'technical' ? 'technical_slate'
+    : tone === 'educational' ? 'field_guide'
+    : tone === 'narrative' ? 'editorial_spotlight'
+    : 'executive_clean';
+  return {
+    profile_id: profile.id,
+    tone,
+    density,
+    energy,
+    surface,
+    trust_mode: tone === 'executive' ? 'conservative' : tone === 'technical' ? 'modern' : 'expressive',
+    chart_family,
+    chart_theme_id: chartThemeId || profile.assets.charts.chart_theme_id,
+    tokens: resolveChartStyleTokens(chartThemeId || profile.assets.charts.chart_theme_id, 'comparison', chart_family),
+  };
+}
+
+export function resolveChartStyleTokens(chartThemeId: string, chartRole: ChartRole = 'comparison', chartFamily?: DocumentChartStyleDecision['chart_family']): ChartStyleTokens {
+  const theme = THEME_LIBRARY[chartThemeId.replace(/^chart_/, '') as keyof typeof THEME_LIBRARY] || THEME_LIBRARY.corp_blue;
+  const dark = /^#0|^#1/i.test(String(theme.background_main || ''));
+  const tokens: ChartStyleTokens = {
+    surface: { background: theme.background_main, border: theme.primary_accent, radius: 14 },
+    type: { titleFamily: theme.font_name, bodyFamily: theme.font_name, titleSize: 30, axisSize: 13, annotationSize: 12 },
+    color: {
+      textPrimary: theme.text_main,
+      textSecondary: theme.text_secondary || theme.text_main,
+      grid: theme.text_secondary || theme.text_main,
+      emphasis: theme.secondary_accent || theme.primary_accent,
+      palette: [theme.primary_accent, theme.secondary_accent || theme.primary_accent, '#4A7EC1', '#D7A34A', '#5A635C'],
+    },
+    axis: { showDomain: false, tickSize: 0, labelRotation: 0, gridOpacity: dark ? 0.18 : 0.25 },
+    mark: { barRadius: 10, lineWidth: 3, pointSize: 8, valueLabels: false, multicolorByDatum: false, pseudo3dBars: false },
+    annotation: { enabled: chartFamily === 'editorial_spotlight', benchmarkLine: false, directLabels: chartRole === 'trend' || chartFamily === 'editorial_spotlight' },
+  };
+  if (chartRole === 'trend') tokens.mark = { ...tokens.mark, lineWidth: 3.5, pointSize: 9 };
+  if (chartRole === 'composition') tokens.mark = { ...tokens.mark, multicolorByDatum: true };
+  if (chartRole === 'spotlight' || chartFamily === 'editorial_spotlight') {
+    tokens.mark = { ...tokens.mark, valueLabels: true };
+    tokens.color.palette = [tokens.color.emphasis, '#A7B9D3', '#D8E1EC', '#E7EDF5', '#EEF3F8'];
+  }
+  if (chartFamily === 'field_guide') tokens.mark = { ...tokens.mark, valueLabels: true };
+  return tokens;
 }
 
 export function buildCustomThemeForPayload(

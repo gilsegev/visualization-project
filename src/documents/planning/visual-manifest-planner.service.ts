@@ -312,6 +312,14 @@ function validateTypeEligibility(type: PlannedVisualization['type'], paragraphTe
     if (!dataVizLooksValid(text)) return { valid: false, reason: 'data_viz_requires_numeric_or_metric_evidence' };
     return { valid: true, reason: 'data_viz_evidence_present' };
   }
+  if (type === 'sourced_image') {
+    if (/\b(visual representation|diagram|compare|comparison|examples? of|types? of|different kinds?|labeled|labelled)\b/i.test(text)) {
+      return { valid: false, reason: 'sourced_image_requires_scene_not_instructional_visual' };
+    }
+    if (/\b(knot|loop|tie)\b/i.test(text) && /,\s*[A-Z][A-Za-z' -]+/.test(text)) {
+      return { valid: false, reason: 'sourced_image_requires_scene_not_named_technique_list' };
+    }
+  }
   return { valid: true, reason: 'type_eligible' };
 }
 
@@ -319,6 +327,9 @@ function remapIneligibleType(type: PlannedVisualization['type'], paragraphText: 
   const text = norm(`${paragraphText} ${windowText}`);
   if (type === 'flowchart' || type === 'data_viz') {
     if (atmosphericScore(text) >= 2) return 'sourced_image';
+    return 'infographic';
+  }
+  if (type === 'sourced_image') {
     return 'infographic';
   }
   return type;
@@ -397,13 +408,483 @@ function buildFlowchartText(paragraphText: string, windowText: string): string {
 }
 
 function buildDataVizText(paragraphText: string, windowText: string): string {
-  const sentences = splitSentences(windowText);
-  const kept = sentences.filter((s) =>
+  const localSentences = splitSentences(paragraphText);
+  const localKept = localSentences.filter((s) =>
     /(\d|\bq[1-4]\b|%|\$|\b(trend|rate|distribution|count|ratio|increase|decrease|growth|decline|metric|kpi)\b)/i.test(s)
   );
-  const picked = (kept.length ? kept : splitSentences(paragraphText)).slice(0, 6).join(' ');
+  const windowSentences = splitSentences(windowText);
+  const windowKept = windowSentences.filter((s) =>
+    /(\d|\bq[1-4]\b|%|\$|\b(trend|rate|distribution|count|ratio|increase|decrease|growth|decline|metric|kpi)\b)/i.test(s)
+  );
+  const picked = (localKept.length >= 2 ? localKept : (windowKept.length ? windowKept : localSentences)).slice(0, 6).join(' ');
   const out = norm(picked || paragraphText || windowText);
   return out.length > 900 ? `${out.slice(0, 900)}...` : out;
+}
+
+type GroundedMetricFamilyKind = 'currency' | 'percent' | 'count' | 'quarter' | 'generic';
+type GroundedMetricFamily = {
+  key: string;
+  kind: GroundedMetricFamilyKind;
+  points: Array<{ label: string; value: number }>;
+};
+
+type GroundedDataSeries = {
+  kind: GroundedMetricFamilyKind;
+  points: Array<{ label: string; value: number }>;
+};
+
+function normalizeLabelStem(label: string): string {
+  return norm(label)
+    .toLowerCase()
+    .replace(/\((m|b|k|%|\$b)\)/g, ' ')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function seriesQualityScore(series: GroundedDataSeries): number {
+  const points = Array.isArray(series?.points) ? series.points : [];
+  if (points.length < 2) return 0;
+  let score = 0;
+  if (points.length >= 3) score += 6;
+  const stems = points.map((p) => normalizeLabelStem(String(p?.label || '')));
+  const uniqueStems = new Set(stems.filter(Boolean));
+  score += uniqueStems.size >= points.length ? 3 : -4;
+  const values = points.map((p) => Number(p?.value)).filter((v) => Number.isFinite(v));
+  if (values.length >= 2) {
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    if (max === min) score -= 5;
+    else if (Math.abs(max - min) >= Math.max(0.25, min * 0.05)) score += 2;
+  }
+  if (points.length === 2) {
+    const [a, b] = stems;
+    if (a && b) {
+      if (a === b) score -= 6;
+      if (a.includes(b) || b.includes(a)) score -= 3;
+    }
+  }
+  if (series.kind === 'quarter') score += 2;
+  return score;
+}
+
+function isSeriesAcceptable(series: GroundedDataSeries): boolean {
+  const points = Array.isArray(series?.points) ? series.points : [];
+  if (points.length < 2) return false;
+  if (points.length >= 3) return seriesQualityScore(series) >= 5;
+  return seriesQualityScore(series) >= 7;
+}
+
+const METRIC_STOPWORDS = new Set([
+  'a', 'an', 'and', 'as', 'at', 'by', 'for', 'from', 'in', 'is', 'it', 'of', 'on', 'or', 'per', 'the', 'to', 'was',
+  'were', 'with', 'this', 'that', 'these', 'those', 'approximately', 'about', 'around', 'nearly', 'roughly', 'latest',
+  'current', 'total', 'overall', 'calendar', 'year', 'last', 'next'
+]);
+
+function titleCaseLabel(value: string): string {
+  return norm(value)
+    .split(' ')
+    .filter(Boolean)
+    .map((token) => {
+      if (/^[A-Z0-9&/%()-]+$/.test(token)) return token;
+      return token.charAt(0).toUpperCase() + token.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+function localMetricPhrase(text: string, index: number, direction: 'before' | 'after'): string {
+  const raw = direction === 'before'
+    ? text.slice(Math.max(0, index - 96), index)
+    : text.slice(index, Math.min(text.length, index + 96));
+  const cleaned = norm(raw.replace(/[|]/g, ' '));
+  if (!cleaned) return '';
+  const clauses = cleaned.split(/[.;!?]/).map((part) => norm(part)).filter(Boolean);
+  const candidate = direction === 'before'
+    ? (clauses[clauses.length - 1] || '')
+    : (clauses[0] || '');
+  return candidate;
+}
+
+function inferMetricStem(prefix: string, suffix = ''): string {
+  const combined = norm(`${prefix} ${suffix}`.replace(/[$%]/g, ' '));
+  if (!combined) return '';
+  const words = combined.match(/[A-Za-z][A-Za-z0-9/&()-]*/g) || [];
+  const kept = words.filter((word) => !METRIC_STOPWORDS.has(word.toLowerCase()));
+  if (!kept.length) return '';
+  const tail = kept.slice(Math.max(0, kept.length - 4));
+  return titleCaseLabel(tail.join(' '));
+}
+
+function inferPercentLabel(prefix: string, suffix = ''): string {
+  const stem = inferMetricStem(prefix, suffix);
+  if (!stem) return 'Percentage (%)';
+  if (/\b(rate|share|ratio|mix|portion|growth|decline|change|conversion|retention)\b/i.test(stem)) {
+    return `${stem} (%)`;
+  }
+  return `${stem} Share (%)`;
+}
+
+function inferCurrencyLabel(prefix: string, suffix = ''): string {
+  const stem = inferMetricStem(prefix, suffix);
+  if (!stem) return 'Amount ($B)';
+  if (/\b(cost|expense|revenue|sales|income|profit|loss|budget|spend|spending|impact|value|price|gdp|funding)\b/i.test(stem)) {
+    return `${stem} ($B)`;
+  }
+  return `${stem} Value ($B)`;
+}
+
+function hasCurrencySignal(prefix: string, suffix = ''): boolean {
+  const context = norm(`${prefix} ${suffix}`).toLowerCase();
+  return /\b(cost|expense|revenue|sales|income|profit|loss|budget|spend|spending|impact|value|price|gdp|funding|market|valuation|economic)\b/.test(context);
+}
+
+function inferCountLabel(prefix: string, noun: string): string {
+  const stem = inferMetricStem(prefix, noun);
+  const nounLabel = titleCaseLabel(String(noun || '').replace(/s$/i, ''));
+  if (!stem) return `${nounLabel || 'Count'} (M)`;
+  if (new RegExp(`\\b${String(nounLabel || '').toLowerCase()}\\b`, 'i').test(stem)) return `${stem} (M)`;
+  return `${stem} ${nounLabel}`.trim() + ' (M)';
+}
+
+function normalizeMetricLabel(raw: string, fallback: string): string {
+  const clean = norm(raw).replace(/[:=,-]+$/g, '').slice(0, 64);
+  return clean || fallback;
+}
+
+function normalizeAgeGroupLabel(raw: string): string {
+  const value = norm(String(raw || ''))
+    .replace(/\bamong\b/gi, '')
+    .replace(/\bages?\b/gi, 'Age ')
+    .replace(/\bseniors?\b/gi, 'Age ')
+    .replace(/\s+and older\b/gi, '+')
+    .replace(/\s*\+\s*/g, '+')
+    .replace(/\s*to\s*/gi, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!value) return '';
+  const compact = value
+    .replace(/^Age\s+/i, 'Age ')
+    .replace(/^(\d{2})-(\d{2})$/i, 'Age $1-$2')
+    .replace(/^(\d{2}\+)$/i, 'Age $1');
+  return compact;
+}
+
+function extractAgeGroupCountSeries(text: string): Array<{ label: string; value: number }> {
+  const sentences = splitSentences(text);
+  const orderedLabels: string[] = [];
+  const latestByLabel = new Map<string, number>();
+
+  for (const sentence of sentences) {
+    const explicit = Array.from(sentence.matchAll(/(\d+(?:\.\d+)?)\s*(million|billion|thousand)\s+(?:among\s+)?((?:ages?\s+\d+\s*(?:to|-)\s*\d+)|(?:ages?\s+\d+\+)|(?:\d+\s+and older)|(?:seniors?\s+\d+\+))/gi));
+    if (explicit.length >= 2) {
+      for (const match of explicit) {
+        const label = normalizeAgeGroupLabel(String(match[3] || ''));
+        const base = Number(match[1]);
+        const scale = String(match[2] || '').toLowerCase();
+        const scaled =
+          scale === 'million' ? base
+          : scale === 'billion' ? base * 1000
+          : base / 1000;
+        if (!label || !Number.isFinite(scaled)) continue;
+        if (!orderedLabels.includes(label)) orderedLabels.push(label);
+        latestByLabel.set(label, scaled);
+      }
+      continue;
+    }
+
+    if (!orderedLabels.length) continue;
+    if (!/\b(20\d{2}|by\s+20\d{2}|season)\b/i.test(sentence)) continue;
+    const values = Array.from(sentence.matchAll(/(\d+(?:\.\d+)?)\s*(million|billion|thousand)\b/gi))
+      .map((match) => {
+        const base = Number(match[1]);
+        const scale = String(match[2] || '').toLowerCase();
+        return scale === 'million' ? base : scale === 'billion' ? base * 1000 : base / 1000;
+      })
+      .filter((value) => Number.isFinite(value));
+    if (values.length !== orderedLabels.length) continue;
+    orderedLabels.forEach((label, idx) => {
+      latestByLabel.set(label, Number(values[idx]));
+    });
+  }
+
+  return orderedLabels
+    .map((label) => ({ label, value: Number(latestByLabel.get(label)) }))
+    .filter((point) => point.label && Number.isFinite(point.value));
+}
+
+function isMetricLabelUsable(raw: string): boolean {
+  const label = norm(raw).toLowerCase();
+  if (!label) return false;
+  if (label.length < 4 || label.length > 64) return false;
+  if (/\b(respectively|million|billion|thousand|compared|continued|reaching|totals)\b/.test(label)) return false;
+  const words = label.split(/\s+/).filter(Boolean);
+  const nonStop = words.filter((word) => !METRIC_STOPWORDS.has(word));
+  if (!nonStop.length) return false;
+  if (nonStop.length === 1 && /^(metric|value|number|amount|figure|age)$/i.test(nonStop[0])) return false;
+  return /[a-z]/i.test(label);
+}
+
+function buildGroundedMetricFamilies(paragraphText: string, windowText: string): GroundedMetricFamily[] {
+  const text = norm(`${windowText} ${paragraphText}`);
+  const families = new Map<string, GroundedMetricFamily>();
+  const seen = new Set<string>();
+  const push = (
+    familyKey: string,
+    kind: GroundedMetricFamilyKind,
+    labelRaw: string,
+    valueRaw: any,
+    opts?: { replaceByLabel?: boolean }
+  ) => {
+    const label = normalizeMetricLabel(labelRaw, 'Metric');
+    const value = Number(valueRaw);
+    if (!label || !Number.isFinite(value)) return;
+    if (!isMetricLabelUsable(label) && !/^Q[1-4]$/i.test(label)) return;
+    const dedupe = `${familyKey}|${label.toLowerCase()}|${value}`;
+    if (seen.has(dedupe)) return;
+    seen.add(dedupe);
+    const family = families.get(familyKey) || { key: familyKey, kind, points: [] };
+    if (opts?.replaceByLabel) {
+      const existingIndex = family.points.findIndex((point) => point.label.toLowerCase() === label.toLowerCase());
+      if (existingIndex >= 0) {
+        family.points[existingIndex] = { label, value };
+        families.set(familyKey, family);
+        return;
+      }
+    }
+    family.points.push({ label, value });
+    families.set(familyKey, family);
+  };
+
+  for (const m of Array.from(text.matchAll(/\b(Q[1-4])\b[^0-9-]{0,20}(-?\d+(?:\.\d+)?)/gi))) {
+    push('quarter', 'quarter', String(m[1] || '').toUpperCase(), m[2]);
+  }
+
+  for (const m of Array.from(text.matchAll(/\$([\d,.]+)\s*(billion|million|thousand)?/gi))) {
+    const base = Number(String(m[1] || '').replace(/,/g, ''));
+    const scale = String(m[2] || '').toLowerCase();
+    const scaled =
+      scale === 'billion' ? base
+      : scale === 'million' ? base / 1000
+      : scale === 'thousand' ? base / 1000000
+      : base;
+    const prefix = localMetricPhrase(text, m.index || 0, 'before');
+    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
+    const hint = inferCurrencyLabel(prefix, suffix);
+    push('currency_b', 'currency', hint, scaled);
+  }
+
+  for (const m of Array.from(text.matchAll(/\b(\d+(?:\.\d+)?)\s*(billion|million|thousand)\b/gi))) {
+    const prefix = localMetricPhrase(text, m.index || 0, 'before');
+    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
+    if (!hasCurrencySignal(prefix, suffix)) continue;
+    const hint = inferCurrencyLabel(prefix, suffix);
+    const base = Number(m[1]);
+    const scale = String(m[2] || '').toLowerCase();
+    const scaled =
+      scale === 'billion' ? base
+      : scale === 'million' ? base / 1000
+      : base / 1000000;
+    push('currency_b', 'currency', hint, scaled);
+  }
+
+  for (const m of Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s?%/g))) {
+    const prefix = localMetricPhrase(text, m.index || 0, 'before');
+    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
+    const hint = inferPercentLabel(prefix, suffix);
+    push('percent', 'percent', hint, m[1]);
+  }
+
+  for (const point of extractAgeGroupCountSeries(text)) {
+    push('age_group_count_m', 'count', point.label, point.value, { replaceByLabel: true });
+  }
+
+  for (const m of Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s*(million|billion|thousand)\s+(?:among\s+)?((?:ages?\s+\d+\s*(?:to|-)\s*\d+)|(?:ages?\s+\d+\+)|(?:\d+\s+and older)|(?:seniors?\s+\d+\+))/gi))) {
+    const base = Number(m[1]);
+    const scale = String(m[2] || '').toLowerCase();
+    const scaled =
+      scale === 'million' ? base
+      : scale === 'billion' ? base * 1000
+      : base / 1000;
+    const label = normalizeAgeGroupLabel(String(m[3] || ''));
+    if (!label) continue;
+    push('age_group_count_m', 'count', label, scaled, { replaceByLabel: true });
+  }
+
+  for (const m of Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s*(million|billion|thousand)\s+([A-Za-z][A-Za-z0-9-]{2,})\b/gi))) {
+    const base = Number(m[1]);
+    const scale = String(m[2] || '').toLowerCase();
+    const scaled =
+      scale === 'million' ? base
+      : scale === 'billion' ? base * 1000
+      : base / 1000;
+    const noun = String(m[3] || 'Items').replace(/s$/i, '');
+    const prefix = localMetricPhrase(text, m.index || 0, 'before');
+    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
+    if (hasCurrencySignal(prefix, suffix) || /\b(cost|expense|revenue|sales|income|profit|loss|budget|spend|spending|impact|value|price|gdp|funding|market|valuation|annual)\b/i.test(noun)) {
+      continue;
+    }
+    const hint = inferCountLabel(prefix, noun);
+    push('count_m', 'count', hint, scaled);
+  }
+
+  for (const m of Array.from(text.matchAll(/\b([A-Za-z][A-Za-z0-9/&()' -]{1,32})\s*[:=-]\s*(-?\d+(?:\.\d+)?)\b/g))) {
+    const label = normalizeMetricLabel(String(m[1] || ''), 'Metric');
+    if (/^(figure|value|metric|number)$/i.test(label)) continue;
+    push('generic_pairs', 'generic', label, m[2]);
+  }
+
+  return Array.from(families.values()).map((family) => ({
+    ...family,
+    points: family.points.slice(0, 8),
+  }));
+}
+
+function preferredMetricKinds(intentText: string): GroundedMetricFamilyKind[] {
+  const intent = norm(intentText).toLowerCase();
+  const kinds: GroundedMetricFamilyKind[] = [];
+  if (/\b(economic|financial|spend|spending|impact|revenue|sales|cost)\b/.test(intent)) kinds.push('currency');
+  if (/\b(participation|participants?|anglers?|americans?|people|users|population|audience|count|volume)\b/.test(intent)) {
+    kinds.push('count', 'percent');
+  }
+  if (/\b(percent|percentage|share|rate|ratio|growth|decline|increase|decrease|conversion|retention)\b/.test(intent)) {
+    kinds.push('percent');
+  }
+  if (/\b(q[1-4]|quarter|quarterly|trend|timeline|over time)\b/.test(intent)) kinds.push('quarter');
+  return Array.from(new Set(kinds));
+}
+
+function familyQualityScore(family: GroundedMetricFamily): number {
+  let score = family.points.length * 3;
+  const labels = family.points.map((point) => norm(point.label).toLowerCase());
+  const uniqueLabels = new Set(labels);
+  if (uniqueLabels.size < family.points.length) score -= (family.points.length - uniqueLabels.size) * 2;
+  for (const point of family.points) {
+    const label = norm(point.label).toLowerCase();
+    if (/^(metric|value|number)$/.test(label)) score -= 2;
+    if (/(^|\s)percentage(\s|$)/.test(label) && !/\bshare|rate|participation|growth|conversion\b/.test(label)) score -= 2;
+    if (!isMetricLabelUsable(label) && !/^q[1-4]$/.test(label)) score -= 4;
+  }
+  if (family.key === 'age_group_count_m' && family.points.length >= 3) score += 5;
+  return score;
+}
+
+function selectGroundedDataPoints(
+  paragraphText: string,
+  windowText: string,
+  intent: { title?: string; purpose?: string; description?: string }
+): GroundedDataSeries | null {
+  const localFamilies = buildGroundedMetricFamilies(paragraphText, paragraphText).filter((family) => family.points.length >= 2);
+  const contextualFamilies = buildGroundedMetricFamilies(paragraphText, windowText).filter((family) => family.points.length >= 2);
+  const families = localFamilies.length ? localFamilies : contextualFamilies;
+  if (!families.length) return null;
+
+  const intentText = norm(`${intent.title || ''} ${intent.purpose || ''} ${intent.description || ''}`);
+  const preferredKinds = preferredMetricKinds(intentText);
+  const pool = preferredKinds.length
+    ? families.filter((family) => preferredKinds.includes(family.kind))
+    : families;
+  if (!pool.length) return null;
+
+  const ranked = pool
+    .map((family) => {
+      let score = familyQualityScore(family);
+      if (preferredKinds.includes(family.kind)) score += 6;
+      if (family.kind === 'currency' && /\bimpact\b/i.test(intentText)) {
+        score += family.points.some((point) => /\bimpact\b/i.test(point.label)) ? 3 : 0;
+      }
+      if (family.kind === 'count' && /\bparticipation|participants?|anglers?|americans?\b/i.test(intentText)) {
+        score += family.points.some((point) => /\b(angler|participant|american|people|user)\b/i.test(point.label)) ? 3 : 0;
+      }
+      const series: GroundedDataSeries = { kind: family.kind, points: family.points.slice(0, 8) };
+      score += seriesQualityScore(series);
+      return { family, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = ranked[0];
+  if (!best || best.score < 6) return null;
+  const selected: GroundedDataSeries = {
+    kind: best.family.kind,
+    points: best.family.points.slice(0, 8),
+  };
+  if (!isSeriesAcceptable(selected)) return null;
+  return selected;
+}
+
+function describeGroundedDataSeries(series: GroundedDataSeries): { title: string; purpose: string } {
+  const labels = series.points.map((point) => norm(point.label).toLowerCase());
+  if (labels.every((label) => /^age \d{2}-\d{2}$/.test(label) || /^age \d{2}\+$/.test(label))) {
+    return {
+      title: 'Participation by Age Group',
+      purpose: 'Compare participation counts across age groups extracted from the surrounding document text.',
+    };
+  }
+  if (series.kind === 'currency') {
+    return {
+      title: 'Economic Impact Overview',
+      purpose: 'Compare economic figures extracted from the surrounding document text.',
+    };
+  }
+  if (series.kind === 'count') {
+    return {
+      title: 'Participation Overview',
+      purpose: 'Compare participation-related counts extracted from the surrounding document text.',
+    };
+  }
+  if (series.kind === 'percent') {
+    return {
+      title: 'Percentage Comparison',
+      purpose: 'Compare percentage-based metrics extracted from the surrounding document text.',
+    };
+  }
+  if (series.kind === 'quarter' || labels.every((label) => /^q[1-4]$/.test(label))) {
+    return {
+      title: 'Quarterly Trend',
+      purpose: 'Show the quarter-by-quarter trend extracted from the surrounding document text.',
+    };
+  }
+  return {
+    title: 'Quantitative Comparison',
+    purpose: 'Compare related quantitative values extracted from the surrounding document text.',
+  };
+}
+
+function inferChartRole(series: GroundedDataSeries): PlannedVisualization['chart_role'] {
+  const labels = series.points.map((point) => norm(point.label).toLowerCase());
+  if (series.kind === 'quarter' || labels.every((label) => /^q[1-4]$/.test(label))) return 'trend';
+  if (series.kind === 'percent') return 'composition';
+  return 'comparison';
+}
+
+function applyChartRendererHints(planned: PlannedVisualization): void {
+  const count = Array.isArray(planned.data_points) ? planned.data_points.length : 0;
+  if (planned.type !== 'data_viz') return;
+  planned.chart_family = 'default';
+  planned.renderer_hint = 'echarts';
+  if (planned.chart_role === 'comparison' && count >= 3 && count <= 7) {
+    planned.chart_family = 'editorial_spotlight_bar';
+    planned.renderer_hint = 'd3';
+  }
+}
+
+function summarizeGroundedDataSeries(series: GroundedDataSeries): string {
+  if (!series.points.length) return '';
+  if (series.points.every((point) => /^Age /i.test(point.label))) {
+    return series.points
+      .map((point) => `${point.label}: ${point.value} million`)
+      .join('; ');
+  }
+  return series.points
+    .map((point) => `${point.label}: ${point.value}`)
+    .join('; ');
+}
+
+function extractGroundedDataPoints(
+  paragraphText: string,
+  windowText: string,
+  intent: { title?: string; purpose?: string; description?: string }
+): Array<{ label: string; value: number }> {
+  return selectGroundedDataPoints(paragraphText, windowText, intent)?.points || [];
 }
 
 function buildSourcedImageText(paragraphText: string, windowText: string): string {
@@ -414,6 +895,15 @@ function buildSourcedImageText(paragraphText: string, windowText: string): strin
   const picked = (kept.length ? kept : splitSentences(paragraphText)).slice(0, 4).join(' ');
   const out = norm(picked || paragraphText || windowText);
   return out.length > 700 ? `${out.slice(0, 700)}...` : out;
+}
+
+function evidenceTextFromVisual(input: any): string {
+  const spans = Array.isArray(input?.evidence_spans)
+    ? input.evidence_spans
+        .map((span: any) => norm(String(span || '')))
+        .filter(Boolean)
+    : [];
+  return Array.from(new Set(spans)).join(' ');
 }
 
 function buildTextForType(type: PlannedVisualization['type'], paragraphText: string, windowText: string): string {
@@ -567,6 +1057,11 @@ export class VisualManifestPlannerService {
       const bestScore = Number(ranked[0]?.s || currentScore);
       if (bestScore - currentScore < 0.4) return current;
     }
+    if (type === 'data_viz' || type === 'flowchart') {
+      const currentScore = this.scoreAnchorForType(type, current);
+      const bestScore = Number(ranked[0]?.s || currentScore);
+      if (bestScore - currentScore < 1.25) return current;
+    }
     return ranked[0]?.a || current;
   }
 
@@ -646,6 +1141,7 @@ export class VisualManifestPlannerService {
     contextWindows?: ContextWindow[];
   }, maxAssets: number, captionMaxChars: number): Promise<DocumentVisualManifest> {
     const seen = new Set<string>();
+    const seenDataSeries = new Set<string>();
     const usedRangesByType = new Map<PlannedVisualization['type'], AnchorRange[]>();
     const visuals: PlannedVisualization[] = [];
     const windowsByAnchor = new Map(
@@ -670,8 +1166,6 @@ export class VisualManifestPlannerService {
       const usedRanges = usedRangesByType.get(type) || [];
       if (usedRanges.some((r) => rangeOverlapRatio(r, range) >= 0.6)) continue;
       seen.add(fingerprint);
-      usedRanges.push(range);
-      usedRangesByType.set(type, usedRanges);
       const planned: PlannedVisualization = {
         type,
         anchor_id: anchor.anchor_id,
@@ -682,6 +1176,31 @@ export class VisualManifestPlannerService {
         purpose: 'Visually reinforce the surrounding document concept.',
         prompt_template: promptTemplateFor(type, text),
       };
+      if (planned.type === 'data_viz') {
+        const series = selectGroundedDataPoints(paragraphText, windowText, {
+          title: planned.title,
+          purpose: planned.purpose,
+          description: planned.description,
+        });
+        if (series && series.points.length >= 2) {
+          planned.data_points = series.points;
+          const seriesSummary = describeGroundedDataSeries(series);
+          planned.title = seriesSummary.title;
+          planned.purpose = seriesSummary.purpose;
+          planned.chart_role = inferChartRole(series);
+          const summaryText = summarizeGroundedDataSeries(series);
+          if (summaryText) {
+            planned.description = summaryText;
+            planned.prompt_template = promptTemplateFor('data_viz', summaryText);
+          }
+          applyChartRendererHints(planned);
+        } else {
+          planned.type = 'infographic';
+          planned.placement = defaultPlacementForType('infographic');
+          planned.prompt_template = promptTemplateFor('infographic', text);
+          planned.fallback_reason = 'data_viz_requires_two_comparable_points';
+        }
+      }
       if (!eligibility.valid && type !== requestedType) {
         planned.fallback_reason = `eligibility_remap:${requestedType}->${type}:${eligibility.reason}`;
       }
@@ -712,6 +1231,20 @@ export class VisualManifestPlannerService {
       });
       planned.caption_text = caption.caption_text;
       planned.caption_mode = caption.caption_mode;
+      if (planned.type === 'data_viz' && Array.isArray(planned.data_points) && planned.data_points.length >= 2) {
+        const seriesFingerprint = planned.data_points
+          .map((point) => `${norm(point.label).toLowerCase()}:${Number(point.value)}`)
+          .join('|');
+        if (seriesFingerprint && seenDataSeries.has(seriesFingerprint)) {
+          continue;
+        }
+        if (seriesFingerprint) seenDataSeries.add(seriesFingerprint);
+      }
+      const finalType = planned.type;
+      const finalRanges = usedRangesByType.get(finalType) || [];
+      if (finalRanges.some((r) => rangeOverlapRatio(r, range) >= 0.6)) continue;
+      finalRanges.push(range);
+      usedRangesByType.set(finalType, finalRanges);
       visuals.push(planned);
       if (visuals.length >= maxAssets) break;
     }
@@ -790,8 +1323,13 @@ export class VisualManifestPlannerService {
       'Use types: infographic | sourced_image | data_viz | flowchart | aesthetic_anchor.',
       'Each visualization must include an evidence_spans array with short quoted phrases from the candidate text that justify the chosen type.',
       'Prefer data_viz for numeric/trend content; flowchart for procedural steps; sourced_image for scene context.',
+      'Choose data_viz only when the source supports at least two comparable values for one chart.',
+      'Never combine mixed units in one chart. Do not mix dollars, percentages, counts, or unrelated metrics in a single data_viz.',
+      'If the text has isolated numbers but no coherent chart series, choose infographic instead of data_viz.',
+      'For data_viz, make the title and purpose match exactly one metric family.',
+      'For data_viz, include chart_role using one of: comparison | trend | composition | spotlight | distribution.',
       'Placement scope must use one of: [AFTER_ANCHOR] | [AFTER_LIST_BLOCK] | [SECTION_INTRO_BODY] | [SECTION_END].',
-      'Output shape: {"visualizations":[{"type":"...","anchor_id":"...","placement":{"scope":"[AFTER_ANCHOR]|[AFTER_LIST_BLOCK]|[SECTION_INTRO_BODY]|[SECTION_END]","priority":1-100,"avoid_headings":true|false,"avoid_list_split":true|false,"max_width_in":number,"max_height_in":number,"alignment":"center|left"},"title":"...","description":"...","context":"...","purpose":"...","caption_text":"optional short caption","evidence_spans":["..."]}]}',
+      'Output shape: {"visualizations":[{"type":"...","anchor_id":"...","placement":{"scope":"[AFTER_ANCHOR]|[AFTER_LIST_BLOCK]|[SECTION_INTRO_BODY]|[SECTION_END]","priority":1-100,"avoid_headings":true|false,"avoid_list_split":true|false,"max_width_in":number,"max_height_in":number,"alignment":"center|left"},"title":"...","description":"...","context":"...","purpose":"...","caption_text":"optional short caption","evidence_spans":["..."],"chart_role":"comparison|trend|composition|spotlight|distribution"}]}',
       'Use anchor_id values from the provided candidates when possible.'
     ].join('\n');
 
@@ -909,14 +1447,50 @@ export class VisualManifestPlannerService {
         description: text || 'Contextual visual planned from document anchors.',
         context: `Anchor ${typeAlignedAnchor.anchor_id} in section "${typeAlignedAnchor.section}"`,
         purpose: norm(v?.purpose || 'Visually reinforce the surrounding document concept.'),
-        prompt_template: promptTemplateFor(resolvedType, text)
+        prompt_template: promptTemplateFor(resolvedType, text),
+        evidence_spans: Array.isArray((v as any)?.evidence_spans)
+          ? (v as any).evidence_spans.map((span: any) => norm(String(span || ''))).filter(Boolean).slice(0, 8)
+          : undefined,
+        chart_role: ['comparison', 'trend', 'composition', 'spotlight', 'distribution'].includes(String((v as any)?.chart_role || ''))
+          ? (String((v as any).chart_role) as any)
+          : undefined,
       };
       if (resolvedType === 'data_viz') {
-        const quantitativeText = buildDataVizText(typeAlignedAnchor.paragraph_text, typeAlignedAnchor.window_text);
+        const evidenceText = evidenceTextFromVisual(v);
+        const dataParagraph = typeAlignedAnchor.paragraph_text;
+        const dataWindow = typeAlignedAnchor.window_text;
+        const quantitativeText = buildDataVizText(dataParagraph, dataWindow);
+        const series = selectGroundedDataPoints(dataParagraph, dataWindow, {
+          title: planned.title,
+          purpose: planned.purpose,
+          description: planned.description,
+        });
         if (quantitativeText) {
           text = quantitativeText;
           planned.description = quantitativeText.slice(0, 500);
           planned.prompt_template = promptTemplateFor('data_viz', quantitativeText);
+        }
+        if (series && series.points.length >= 2) {
+          planned.data_points = series.points;
+          const seriesSummary = describeGroundedDataSeries(series);
+          planned.title = seriesSummary.title;
+          planned.purpose = seriesSummary.purpose;
+          planned.chart_role = planned.chart_role || inferChartRole(series);
+          const summaryText = summarizeGroundedDataSeries(series);
+          if (summaryText) {
+            planned.description = summaryText;
+            planned.prompt_template = promptTemplateFor('data_viz', summaryText);
+          }
+          if (evidenceText) {
+            const excerpt = evidenceText.split(/\s+/).slice(0, 24).join(' ');
+            if (excerpt) planned.context = `${planned.context}; evidence: ${excerpt}`;
+          }
+          applyChartRendererHints(planned);
+        } else {
+          planned.type = 'infographic';
+          planned.placement = defaultPlacementForType('infographic');
+          planned.prompt_template = promptTemplateFor('infographic', text);
+          planned.fallback_reason = 'data_viz_requires_two_comparable_points';
         }
       }
       if (!eligibility.valid && resolvedType !== mappedType) {

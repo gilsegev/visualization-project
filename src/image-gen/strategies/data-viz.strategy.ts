@@ -255,10 +255,74 @@ export class DataVizStrategy extends BaseImageStrategy {
   }
 
   private getHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
+    if (this.shouldUseD3(task, payload)) {
+      return this.getD3HtmlContent(task, payload, chartData);
+    }
     if (this.chartEngine === 'echarts') {
       return this.getEChartsHtmlContent(task, payload, chartData, isAnimated);
     }
     return this.getVChartHtmlContent(task, payload, chartData, isAnimated);
+  }
+
+  private shouldUseD3(task: ImageTask, payload: any): boolean {
+    const metadata = (task as any)?.metadata || {};
+    const rendererHint = String(metadata?.renderer_hint || payload?.renderer_hint || '').toLowerCase();
+    const chartFamily = String(metadata?.chart_family || payload?.chart_family || '').toLowerCase();
+    return this.normalizeChartType(String(payload?.chartType || 'bar')) === 'bar'
+      && (rendererHint === 'd3' || chartFamily === 'editorial_spotlight_bar');
+  }
+
+  private getD3HtmlContent(task: ImageTask, payload: any, chartData: any[]): string {
+    const theme = this.buildCourseChartTheme(task);
+    const d3Runtime = this.loadD3Lib();
+    const title = String(payload?.title || task.refined_prompt || 'Chart');
+    const rows = (Array.isArray(chartData) ? chartData : [])
+      .map((row) => ({ label: String(row?.label ?? ''), value: Number(row?.value ?? 0) }))
+      .filter((row) => row.label && Number.isFinite(row.value));
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <script>${d3Runtime}</script>
+        <style>
+          body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: ${theme.background}; }
+          #chart-container { width: 1024px; height: 1024px; background: ${theme.background}; border: 2px solid ${theme.containerBorder}; border-radius: 14px; overflow: hidden; font-family: ${theme.fontFamily}; }
+          text { font-family: ${theme.fontFamily}; }
+        </style>
+      </head>
+      <body>
+        <div id="chart-container"></div>
+        <script>
+          window.__chartReady = false;
+          const rows = ${JSON.stringify(rows)};
+          const w = 1024, h = 1024, m = { top: 130, right: 96, bottom: 120, left: 160 };
+          const title = ${JSON.stringify(title)};
+          const max = d3.max(rows, d => d.value) || 1;
+          const focus = rows.reduce((best, row) => row.value > (best?.value ?? -Infinity) ? row : best, null);
+          const svg = d3.select('#chart-container').append('svg').attr('width', w).attr('height', h);
+          svg.append('text').attr('x', w / 2).attr('y', 58).attr('text-anchor', 'middle').attr('fill', '${theme.textPrimary}').attr('font-size', 30).attr('font-weight', 700).text(title);
+          const x = d3.scaleBand().domain(rows.map(d => d.label)).range([m.left, w - m.right]).padding(0.22);
+          const y = d3.scaleLinear().domain([0, max * 1.18]).nice().range([h - m.bottom, m.top]);
+          svg.append('g').attr('transform', 'translate(0,' + (h - m.bottom) + ')').call(d3.axisBottom(x).tickSize(0))
+            .call(g => g.select('.domain').remove())
+            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 13).attr('font-weight', 600));
+          svg.append('g').attr('transform', 'translate(' + m.left + ',0)').call(d3.axisLeft(y).ticks(5).tickSize(-(w - m.left - m.right)))
+            .call(g => g.select('.domain').remove())
+            .call(g => g.selectAll('.tick line').attr('stroke', '${theme.gridColor}'))
+            .call(g => g.selectAll('text').attr('fill', '${theme.textSecondary}').attr('font-size', 12));
+          svg.selectAll('rect.bar').data(rows).enter().append('rect')
+            .attr('x', d => x(d.label)).attr('y', d => y(d.value)).attr('width', x.bandwidth()).attr('height', d => y(0) - y(d.value))
+            .attr('rx', 12).attr('fill', d => d.label === focus?.label ? '${theme.accentPrimary}' : '${theme.palette[1] || theme.accentSecondary}')
+            .attr('stroke', '${theme.barStroke}').attr('stroke-width', ${theme.barStrokeWidth || 0});
+          svg.selectAll('text.value').data(rows).enter().append('text')
+            .attr('x', d => (x(d.label) || 0) + x.bandwidth() / 2).attr('y', d => y(d.value) - 12).attr('text-anchor', 'middle')
+            .attr('fill', '${theme.textPrimary}').attr('font-size', 13).attr('font-weight', d => d.label === focus?.label ? 700 : 600).text(d => d.value);
+          window.__chartReady = true;
+        </script>
+      </body>
+      </html>
+    `;
   }
 
   private getEChartsHtmlContent(task: ImageTask, payload: any, chartData: any[], isAnimated: boolean): string {
@@ -266,7 +330,16 @@ export class DataVizStrategy extends BaseImageStrategy {
     const chartRuntime = this.loadEChartsLib();
     const normalizedType = this.normalizeChartType(String(payload?.chartType || 'bar'));
     const chartTitle = String(payload?.title || task.refined_prompt || 'Chart');
-    const option = this.buildEChartsOption(normalizedType, chartTitle, chartData, theme, isAnimated);
+    const option = this.buildEChartsOption(
+      normalizedType,
+      chartTitle,
+      chartData,
+      theme,
+      isAnimated,
+      String(payload?.y_axis_label || '').trim() || null,
+      String(payload?.value_format || '').trim().toLowerCase() === 'percent' ? 'percent' : 'count',
+      String(payload?.value_suffix || '').trim().slice(0, 3),
+    );
 
     return `
       <!DOCTYPE html>
@@ -498,6 +571,9 @@ export class DataVizStrategy extends BaseImageStrategy {
     chartData: any[],
     theme: ReturnType<DataVizStrategy['buildCourseChartTheme']>,
     isAnimated: boolean,
+    yAxisLabel: string | null,
+    valueFormat: 'percent' | 'count',
+    valueSuffix: string,
   ): Record<string, any> {
     const rows = Array.isArray(chartData) ? chartData : [];
     const labels = rows.map((row) => String(row?.label ?? ''));
@@ -529,6 +605,10 @@ export class DataVizStrategy extends BaseImageStrategy {
         trigger: type === 'pie' || type === 'funnel' ? 'item' : 'axis',
         backgroundColor: '#ffffff',
         borderColor: theme.containerBorder,
+        valueFormatter: (value: number) => {
+          if (valueFormat === 'percent') return `${value}%`;
+          return valueSuffix ? `${value}${valueSuffix}` : `${value}`;
+        },
         textStyle: {
           color: theme.textPrimary,
           fontFamily: theme.fontFamily.replace(/'/g, ''),
@@ -632,9 +712,18 @@ export class DataVizStrategy extends BaseImageStrategy {
       },
       yAxis: {
         type: 'value',
+        name: yAxisLabel || undefined,
+        nameTextStyle: {
+          color: theme.textSecondary,
+          fontSize: 12,
+          padding: [0, 0, 8, 0],
+        },
         axisLabel: {
           color: theme.textSecondary,
           fontSize: 12,
+          formatter: valueFormat === 'percent'
+            ? '{value}%'
+            : (valueSuffix ? `{value}${valueSuffix}` : '{value}'),
         },
         splitLine: {
           lineStyle: {
@@ -717,6 +806,25 @@ export class DataVizStrategy extends BaseImageStrategy {
     throw new Error('ECharts runtime not found. Expected public/assets/echarts.min.js or node_modules/echarts/dist/echarts.min.js');
   }
 
+  private loadD3Lib(): string {
+    const candidates = [
+      path.resolve(process.cwd(), 'public/assets/d3.min.js'),
+      path.resolve(process.cwd(), 'node_modules/d3/dist/d3.min.js'),
+      path.resolve(process.cwd(), 'node_modules/d3/dist/d3.js'),
+    ];
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      try {
+        const content = fs.readFileSync(candidate, 'utf8');
+        if (content && content.length > 1000) {
+          this.logger.log(`[DataViz] Loaded D3 runtime from: ${candidate}`);
+          return content;
+        }
+      } catch {}
+    }
+    throw new Error('D3 runtime not found. Expected public/assets/d3.min.js or node_modules/d3/dist/d3.min.js');
+  }
+
   private loadVChartLib(): string {
     const candidates = [
       path.resolve(process.cwd(), 'public/assets/vchart.js'),
@@ -761,6 +869,29 @@ export class DataVizStrategy extends BaseImageStrategy {
     pseudo3dBars: boolean;
   } {
     const metadata = (task as any)?.metadata || {};
+    const tokens = metadata?.chart_style_tokens || metadata?.document_chart_style_decision?.tokens;
+    if (tokens?.surface && tokens?.color && tokens?.type && tokens?.axis && tokens?.mark) {
+      return {
+        background: tokens.surface.background,
+        textPrimary: tokens.color.textPrimary,
+        textSecondary: tokens.color.textSecondary,
+        gridColor: tokens.color.grid || this.hexToRgba(tokens.color.textSecondary, tokens.axis.gridOpacity ?? 0.25),
+        accentPrimary: tokens.color.emphasis || tokens.color.palette?.[0] || '#2B6CB0',
+        accentSecondary: tokens.color.palette?.[1] || tokens.color.emphasis || '#2F855A',
+        palette: Array.isArray(tokens.color.palette) && tokens.color.palette.length ? tokens.color.palette : ['#2B6CB0', '#2F855A', '#D69E2E'],
+        fontFamily: `'${String(tokens.type.titleFamily || tokens.type.bodyFamily || 'Inter').replace(/'/g, '')}', sans-serif`,
+        containerBorder: tokens.surface.border,
+        gridOpacity: tokens.axis.gridOpacity ?? 0.25,
+        barStroke: tokens.color.emphasis || tokens.color.palette?.[0] || '#2B6CB0',
+        barStrokeWidth: 0,
+        lineStrokeWidth: tokens.mark.lineWidth ?? 3,
+        pointStrokeWidth: 2,
+        pointSize: tokens.mark.pointSize ?? 8,
+        valueLabel: !!tokens.mark.valueLabels,
+        multicolorByDatum: !!tokens.mark.multicolorByDatum,
+        pseudo3dBars: !!tokens.mark.pseudo3dBars,
+      };
+    }
     const chartThemeId = String(metadata?.chart_theme_id || '').trim().toLowerCase();
     if (chartThemeId && this.chartThemePresets[chartThemeId]) {
       const preset = this.chartThemePresets[chartThemeId];

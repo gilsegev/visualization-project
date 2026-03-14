@@ -304,6 +304,8 @@ export class ImageOrchestratorService {
                 const styleProfile = styleSelection.profile;
                 const themeId = styleSelection.infographicThemeId;
                 const chartThemeId = styleSelection.chartThemeId;
+                const documentChartStyleDecision = styleSelection.documentChartStyleDecision;
+                const chartStyleTokens = styleSelection.chartStyleTokens;
 
                 const primaryFont = globalStyle.typography?.fontFamily?.[0] || 'Inter';
                 const headingSize = this.parsePtRangeToCss(globalStyle.typography?.heading, '1.8rem');
@@ -354,7 +356,12 @@ export class ImageOrchestratorService {
                         template_type: this.resolveTemplateTypeForRouting(viz),
                         theme_id: themeId, // Pass through for strategy
                         chart_theme_id: chartThemeId,
+                        chart_role: viz.chart_role || null,
+                        chart_family: viz.chart_family || null,
+                        renderer_hint: viz.renderer_hint || null,
                         style_profile_id: styleProfile.id,
+                        document_chart_style_decision: documentChartStyleDecision,
+                        chart_style_tokens: chartStyleTokens,
                         story_style_suffix: styleSelection.generatedImageStyleSuffix,
                         sourced_style_suffix: styleSelection.sourcedImageStyleSuffix,
                         task_type: taskType,
