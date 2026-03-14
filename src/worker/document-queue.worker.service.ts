@@ -1735,11 +1735,17 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
   }
 
   private buildGroundingSourceText(viz: any, prompt: string): string {
+    const promptText = String(prompt || '')
+      .replace(/^Create an instructional infographic from this concept:\s*/i, '')
+      .replace(/^Create a flowchart from ordered steps in this text:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     return [
       String(viz?.title || '').trim(),
       String(viz?.description || '').trim(),
       String(viz?.context || '').trim(),
       String(viz?.purpose || '').trim(),
+      promptText,
     ].filter(Boolean).join(' | ');
   }
 
@@ -1793,7 +1799,8 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
 
   private buildGroundedInfographicPayload(viz: any, prompt: string): any {
     const sourceText = this.buildGroundingSourceText(viz, prompt);
-    const listTerms = this.extractGroundedInfographicItems(sourceText, viz, prompt);
+    const items = this.extractGroundedInfographicItems(sourceText, viz, prompt);
+    const weak = items.length < 2;
 
     return {
       type: 'infographic',
@@ -1801,41 +1808,47 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       description: String(viz?.description || '').trim() || '',
       context: String(viz?.context || '').trim() || '',
       purpose: String(viz?.purpose || '').trim() || '',
-      items: listTerms.map((t) => ({ title: t, description: '' })),
+      items,
       grounding_mode: 'extractive',
+      grounding_quality: weak ? 'weak' : 'grounded',
       grounding_source_text: sourceText,
     };
   }
 
-  private extractGroundedInfographicItems(sourceText: string, viz: any, prompt: string): string[] {
+  private extractGroundedInfographicItems(sourceText: string, viz: any, prompt: string): Array<{ title: string; description: string }> {
     const cleaned = String(sourceText || '').replace(/\s+/g, ' ').trim();
     const lower = cleaned.toLowerCase();
+    const docTitle = String(viz?.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-    const explicitTriadMatches = Array.from(
-      new Set([
-        ...Array.from(lower.matchAll(/\bprocedural instructions?\b/g)).map(() => 'Procedural Instructions'),
-        ...Array.from(lower.matchAll(/\bdata[-\s]?heavy reporting\b/g)).map(() => 'Data-Heavy Reporting'),
-        ...Array.from(lower.matchAll(/\batmospheric storytelling\b/g)).map(() => 'Atmospheric Storytelling'),
-      ])
-    );
-    if (explicitTriadMatches.length >= 2) {
-      return explicitTriadMatches.slice(0, 6);
-    }
+    const out: Array<{ title: string; description: string }> = [];
+    const seen = new Set<string>();
+    const shortTitle = (value: string): string => String(value || '').trim().split(/\s+/).slice(0, 5).join(' ') || 'Key Point';
+    const push = (titleRaw: string, descRaw: string) => {
+      const title = String(titleRaw || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      const description = String(descRaw || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+      if (!title || !description) return;
+      const t = title.toLowerCase();
+      if (t === docTitle || docTitle.includes(t) || t.includes(docTitle)) return;
+      const fp = `${t}|${description.toLowerCase()}`;
+      if (seen.has(fp)) return;
+      seen.add(fp);
+      out.push({ title, description });
+    };
 
     const normalizeTerm = (value: string): string => {
-      const compact = String(value || '')
+      return String(value || '')
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^["'`]+|["'`]+$/g, '')
         .replace(/^(and|or|to|for|with)\s+/i, '')
         .replace(/\s+/g, ' ');
-      return compact;
     };
 
     const isNoiseTerm = (value: string): boolean => {
       const v = String(value || '').toLowerCase();
       if (!v) return true;
       if (v.length < 4 || v.length > 80) return true;
+      if (/^(highlights?|overview|summary|insights?|snapshot)$/i.test(v)) return true;
       if (/\b(mouse cursors|watermark text|placeholder text|random letters|gibberish|ui elements?)\b/.test(v)) return true;
       if (/^anchor\b/.test(v)) return true;
       if (/\banchor-[a-z0-9-]+\b/.test(v)) return true;
@@ -1846,18 +1859,27 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       return false;
     };
 
-    const coarseCandidates = cleaned
-      .split(/[|,;]+/g)
+    const segments = cleaned
+      .split(/[|.?!;]/g)
       .map((s) => normalizeTerm(s))
       .filter((s) => !isNoiseTerm(s));
 
-    const sentenceCandidates = cleaned
-      .split(/[.?!]/g)
-      .flatMap((segment) => segment.split(/\band\b/gi))
-      .map((s) => normalizeTerm(s))
-      .filter((s) => !isNoiseTerm(s));
+    for (const segment of segments) {
+      const title = shortTitle(segment.replace(/\b(in|by|from|with|across|among)\b.*$/i, ''));
+      push(title, segment);
+    }
 
-    const all = Array.from(new Set([...coarseCandidates, ...sentenceCandidates]));
-    return all.slice(0, 6);
+    const themed = [
+      ['Participation', /\bparticipation|angler|fishing\b/i],
+      ['Economic Impact', /\beconomic|spend|impact|\$\b|billion|million\b/i],
+      ['Age Trends', /\bage|18 to 24|25 to 44|45 to 64|65\+\b/i],
+      ['Key Highlights', /\bhighlight|key point|overview|summary\b/i],
+    ] as const;
+    for (const [title, pattern] of themed) {
+      const hit = segments.find((s) => pattern.test(s));
+      if (hit) push(title, hit);
+    }
+
+    return out.slice(0, 6);
   }
 }

@@ -58,6 +58,7 @@ export class DocumentAssetJudgeService {
         `Prompt intent: ${String(input.prompt || '').trim()}`,
         'Return JSON only with keys: score (0-100), pass (boolean), reason (string), concerns (string[]).',
         'Focus on: semantic relevance, readability, text gore/gibberish, placeholder artifacts, and chart/diagram fidelity.',
+        'For infographics, fail generic hub/radial layouts that repeat the same title, omit concrete supporting points, or use vague labels like Highlights/Overview.',
       ].join('\n');
       const completion: any = await this.openai.chat.completions.create({
         model: this.model,
@@ -86,12 +87,16 @@ export class DocumentAssetJudgeService {
       const concerns = Array.isArray(parsed?.concerns)
         ? parsed.concerns.map((v: any) => String(v || '').trim()).filter(Boolean).slice(0, 8)
         : [];
-      const passed = Boolean(parsed?.pass) && normalizedScore >= this.threshold;
+      const reason = String(parsed?.reason || '').trim();
+      const repeatedInfographic =
+        String(input.visualType || '').toLowerCase() === 'infographic'
+        && /repeat|redundan|generic|vague label|overview|highlights/i.test(`${reason} ${concerns.join(' ')}`);
+      const passed = Boolean(parsed?.pass) && normalizedScore >= this.threshold && !repeatedInfographic;
       return {
         enabled: true,
         passed,
         score: normalizedScore,
-        reason: String(parsed?.reason || '').trim() || (passed ? 'judge_pass' : 'judge_failed'),
+        reason: reason || (passed ? 'judge_pass' : 'judge_failed'),
         model: this.model,
         concerns,
       };
@@ -115,4 +120,3 @@ export class DocumentAssetJudgeService {
     return 'image/png';
   }
 }
-
