@@ -1152,16 +1152,12 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         });
         const taskPayload: any = (task as any)?.payload || {};
         const dataSource = String(taskPayload?.data_source || '').toLowerCase();
-        const d2CliUsed = (generated as any)?.payload?.metrics?.d2_cli_used;
         const isGroundedDataViz =
           visualType === 'data_viz'
           && Array.isArray(taskPayload?.data)
           && taskPayload.data.length >= 3
           && dataSource !== 'seed_default'
           && dataSource !== 'numeric_only';
-        const isFlowchartNoD2 =
-          visualType === 'flowchart'
-          && d2CliUsed === false;
         if (!judgeVerdict.passed && isGroundedDataViz) {
           this.observability.emitLog('warn', `Document asset judge soft-pass job=${input.jobId} asset=${taskId} type=${visualType}`, 'DocumentAssetJudge', undefined, undefined, {
             metadata: {
@@ -1178,24 +1174,6 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
               judge_reason: judgeVerdict.reason,
               judge_concerns: judgeVerdict.concerns,
               data_source: dataSource || null,
-            }
-          });
-        } else if (!judgeVerdict.passed && isFlowchartNoD2) {
-          this.observability.emitLog('warn', `Document asset judge soft-pass job=${input.jobId} asset=${taskId} type=flowchart reason=d2_cli_unavailable`, 'DocumentAssetJudge', undefined, undefined, {
-            metadata: {
-              user_id: input.userId,
-              doc_job_id: input.jobId,
-              asset_task_id: taskId,
-              stage: 'generating_assets',
-              event_type: 'quality_scored',
-              provider_status: 'judge_soft_passed',
-              visual_type: visualType,
-              judge_enabled: judgeVerdict.enabled,
-              judge_model: judgeVerdict.model,
-              judge_score: judgeVerdict.score,
-              judge_reason: judgeVerdict.reason,
-              judge_concerns: judgeVerdict.concerns,
-              d2_cli_used: false,
             }
           });
         } else if (!judgeVerdict.passed) {
@@ -1602,11 +1580,11 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
       String(prompt || '').trim(),
     ].filter(Boolean).join(' | ');
 
-    const chartType = /\b(bar\s*graph|bar\s*chart|histogram|column\s*chart)\b/i.test(text)
+    const requestedChartType = /\b(bar\s*graph|bar\s*chart|histogram|column\s*chart)\b/i.test(text)
       ? 'bar'
       : /\b(line|trend|timeseries)\b/i.test(text)
         ? 'line'
-      : /\b(pie|donut|share|composition)\b/i.test(text)
+      : /\b(pie|donut)\b/i.test(text)
         ? 'pie'
         : /\b(funnel|stage conversion)\b/i.test(text)
           ? 'funnel'
@@ -1669,6 +1647,7 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     }
 
     const normalizedData = this.normalizeDataVizSeries(data).slice(0, 8);
+    const valueSum = normalizedData.reduce((sum, row) => sum + Number(row?.value || 0), 0);
 
     const unitContext = `${String(viz?.title || '')} ${String(viz?.description || '')} ${String(viz?.context || '')} ${String(viz?.purpose || '')} ${text}`;
     const inferredValueFormat: 'percent' | 'count' = /\b(percent|percentage|share|rate)\b/i.test(unitContext)
@@ -1687,6 +1666,12 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
     const explicitYAxisLabel = String(viz?.y_axis_label || '').trim();
     const explicitValueSuffix = String(viz?.value_suffix || '').trim().toUpperCase();
     const explicitValueFormat = String(viz?.value_format || '').trim().toLowerCase();
+    const chartRole = String(viz?.chart_role || '').trim().toLowerCase();
+    const chartType = requestedChartType === 'pie'
+      ? 'pie'
+      : (inferredValueFormat === 'percent' && chartRole === 'composition' && Math.abs(valueSum - 100) <= 1)
+        ? 'pie'
+        : requestedChartType;
 
     return {
       chartType,
@@ -1770,8 +1755,10 @@ export class DocumentQueueWorkerService implements OnModuleInit, OnModuleDestroy
         if (!m) continue;
         const label = String(m[2] || '').replace(/['"]/g, '').replace(/\s+/g, ' ').trim();
         if (!label) continue;
-        const title = label.split(':')[0]?.trim() || label;
-        push(title, label);
+        const parts = label.split(':');
+        const title = String(parts[0] || '').trim() || label;
+        const description = parts.slice(1).join(':').trim();
+        push(title, description);
       }
     }
 

@@ -153,7 +153,7 @@ function isWeakConceptText(text: string): boolean {
 
 function pickType(text: string, p?: ParagraphNode): PlannedVisualization['type'] {
   const t = norm(text).toLowerCase();
-  if (p?.has_sequence || /\b(step\s+\d+|first|second|third|then|next|workflow|process)\b/.test(t)) return 'flowchart';
+  if (hasStrongProceduralEvidence(text, p)) return 'flowchart';
   if (/\b(percent|trend|rate|distribution|chart|count)\b/.test(t)) return 'data_viz';
   if (/\b(scene|photo|realistic|image)\b/.test(t)) return 'sourced_image';
   return 'infographic';
@@ -320,20 +320,35 @@ function mermaidHeader(code: string): string {
 
 function extractSteps(text: string): string[] {
   const normalized = norm(text);
+  if (!normalized) return [];
   const explicitSteps = normalized.match(/step\s*\d+\s*[:.)-]?\s*[^.?!]+[.?!]?/gi) || [];
   if (explicitSteps.length >= 2) {
     return explicitSteps.map((s) => norm(s)).slice(0, 8);
   }
-  const parts = text
-    .split(/(?=(?:^|\s)(?:step\s*\d+[.)]?|[0-9]+[.)])\s+)/i)
+  const numbered = normalized.match(/(?:^|[\s;])(?:\d+[.)]\s+)([^;.!?]{8,120})/g) || [];
+  if (numbered.length >= 2) {
+    return numbered
+      .map((s) => norm(s.replace(/^(?:\d+[.)]\s+)+/, '')))
+      .filter(Boolean)
+      .slice(0, 8);
+  }
+  const transitionalParts = normalized
+    .split(/(?=\b(?:first|second|third|fourth|fifth|then|next|after that|finally)\b)/i)
     .map((s) => norm(s))
-    .filter(Boolean);
-  if (parts.length >= 2) return parts;
-  return text
-    .split(/[.;]\s+/)
-    .map((s) => norm(s))
-    .filter((s) => s.length >= 12)
-    .slice(0, 6);
+    .filter((s) => s.length >= 12 && /\b(first|second|third|fourth|fifth|then|next|after that|finally)\b/i.test(s));
+  if (transitionalParts.length >= 2) return transitionalParts.slice(0, 8);
+  return [];
+}
+
+function hasStrongProceduralEvidence(text: string, p?: ParagraphNode): boolean {
+  const t = norm(text);
+  if (!t) return false;
+  const steps = extractSteps(t);
+  if (steps.length >= 2) return true;
+  if (!p?.has_sequence) return false;
+  const hasTransitions = /\b(first|second|third|then|next|after that|finally|if|else|when)\b/i.test(t);
+  const hasActionVerb = /\b(start|begin|check|verify|select|choose|run|open|close|insert|remove|update|submit|review|approve|reject|finish|complete)\b/i.test(t);
+  return hasTransitions && hasActionVerb;
 }
 
 function toMermaidFlowchart(text: string): string {
@@ -395,8 +410,14 @@ function parsePlacementDslToken(input: any): PlacementScope | null {
 function validateTypeEligibility(type: PlannedVisualization['type'], paragraphText: string, windowText: string): { valid: boolean; reason: string } {
   const text = norm(`${paragraphText} ${windowText}`);
   if (type === 'flowchart') {
-    const steps = extractSteps(text);
-    if (steps.length < 2) return { valid: false, reason: 'flowchart_requires_two_or_more_ordered_steps' };
+    const local = norm(paragraphText);
+    const localSteps = extractSteps(local);
+    const windowSteps = extractSteps(text);
+    if (localSteps.length < 2 && windowSteps.length < 3) {
+      return { valid: false, reason: 'flowchart_requires_explicit_ordered_process_signals' };
+    }
+    const transitions = /\b(first|second|third|then|next|after that|finally|if|else|when)\b/i.test(text);
+    if (!transitions) return { valid: false, reason: 'flowchart_requires_transition_terms' };
     return { valid: true, reason: 'flowchart_evidence_present' };
   }
   if (type === 'data_viz') {
@@ -465,12 +486,12 @@ function atmosphericPromptForFallback(text: string): string {
 }
 
 function chooseType(paragraphText: string, windowText: string, p?: ParagraphNode): PlannedVisualization['type'] {
-  if (p?.has_sequence) return 'flowchart';
+  if (hasStrongProceduralEvidence(paragraphText, p)) return 'flowchart';
   if (p?.has_data) return 'data_viz';
   const paraProc = proceduralScore(paragraphText);
   const paraData = dataScore(paragraphText);
   const paraAtmos = atmosphericScore(paragraphText);
-  if (paraProc >= 3 && paraProc >= paraData) return 'flowchart';
+  if (paraProc >= 3 && paraProc >= paraData && hasStrongProceduralEvidence(windowText, p)) return 'flowchart';
   if (paraData >= 2 && paraData > paraProc) return 'data_viz';
   if (paraAtmos >= 2) return 'sourced_image';
   const paraType = pickType(paragraphText, p);
@@ -478,7 +499,7 @@ function chooseType(paragraphText: string, windowText: string, p?: ParagraphNode
   const proc = proceduralScore(windowText);
   const data = dataScore(windowText);
   const atmos = atmosphericScore(windowText);
-  if (proc >= 4 && proc >= data) return 'flowchart';
+  if (proc >= 4 && proc >= data && hasStrongProceduralEvidence(windowText, p)) return 'flowchart';
   if (data >= 3 && data > proc) return 'data_viz';
   if (atmos >= 3) return 'sourced_image';
   return pickType(windowText, p);
@@ -629,6 +650,41 @@ function hasCurrencySignal(prefix: string, suffix = ''): boolean {
   return /\b(cost|expense|revenue|sales|income|profit|loss|budget|spend|spending|impact|value|price|gdp|funding|market|valuation|economic)\b/.test(context);
 }
 
+function extractCurrencySeries(text: string): Array<{ label: string; value: number }> {
+  const points: Array<{ label: string; value: number }> = [];
+  const seenMentions = new Set<string>();
+  const sentences = Array.from(new Set(splitSentences(text)));
+
+  for (const sentence of sentences) {
+    const normalizedSentence = norm(sentence);
+    if (!normalizedSentence) continue;
+    for (const match of Array.from(normalizedSentence.matchAll(/\$?(\d+(?:\.\d+)?)\s*(billion|million|thousand)\b/gi))) {
+      const base = Number(match[1]);
+      const scale = String(match[2] || '').toLowerCase();
+      const scaled =
+        scale === 'billion' ? base
+        : scale === 'million' ? base / 1000
+        : base / 1000000;
+      const mentionKey = `${base}|${scale}|${normalizedSentence.toLowerCase()}`;
+      if (!Number.isFinite(scaled) || seenMentions.has(mentionKey)) continue;
+      seenMentions.add(mentionKey);
+
+      const lowerSentence = normalizedSentence.toLowerCase();
+      const label = /\b(multiplier effect|economic impact|total economic impact|impact exceeds)\b/.test(lowerSentence)
+        ? 'Total Economic Impact ($B)'
+        : /\b(spend|spending|licenses|equipment|trips|lodging)\b/.test(lowerSentence)
+          ? 'Annual Angler Spending ($B)'
+          : inferCurrencyLabel(
+              localMetricPhrase(normalizedSentence, match.index || 0, 'before'),
+              localMetricPhrase(normalizedSentence, (match.index || 0) + String(match[0] || '').length, 'after'),
+            );
+      points.push({ label, value: scaled });
+    }
+  }
+
+  return points;
+}
+
 function inferCountLabel(prefix: string, noun: string): string {
   const stem = inferMetricStem(prefix, noun);
   const nounLabel = titleCaseLabel(String(noun || '').replace(/s$/i, ''));
@@ -750,32 +806,8 @@ function buildGroundedMetricFamilies(paragraphText: string, windowText: string):
     push('quarter', 'quarter', String(m[1] || '').toUpperCase(), m[2]);
   }
 
-  for (const m of Array.from(text.matchAll(/\$([\d,.]+)\s*(billion|million|thousand)?/gi))) {
-    const base = Number(String(m[1] || '').replace(/,/g, ''));
-    const scale = String(m[2] || '').toLowerCase();
-    const scaled =
-      scale === 'billion' ? base
-      : scale === 'million' ? base / 1000
-      : scale === 'thousand' ? base / 1000000
-      : base;
-    const prefix = localMetricPhrase(text, m.index || 0, 'before');
-    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
-    const hint = inferCurrencyLabel(prefix, suffix);
-    push('currency_b', 'currency', hint, scaled);
-  }
-
-  for (const m of Array.from(text.matchAll(/\b(\d+(?:\.\d+)?)\s*(billion|million|thousand)\b/gi))) {
-    const prefix = localMetricPhrase(text, m.index || 0, 'before');
-    const suffix = localMetricPhrase(text, (m.index || 0) + String(m[0] || '').length, 'after');
-    if (!hasCurrencySignal(prefix, suffix)) continue;
-    const hint = inferCurrencyLabel(prefix, suffix);
-    const base = Number(m[1]);
-    const scale = String(m[2] || '').toLowerCase();
-    const scaled =
-      scale === 'billion' ? base
-      : scale === 'million' ? base / 1000
-      : base / 1000000;
-    push('currency_b', 'currency', hint, scaled);
+  for (const point of extractCurrencySeries(text)) {
+    push('currency_b', 'currency', point.label, point.value);
   }
 
   for (const m of Array.from(text.matchAll(/(\d+(?:\.\d+)?)\s?%/g))) {
@@ -910,7 +942,7 @@ function hasLocalChartSeries(
 }
 
 function hasLocalFlowchartEvidence(anchor: AnchorStructuralInfo): boolean {
-  return extractSteps(anchor.paragraph_text).length >= 2 || validateTypeEligibility('flowchart', anchor.paragraph_text, anchor.paragraph_text).valid;
+  return hasStrongProceduralEvidence(anchor.paragraph_text) && validateTypeEligibility('flowchart', anchor.paragraph_text, anchor.paragraph_text).valid;
 }
 
 function describeGroundedDataSeries(series: GroundedDataSeries): { title: string; purpose: string } {
@@ -1465,6 +1497,8 @@ export class VisualManifestPlannerService {
       'Use types: infographic | sourced_image | data_viz | flowchart | aesthetic_anchor.',
       'Each visualization must include an evidence_spans array with short quoted phrases from the candidate text that justify the chosen type.',
       'Prefer data_viz for numeric/trend content; flowchart for procedural steps; sourced_image for scene context.',
+      'Flowchart is allowed only when the SAME anchor text contains explicit ordered steps or transition terms (first/then/next/finally/if/else/when).',
+      'Do NOT choose flowchart for taxonomy, descriptive prose, comparisons, or thematic summaries.',
       'Choose data_viz only when the source supports at least two comparable values for one chart.',
       'Never combine mixed units in one chart. Do not mix dollars, percentages, counts, or unrelated metrics in a single data_viz.',
       'If the text has isolated numbers but no coherent chart series, choose infographic instead of data_viz.',
@@ -1724,10 +1758,9 @@ export class VisualManifestPlannerService {
       planned.caption_text = caption.caption_text;
       planned.caption_mode = caption.caption_mode;
       if (planned.type === 'data_viz' && Array.isArray(planned.data_points) && planned.data_points.length >= 2) {
-        const seriesFingerprint = [
-          planned.anchor_id,
-          planned.data_points.map((point) => `${norm(point.label).toLowerCase()}:${Number(point.value)}`).join('|'),
-        ].join('::');
+        const seriesFingerprint = planned.data_points
+          .map((point) => `${norm(point.label).toLowerCase()}:${Number(point.value)}`)
+          .join('|');
         if (seenDataSeries.has(seriesFingerprint)) {
           continue;
         }
@@ -1874,49 +1907,28 @@ export class VisualManifestPlannerService {
     const emergencySectionCap = 3;
     const anchorMeta = anchors.map((a) => ({
       anchor_id: String(a.anchor_id || ''),
-      paragraph_index: Number(a.paragraph_index || 0),
-      confidence: Number(a.confidence || 0),
       section: sectionForIndex(sections, Number(a.paragraph_index || 0)),
     })).filter((a) => a.anchor_id);
     const byId = new Map(anchorMeta.map((a) => [a.anchor_id, a]));
     const counts = new Map<string, number>();
     const sectionCounts = new Map<string, number>();
-
-    const pickAnchor = (seedId: string | null, sectionHint: string | null): string => {
-      const seed = seedId && byId.has(seedId) ? byId.get(seedId)! : null;
-      const targetPool = anchorMeta.filter((a) => {
-        const anchorCount = counts.get(a.anchor_id) || 0;
-        const sectionCount = sectionCounts.get(a.section) || 0;
-        return anchorCount < capPerAnchor && sectionCount < emergencySectionCap;
-      });
-      const pool = targetPool.length ? targetPool : anchorMeta;
-      const scored = pool
-        .filter((a) => !sectionHint || norm(a.section).toLowerCase() === sectionHint.toLowerCase())
-        .sort((a, b) => {
-          const da = seed ? Math.abs(a.paragraph_index - seed.paragraph_index) : 0;
-          const db = seed ? Math.abs(b.paragraph_index - seed.paragraph_index) : 0;
-          if (da !== db) return da - db;
-          if (b.confidence !== a.confidence) return b.confidence - a.confidence;
-          return (counts.get(a.anchor_id) || 0) - (counts.get(b.anchor_id) || 0);
-        });
-      const chosen = (scored[0] || pool[0] || anchorMeta[0]).anchor_id;
-      counts.set(chosen, (counts.get(chosen) || 0) + 1);
-      const chosenSection = byId.get(chosen)?.section || 'Document Context';
-      sectionCounts.set(chosenSection, (sectionCounts.get(chosenSection) || 0) + 1);
-      return chosen;
-    };
-
-    return visuals.map((v) => {
-      const sectionHint = byId.get(String(v.anchor_id || ''))?.section || null;
-      const proposedId = byId.has(String(v.anchor_id || '')) ? String(v.anchor_id) : null;
-      const assigned = pickAnchor(proposedId, sectionHint);
-      const resolvedSection = byId.get(assigned)?.section || sectionHint || 'Document Context';
-      return {
+    const kept: PlannedVisualization[] = [];
+    for (const v of visuals) {
+      const anchorId = String(v.anchor_id || '').trim();
+      if (!anchorId || !byId.has(anchorId)) continue;
+      const section = byId.get(anchorId)?.section || 'Document Context';
+      const anchorCount = counts.get(anchorId) || 0;
+      const sectionCount = sectionCounts.get(section) || 0;
+      if (anchorCount >= capPerAnchor || sectionCount >= emergencySectionCap) continue;
+      counts.set(anchorId, anchorCount + 1);
+      sectionCounts.set(section, sectionCount + 1);
+      kept.push({
         ...v,
-        anchor_id: assigned,
-        context: `Anchor ${assigned} in section "${resolvedSection}"`,
-      };
-    });
+        anchor_id: anchorId,
+        context: `Anchor ${anchorId} in section "${section}"`,
+      });
+    }
+    return kept;
   }
 
   validateManifest(manifest: DocumentVisualManifest, opts?: { anchors?: AnchorCandidate[] }): ManifestValidationResult {
